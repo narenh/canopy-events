@@ -27,6 +27,13 @@ test('the leak walker finds contact details, anyone\'s, the caller\'s own includ
   assert.equal(findLeaks({ person: { id: ana.id, email: ana.email, phone: ana.phone } }, ana.id, people).length, 4);
   // A null field isn't a leak; the public shape isn't either.
   assert.deepEqual(findLeaks({ id: ben.id, phone: null, firstName: 'Ben', shortName: 'Ben O' }, ana.id, people), []);
+  // An event's phone detail is a number the host typed for their guests,
+  // under `value`, not a contact field: one that's nobody's account
+  // number is fine; anyone's account number, in any detail, is caught.
+  const detail = (value) => ({ details: [{ type: 'phone', label: null, value, href: 'tel:' + value.replace(/[^0-9+]/g, '') }] });
+  assert.deepEqual(findLeaks(detail('(415) 555-0199'), ana.id, people), []);
+  assert.ok(findLeaks(detail(ben.phone), ana.id, people).length >= 1);
+  assert.ok(findLeaks({ details: [{ type: 'info', label: null, value: `DM ${ana.instagram}`, href: null }] }, ana.id, people).length === 1);
 });
 
 test('every endpoint, every caller: other people are the five public fields and nothing else', async (t) => {
@@ -44,7 +51,21 @@ test('every endpoint, every caller: other people are the five public fields and 
   await ben.put(`/api/v1/events/${before.id}/rsvp`, { status: 'going' });
   await una.put(`/api/v1/events/${before.id}/rsvp`, { status: 'going' });
   server.setTimes(before.id, { startedAgoMs: 9 * 86400e3, overInMs: -8 * 86400e3 });
-  const e = await makeEvent(ana, { guestListVisibility: 'responded' });
+  // With every kind of detail, a host-typed phone number among them
+  // (nobody's account number), so every answer about it carries them.
+  const e = await makeEvent(ana, {
+    guestListVisibility: 'responded',
+    details: [
+      { type: 'link', label: 'Tickets', value: 'https://tickets.example.com/x' },
+      { type: 'info', value: 'Doors at 7' },
+      { type: 'dress_code', value: 'Warm layers' },
+      { type: 'food', value: 'Tacos' },
+      { type: 'parking', value: 'Garage code 4512' },
+      { type: 'accommodation', value: 'Spare room' },
+      { type: 'phone', value: '(415) 555-0199' }
+    ]
+  });
+  assert.deepEqual(e.details.map((d) => d.value).slice(-1), ['(415) 555-0199'], "the host's own words, never their account's number");
   await ben.put(`/api/v1/events/${e.id}/rsvp`, { status: 'going' });
   await cy.put(`/api/v1/events/${e.id}/rsvp`, { status: 'maybe' });
   await una.put(`/api/v1/events/${e.id}/rsvp`, { status: 'not_going' });

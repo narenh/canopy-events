@@ -471,6 +471,70 @@
     more: '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2.1" fill="currentColor"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/><circle cx="19" cy="12" r="2.1" fill="currentColor"/></svg>'
   };
 
+  // An event's details (the API's `details`: lib/details.js), one icon per
+  // type, drawn like the place's pin (filled, or a 2px line, on 24×24, in
+  // the accent). The apps use the SF Symbols docs/api.md names.
+  const DETAIL_ICON = {
+    link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M10 14a4.5 4.5 0 0 0 6.4 0l3.3-3.3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2M14 10a4.5 4.5 0 0 0-6.4 0l-3.3 3.3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>',
+    info: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm0 8.4a1.2 1.2 0 0 0-1.2 1.2v4.8a1.2 1.2 0 1 0 2.4 0v-4.8a1.2 1.2 0 0 0-1.2-1.2zm0-4.1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>',
+    dress_code: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.5 3a3.5 2 0 0 0 7 0l5.6 3a1 1 0 0 1 .4 1.3l-1.7 3.3a1 1 0 0 1-1.3.5L17 10.4V20a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-9.6l-1.5.7a1 1 0 0 1-1.3-.5L2.5 7.3a1 1 0 0 1 .4-1.3z"/></svg>',
+    food: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 3v6a3 3 0 0 0 6 0V3M8 3v18M18 21V3c-2.4 1.3-3.8 3.9-3.8 7.8V14H18"/></svg>',
+    parking: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M6 2h12a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4zm3.2 4.5a1.2 1.2 0 0 0-1.2 1.2v9.1a1.2 1.2 0 1 0 2.4 0v-2.6h2.4a3.85 3.85 0 0 0 0-7.7zm1.2 2.3h2.4a1.55 1.55 0 0 1 0 3.1h-2.4z"/></svg>',
+    accommodation: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 5a1 1 0 0 1 1 1v7h7V9a1 1 0 0 1 1-1h6a4 4 0 0 1 4 4v7a1 1 0 1 1-2 0v-2H4v2a1 1 0 1 1-2 0V6a1 1 0 0 1 1-1zm4.5 3a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z"/></svg>',
+    phone: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.6 2.3a1.5 1.5 0 0 1 1.7.9l1.5 3.6a1.5 1.5 0 0 1-.4 1.7L7.6 10a12 12 0 0 0 6.4 6.4l1.5-1.8a1.5 1.5 0 0 1 1.7-.4l3.6 1.5a1.5 1.5 0 0 1 .9 1.7l-.6 2.9a1.9 1.9 0 0 1-1.9 1.5A18.5 18.5 0 0 1 2.2 4.8a1.9 1.9 0 0 1 1.5-1.9z"/></svg>'
+  };
+
+  // The types, in the order the editor's chips offer them.
+  const DETAIL_TYPES = ['link', 'info', 'dress_code', 'food', 'parking', 'accommodation', 'phone'];
+
+  // A link's address without its scheme and "www.": what the page shows
+  // for a link with no text of its own.
+  function linkHost(href) {
+    try {
+      return new URL(href).hostname.replace(/^www\./i, '');
+    } catch (e) {
+      return href;
+    }
+  }
+
+  // Only a tel: link made of digits (and a +) makes it into an href.
+  function safeTel(href) {
+    return typeof href === 'string' && /^tel:\+?[0-9]+$/.test(href) ? href : null;
+  }
+
+  // One detail, as a row like the place's: the icon, then the heading (the
+  // host's own, or the type's), then the value. A link is its text (or
+  // its host) to tap, with the host under it when it has text; a phone
+  // number is a tel: link; everything else is text with its line breaks.
+  function detailRow(x) {
+    if (!x || !DETAIL_ICON[x.type]) return '';
+    let what;
+    if (x.type === 'link') {
+      const href = safeUrl(x.href);
+      const host = href ? linkHost(href) : x.value;
+      what = href
+        ? '<a class="detail-link" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(x.label || host) + '</a>'
+          + (x.label ? '<span class="sub">' + esc(host) + '</span>' : '')
+        : '<span>' + esc(x.label || x.value) + '</span>';
+    } else {
+      const heading = x.label || t('event.detailHeadings.' + x.type);
+      const tel = x.type === 'phone' ? safeTel(x.href) : null;
+      what = '<span class="detail-heading">' + esc(heading) + '</span>'
+        + (tel ? '<span class="sub"><a href="' + esc(tel) + '">' + esc(x.value) + '</a></span>' : '<span class="sub detail-value">' + esc(x.value) + '</span>');
+    }
+    return '<div class="meta detail" data-type="' + esc(x.type) + '">' + DETAIL_ICON[x.type] + '<div class="what">' + what + '</div></div>';
+  }
+
+  // The event's details, in the host's order, and, for someone signed out
+  // when some are held back (parking, a place to stay, a phone: the API's
+  // hiddenDetails), a line saying they'll show after signing in. Empty
+  // with neither.
+  function detailsBlock(e, signedIn) {
+    const rows = (Array.isArray(e.details) ? e.details : []).map(detailRow).join('');
+    const hint = !signedIn && e.hiddenDetails > 0 ? '<p class="details-hidden">' + tx('event.detailsHidden') + '</p>' : '';
+    return rows || hint ? '<div class="details-list" id="eventDetails">' + rows + hint + '</div>' : '';
+  }
+
   // ---------------- The event page ----------------
 
   // The event's cover image (the API's coverImageUrl: public, at a random
@@ -881,7 +945,8 @@
 
   // The event itself, as one card: the hero (its cover, or the generated
   // picture, at 3:2, fading into the page) on top, the title and when on
-  // the fade, then where, who's hosting, spots and the description.
+  // the fade, then where, who's hosting, spots, the host's details (a
+  // link, the dress code...) and the description.
   function details(e, d, o, phase) {
     const signedIn = !!d.me;
     const w = whenHead(e, o.viewerZone);
@@ -895,7 +960,8 @@
     h += '<div class="head-text"><h1 class="event-title">' + esc(e.title) + '</h1>'
       + '<div class="when-big"><div class="when-date">' + esc(w.date) + '</div><div class="when-time">' + esc(w.time) + '</div>'
       + (w.zoneNote ? '<div class="zone-note">' + esc(w.zoneNote) + '</div>' : '') + '</div></div>';
-    // The rest of the card: where, who's hosting, spots, the description.
+    // The rest of the card: where, who's hosting, spots, the details, the
+    // description.
     h += '<div class="details-card">';
     if (e.locationName || e.locationAddress || e.locationAddressHidden) {
       h += '<div class="meta where">' + ICON.where + '<div class="what">';
@@ -916,6 +982,8 @@
     }
     const spots = spotsLine(e, phase);
     if (spots) h += '<p class="spots' + (e.spotsLeft === 0 ? ' full' : '') + '">' + esc(spots) + '</p>';
+    // The host's extra fields: short facts, so before the description.
+    h += detailsBlock(e, signedIn);
     if (e.description) h += '<div class="description">' + esc(e.description) + '</div>';
     h += '</div></section>';
     return h;
@@ -1769,6 +1837,55 @@
     return isHue(key) ? key + '°' : t('editor.themeDefault');
   }
 
+  // ---------------- The editor's details ----------------
+  //
+  // Under the description: one row per detail, in order, then a chip per
+  // type to add another ("+ Link", "+ Dress code"...). A row is the type's
+  // icon, its inputs and a × to take it off: a link's text and address; a
+  // phone's heading and number; for the rest a heading (the type's own
+  // until the host types another) and the text. views/editor.html adds
+  // and removes rows, and sends them in order on Save.
+  const DETAIL_CHIPS = {
+    link: '+ Link', info: '+ Info', dress_code: '+ Dress code', food: '+ Food',
+    parking: '+ Parking', accommodation: '+ Stay', phone: '+ Phone'
+  };
+  const DETAIL_MAX = 10;
+  const DETAIL_LABEL_MAX = 60;
+  const DETAIL_VALUE_MAX = 500;
+
+  function detailEditRow(x) {
+    x = x || {};
+    if (!DETAIL_ICON[x.type]) return '';
+    const type = x.type;
+    const name = t('event.detailHeadings.' + type);
+    const labelPlaceholder = type === 'link' ? t('editor.detailLinkText') : name;
+    const label = '<input type="text" class="soft detail-label" maxlength="' + DETAIL_LABEL_MAX + '" autocomplete="off" placeholder="' + esc(labelPlaceholder)
+      + '" aria-label="' + esc(type === 'link' ? labelPlaceholder : t('editor.detailHeading', { name })) + '" value="' + esc(x.label || '') + '">';
+    let value;
+    if (type === 'link') {
+      value = '<input type="text" class="soft detail-value" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="' + DETAIL_VALUE_MAX
+        + '" placeholder="' + tx('editor.detailPlaceholders.link') + '" aria-label="' + tx('editor.detailAddress') + '" value="' + esc(x.value || '') + '">';
+    } else if (type === 'phone') {
+      value = '<input type="text" class="soft detail-value" inputmode="tel" autocomplete="off" maxlength="40" placeholder="' + tx('editor.detailPlaceholders.phone')
+        + '" aria-label="' + tx('editor.detailPlaceholders.phone') + '" value="' + esc(x.value || '') + '">';
+    } else {
+      value = '<textarea class="soft detail-value" maxlength="' + DETAIL_VALUE_MAX + '" rows="2" placeholder="' + tx('editor.detailPlaceholders.' + type)
+        + '" aria-label="' + esc(name) + '">' + esc(x.value || '') + '</textarea>';
+    }
+    return '<div class="meta detail-edit" data-type="' + esc(type) + '">' + DETAIL_ICON[type]
+      + '<div class="what">' + label + value + '<div class="error detail-error" role="alert"></div></div>'
+      + '<button type="button" class="round-btn" data-action="remove-detail" aria-label="' + tx('editor.detailRemove', { name: name.toLowerCase() }) + '">' + ICON_CLOSE + '</button></div>';
+  }
+
+  function detailsEditor(e) {
+    const list = Array.isArray(e.details) ? e.details : [];
+    return '<div class="details-edit"><div id="detailRows">' + list.map(detailEditRow).join('') + '</div>'
+      + '<div class="detail-chips" id="detailChips" role="group" aria-label="' + tx('editor.detailAdd') + '">'
+      + DETAIL_TYPES.map((type) => '<button type="button" class="chip-btn" data-action="add-detail" data-type="' + type + '"'
+        + (list.length >= DETAIL_MAX ? ' disabled' : '') + '>' + esc(DETAIL_CHIPS[type]) + '</button>').join('')
+      + '</div><div class="error" id="detailsError" role="alert"></div></div>';
+  }
+
   // The form for making an event (d.event null) or editing one. `o` is {
   // zone (a new event's: the viewer's), viewerZone (for the zone menu's
   // nearby list) }.
@@ -1799,6 +1916,7 @@
     h += '<div class="description-edit"><label class="sr-only" for="description">' + tx('editor.description') + '</label>'
       + '<textarea id="description" class="soft" maxlength="5000" rows="4" placeholder="' + tx('editor.descriptionPlaceholder') + '">' + esc(e.description || '') + '</textarea>'
       + '<div class="error" id="descriptionError" role="alert"></div></div>';
+    h += detailsEditor(e);
     h += '</div></section>';
 
     // Who's coming: who sees the list, plus-ones and capacity.
@@ -1833,7 +1951,7 @@
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
-    eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
+    eventPage, details, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED
   };

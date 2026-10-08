@@ -30,7 +30,8 @@
 // Each entry is what that person sees on the event's page, and less: the
 // title, when, the place and its address (everyone in the calendar may see
 // the address: they're signed in and on the event), the host's
-// description, and the link. Never anyone else: no guest names, no hosts'
+// description, the event's details (all of them, parking and phone
+// included, for the same reason), and the link. Never anyone else: no guest names, no hosts'
 // names, nobody's contact details. The feed ends up on Google's and
 // Apple's servers.
 //
@@ -44,6 +45,7 @@ const { fail } = require('../lib/api');
 const { publicBase, BASE } = require('../lib/domain');
 const { PERSON_ID_RE } = require('../lib/ids');
 const { calendarStatus, CALENDAR_PAST_MS } = require('../lib/rules');
+const { HEADINGS } = require('../lib/details');
 
 const iso = (ms) => new Date(ms).toISOString();
 
@@ -67,6 +69,17 @@ function partLine(status, { role, rsvp, guests }, url) {
   return `You're going${plus}.`;
 }
 
+// The event's details as lines: "Dress code: Black tie", the host's own
+// heading when they gave one, and a link's text then its address. A
+// value on several lines starts on the line after its heading.
+function detailLines(details) {
+  if (!details.length) return null;
+  return details.map((d) => {
+    const heading = d.label || HEADINGS[d.type];
+    return heading + ':' + (d.value.includes('\n') ? '\n' : ' ') + d.value;
+  }).join('\n');
+}
+
 function entryFor(req, row, now, settings) {
   const { event } = row;
   const status = calendarStatus(event, row, now, { invites: settings.calendarInvites });
@@ -74,7 +87,7 @@ function entryFor(req, row, now, settings) {
   const url = `${publicBase(req)}/e/${event.publicId}`;
   const invited = onlyInvited(row);
   // An open invitation's first line already has the link.
-  const description = [partLine(status, row, url), event.description, invited && status !== 'cancelled' ? null : url]
+  const description = [partLine(status, row, url), event.description, detailLines(event.details), invited && status !== 'cancelled' ? null : url]
     .filter(Boolean).join('\n\n');
   // When anything in the entry last changed: the event, or their part in
   // it (an answer, a plus-one, being made a co-host, being invited). An

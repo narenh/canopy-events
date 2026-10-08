@@ -30,8 +30,8 @@ module.exports = function eventsRoutes(ctx) {
   const router = express.Router();
   const withEvent = loadEvent(store);
 
-  function refuse(res, [status, reason, error]) {
-    return fail(res, status, reason, error);
+  function refuse(res, [status, reason, error, extra]) {
+    return fail(res, status, reason, error, extra);
   }
 
   // Verified people only: a quick account proves its email first.

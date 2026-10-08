@@ -74,6 +74,20 @@ const COPY = {
     // Signed out: the street address waits for signing in (link
     // previews are kept by machines, and a home address shouldn't be).
     addressHidden: 'The address shows once you sign in.',
+    // The host's extra details, under the place: each one's heading when
+    // the host didn't write their own. (A link shows its own text.)
+    detailHeadings: {
+      link: 'Link',
+      info: 'Info',
+      dress_code: 'Dress code',
+      food: 'Food',
+      parking: 'Parking',
+      accommodation: 'Where to stay',
+      phone: 'Phone'
+    },
+    // Signed out: parking, a place to stay and phone numbers wait for
+    // signing in, like the address.
+    detailsHidden: 'More details show once you sign in.',
     openMap: 'Open in Maps',
     hostedBy: 'Hosted by {names}',
     and: '{first} and {last}',
@@ -275,6 +289,22 @@ const COPY = {
     locationAddressPlaceholder: 'Address (only signed-in guests see it)',
     description: 'Description',
     descriptionPlaceholder: "What's happening, what to bring, anything people should know",
+    // The details under the description: the chips' group, and each row's
+    // inputs. A row's heading starts as the type's own (event.detailHeadings).
+    detailAdd: 'Add details',
+    detailHeading: 'Heading for {name}',
+    detailLinkText: 'Link text',
+    detailAddress: 'Link address',
+    detailRemove: 'Remove {name}',
+    detailPlaceholders: {
+      link: 'Paste a link',
+      info: 'Anything else people should know',
+      dress_code: 'What to wear',
+      food: "What's on the menu, or what to bring",
+      parking: 'Where to park',
+      accommodation: 'Where people can stay',
+      phone: 'Phone number'
+    },
     // Who's coming.
     guests: 'Guests',
     guestList: 'Who sees the guest list',
@@ -314,7 +344,13 @@ const COPY = {
       bad_guests_allowed: 'Pick from 0 to 10 guests.',
       bad_capacity: 'Capacity is a whole number from 1 to 10,000, or empty for no limit.',
       bad_theme_hue: 'Pick a colour on the slider.',
-      bad_theme_grayscale: 'Pick a colour on the slider.'
+      bad_theme_grayscale: 'Pick a colour on the slider.',
+      // The details, shown under the row they're about.
+      bad_detail_url: "That doesn't look like a web link. Paste the whole address.",
+      bad_detail_phone: "That doesn't look like a phone number.",
+      bad_detail_value: 'Fill this in, or remove it.',
+      detail_too_long: "That's too long.",
+      too_many_details: 'An event can have up to 10 details.'
     },
     // The cover's own refusals, by the API's `reason`.
     coverErrors: {

@@ -154,6 +154,9 @@ page's confirm does) and delete only if the host still wants to.
 `guestsAllowed` (0 to 10, 0 by default) is how many plus-ones each answer
 may bring. See "Plus-ones" below.
 
+`details` are the host's extra fields under the description (a link,
+the dress code, parking...). See "Event details" below.
+
 An event with no `endsAt` counts as **over** 6 hours after it starts.
 Over is what moves it from "upcoming" to "past", and an event that's over
 takes no more answers or invitations.
@@ -169,11 +172,74 @@ or a "sign in to answer" screen can show the event:
   `locationAddressHidden` is true when there is one. Link previews are
   fetched and kept by machines, and a home address shouldn't sit in their
   caches;
+- **not** the `parking`, `accommodation` or `phone` details, for the
+  address's reason (they can hold an address, a door code or a number):
+  `details` has only the others, and `hiddenDetails` counts the ones left
+  out;
 - **not** the guest list (`GET /guests` is 401), `viewer` is null, and
   there's no `friendsGoing`.
 
-Signed in (even unverified), you get the address, `viewer` (your part in
-it) and `friendsGoing`.
+Signed in (even unverified), you get the address, every detail, `viewer`
+(your part in it) and `friendsGoing`. Someone a host removed gets what
+someone signed out gets.
+
+### Event details
+
+Optional extra fields a host adds, like Partiful's "+ Link" and "+ Dress
+code" chips. Every event has `details`, an ordered list (up to 10; `[]`
+for none) of:
+
+```json
+{ "type": "link", "label": "Tickets", "value": "https://tickets.example.com/x", "href": "https://tickets.example.com/x" }
+```
+
+| `type` | Heading when `label` is null | SF Symbol | `value` | `href` | Signed out |
+|---|---|---|---|---|---|
+| `link` | none: show `label`, or the address's host ("partiful.com") | `link` | an http(s) address | the same | shown |
+| `info` | Info | `info.circle` | text | null | shown |
+| `dress_code` | Dress code | `tshirt` | text | null | shown |
+| `food` | Food | `fork.knife` | text | null | shown |
+| `parking` | Parking | `parkingsign` | text | null | hidden |
+| `accommodation` | Where to stay | `bed.double` | text | null | hidden |
+| `phone` | Phone | `phone` | a number, as typed | `tel:` and its digits | hidden |
+
+- `label` (up to 60 characters, one line, or null) is a link's text, or
+  a heading in place of the type's own ("Potluck" for a `food`).
+- Text values are plain (up to 500 characters) and keep their line
+  breaks. Draw them as text; don't turn anything in them into links.
+- A link opens in the browser (the web page opens a new tab, with no
+  referrer); tapping a phone dials `href`. Only ever open a `link`'s
+  `href` (always http or https) and a `phone`'s (always `tel:`).
+- Several of one type are fine (two links). Show them in the order they
+  come. Show nothing for a `type` you don't know: more may come.
+- The web draws each as a row like the place's (the icon in the event's
+  accent, the heading, the value under it), after the hosts and spots
+  and before the description; signed out, with `hiddenDetails` above 0,
+  a line under them: "More details show once you sign in."
+
+**Setting them**: `details` on `POST` and `PATCH /events`, a list of
+`{type, label?, value}`. A `PATCH` replaces the whole list (send all of
+them, in order, to change one); `null` or `[]` takes them all off; leave
+it out to leave them alone. A `link`'s value is checked and tidied: http
+and https only (`javascript:`, `data:`, `mailto:` and the rest are 400
+`bad_detail_url`, and so is an address with a user name in it), and one
+typed without a scheme ("partiful.com/e/x") gets `https://`. A `phone` is
+digits with spaces, dashes, dots, brackets or a leading `+` (3 to 20
+digits), kept as typed but trimmed. A refusal about one detail says which
+in `index` (from 0):
+
+```json
+{ "error": "a link is a web address, starting http:// or https://", "reason": "bad_detail_url", "index": 1 }
+```
+
+The reasons: `bad_details` (not a list), `too_many_details` (over 10),
+and, with `index`, `bad_detail` (not an object), `bad_detail_type`,
+`bad_detail_label`, `bad_detail_value` (missing or empty),
+`bad_detail_url`, `bad_detail_phone` and `detail_too_long`.
+
+In someone's Canopy calendar, an entry's description lists every detail
+after the host's description ("Dress code: Warm layers"); everyone with
+the entry is on the event.
 
 ## Answering: the RSVP state machine
 
@@ -786,7 +852,7 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`, `bad_details`, `too_many_details`, `bad_detail`, `bad_detail_type`, `bad_detail_label`, `bad_detail_value`, `bad_detail_url`, `bad_detail_phone`, `detail_too_long` (with `index`), `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |

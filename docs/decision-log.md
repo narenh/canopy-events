@@ -2326,3 +2326,103 @@ rest:
   were checked by hand in the browser (375 px): grey → accent 330 → Save
   stored `accentHue: 330` and drew a purple pill and button on grey;
   moving Colour to a hue hid the Accent slider and Save stored null.
+
+## Event details (custom fields)
+
+On `feat/details`. **(You)** asked for optional extra fields like
+Partiful's chips (link, info, dress code, food, parking, accommodation,
+phone), with parking, accommodation and phone kept from signed-out
+viewers like the address. The rest:
+
+- **Schema version 13: one JSON column, `events.details` (NULL is none),
+  with a `json_valid` CHECK, not an `event_details` table.** · The list
+  is small (10 at most), always read with its event (every list already
+  loads whole rows), only ever replaced whole, and nothing queries across
+  events by it; a table would add a join or a second query to every list
+  for nothing. · A step that rebuilds events without it, plus a table if
+  a query ever needs one.
+- **API: `details: [{type, label, value, href}]` on every event, and
+  `hiddenDetails`, a count (0 when nothing's held back), next to
+  `locationAddressHidden`.** `href` is derived, never stored: a link's
+  address, or `tel:` with a phone's digits (and its leading +); null for
+  text. A count rather than a flag so the page or an app could say "2
+  more"; the web only says "More details show once you sign in." · The
+  brief's "count or flag". · lib/views.js.
+- **Hidden exactly where the address is**: `insider` in lib/views.js
+  (signed in and not removed). Removed guests get the public ones and no
+  sign-in line (signing in wouldn't help them), as with the address. ·
+  As asked; one rule. · `PRIVATE_TYPES` in lib/details.js.
+- **Refusals carry `index`** (`{error, reason, index}`; the Error schema
+  gained an optional `index`): `bad_details`, `too_many_details`, and with
+  the index `bad_detail`, `bad_detail_type`, `bad_detail_label`,
+  `bad_detail_value`, `bad_detail_url`, `bad_detail_phone`,
+  `detail_too_long`. Nothing changes on a 400. · As asked, plus the ones a
+  real body can hit. · lib/details.js `cleanDetails`.
+- **Too long is refused, not cut**, unlike the description and title,
+  which are silently trimmed. · A cut URL or phone number is broken, and
+  the brief names `detail_too_long`. The editor's `maxlength`s mean a
+  person never sees it. · Slice instead.
+- **Links: http and https only; one typed with no scheme that starts like
+  a host ("partiful.com/e/x", "www.example.com") gets `https://`;
+  normalized with `new URL().href`; refused with a user name or password
+  in it (`https://bank.example@evil.example` reads as one place and goes
+  to another) or a host with no dot.** · People paste addresses without
+  the scheme; nothing else should ever become an href. · `cleanUrl`.
+- **Phone: digits with spaces, dashes, dots, brackets, slashes and a
+  leading +, 3 to 20 digits, kept as typed (trimmed). No extensions.** ·
+  "Loose"; `tel:` can dial it. · `PHONE_RE`.
+- **A label is one line (whitespace collapsed), 60 characters; an empty
+  one is null. Unknown fields on a detail are ignored**, like unknown
+  fields on an event. · n/a
+- **Event page: the details go after the hosts and spots, before the
+  description**, one row each in the place row's style (icon in the
+  accent, heading bold, value under it in the secondary size). · Short
+  facts read best before the long prose, and that's where Partiful puts
+  them. · `detailsBlock` in public/ui.js.
+- **A link row is the link itself** (its label, or the host without
+  "www."), with the host under it when it has a label, so a guest sees
+  where it goes; no "Link" heading. A phone row is its label (or "Phone")
+  over a `tel:` link. Text keeps line breaks (`pre-line`) and is escaped;
+  links in text aren't made clickable, as in the description. The page
+  re-checks every href (http(s), or `tel:` and digits) before drawing it
+  as one. · Defence in depth. · `detailRow`.
+- **Icons are inline SVGs on the place pin's 24×24 grid, filled where the
+  shape allows (shirt, info, parking, bed, phone) and a 2px line for the
+  link and the fork and knife.** · n/a · `DETAIL_ICON`.
+- **Editor: rows above the chips, both under the description, inside the
+  card.** A row is the icon, a heading input (its placeholder is the
+  type's own heading, so leaving it empty reads as that; for a link it's
+  the link text) and the value (a one-line input with `inputmode="url"`
+  or `"tel"` for link and phone, a two-line textarea for the rest), and a
+  × . A new row's value gets focus. Chips scroll sideways under 700px and
+  wrap above; at 10 rows they're disabled. A row left completely empty
+  isn't sent. · As asked; the URL field is `type="text"` with
+  `inputmode="url"` so the page's input styles apply and the browser
+  doesn't refuse "partiful.com/x" before the API can tidy it. ·
+  views/editor.html, `detailEditRow`.
+- **No privacy note in the placeholders** for parking, stay and phone
+  (the address's says "only signed-in guests see it"). · "No help text",
+  and it wouldn't fit a one-line field at 375px. · copy.js
+  `editor.detailPlaceholders`.
+- **Calendar feed: after the host's description, one line per detail,
+  "Heading: value"** (the label or the type's heading; a multi-line value
+  starts on the next line), all types: everyone with an entry is on the
+  event. · As asked. · `detailLines` in routes/calendar.js.
+- **Not in link previews**, and nothing else (wall, notifications) says
+  details changed. · Previews never carry the description either; a
+  details edit isn't news. · n/a
+- **Leak walker**: a host-typed phone lives under `value`, not a contact
+  field name, so the walker only flags it if it's someone's account
+  number; the tests use a made-up number, and the walker's own test shows
+  an account number in any detail is caught. · n/a
+- **Tests**: test/details.test.js (cleaning, the round trip, replacing
+  and clearing, refusals with the index and nothing changed, a
+  `javascript:` link refused on create and edit, who sees what signed
+  out, removed, restored, unverified, by app; the calendar text; the page
+  rows, hrefs, escaping, the hint, nothing in the preview; the editor's
+  chips and rows); test/db.test.js (version 13 and its CHECK);
+  test/leaks.test.js (every kind of detail on the event every caller
+  walks). Checked by hand in the browser at 375 px and 1024 px: the page
+  signed in and out, adding a link row, a `javascript:` value refused
+  under its row with focus on it, then fixed, a row removed, and Save
+  storing the new list.

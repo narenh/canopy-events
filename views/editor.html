@@ -38,12 +38,15 @@ const FIELD_FOR = {
   bad_title: 'title', bad_description: 'description', bad_starts_at: 'startsAt', bad_ends_at: 'endsAt',
   ends_before_start: 'endsAt', bad_time_zone: 'timeZone', bad_location_name: 'locationName',
   bad_location_address: 'locationAddress', bad_guest_list_visibility: 'guestListVisibility',
-  bad_guests_allowed: 'guestsAllowed', bad_capacity: 'capacity', bad_theme_hue: 'themeHue', bad_theme_grayscale: 'themeHue', bad_accent_hue: 'accentHue', accent_needs_grayscale: 'accentHue'
+  bad_guests_allowed: 'guestsAllowed', bad_capacity: 'capacity', bad_theme_hue: 'themeHue', bad_theme_grayscale: 'themeHue', bad_accent_hue: 'accentHue', accent_needs_grayscale: 'accentHue',
+  bad_details: 'details', too_many_details: 'details'
 };
 // What to focus for a field whose control has another id.
-const FOCUS_FOR = { startsAt: 'startDate', timeZone: 'zoneBtn', guestListVisibility: null };
+const FOCUS_FOR = { startsAt: 'startDate', timeZone: 'zoneBtn', guestListVisibility: null, details: null };
 function showRefusal(d){
   const words = COPY.editor.errors[d.reason] || sentence(d.error);
+  // About one of the details: under its row.
+  if (showDetailRefusal(d, words)) return;
   const fieldId = FIELD_FOR[d.reason];
   const el = (fieldId && $(fieldId + 'Error')) || $('formError');
   el.textContent = words;
@@ -471,6 +474,71 @@ function themeFields(){
   return { themeGrayscale: false, themeHue: UI.isHue(themeKey) ? themeKey : null, accentHue: null };
 }
 
+// ---------------- The details ----------------
+//
+// Under the description: a chip per type adds a row for it (public/ui.js
+// detailEditRow) at the end, and its × takes it off. Save sends every
+// row with something in it, in order (an untouched new row is left out),
+// replacing the list there was. A refusal about one says which (`index`
+// in the API's answer), and shows under that row.
+const detailRows = $('detailRows');
+const DETAIL_MAX = 10;
+
+function rowsShown(){
+  return Array.from(detailRows.querySelectorAll('.detail-edit'));
+}
+function drawDetailChips(){
+  const full = rowsShown().length >= DETAIL_MAX;
+  $('detailChips').querySelectorAll('[data-action="add-detail"]').forEach((b) => { b.disabled = full; });
+}
+
+onActions({
+  'add-detail': (el) => {
+    if (rowsShown().length >= DETAIL_MAX) return;
+    detailRows.insertAdjacentHTML('beforeend', UI.detailEditRow({ type: el.getAttribute('data-type') }));
+    drawDetailChips();
+    const rows = rowsShown();
+    const row = rows[rows.length - 1];
+    // A link's address and a phone's number first; the rest, the text.
+    row.querySelector('.detail-value').focus();
+  },
+  'remove-detail': (el) => {
+    const row = el.closest('.detail-edit');
+    const next = row.nextElementSibling || row.previousElementSibling;
+    row.remove();
+    drawDetailChips();
+    // Focus somewhere sensible: the next row's ×, or the first chip.
+    const target = next ? next.querySelector('[data-action="remove-detail"]') : $('detailChips').querySelector('button');
+    if (target) target.focus();
+  }
+});
+
+// The rows that go: [{ row, detail }], in order. A row with nothing typed
+// in it isn't sent.
+let detailsSent = [];
+function detailsToSend(){
+  detailsSent = rowsShown().map((row) => ({
+    row,
+    detail: {
+      type: row.getAttribute('data-type'),
+      label: row.querySelector('.detail-label').value.trim() || null,
+      value: row.querySelector('.detail-value').value
+    }
+  })).filter((x) => x.detail.label || x.detail.value.trim());
+  return detailsSent.map((x) => x.detail);
+}
+
+// A refusal about one detail, under its row. True when it was one.
+function showDetailRefusal(d, words){
+  if (!d || typeof d.index !== 'number' || !detailsSent[d.index]) return false;
+  const row = detailsSent[d.index].row;
+  row.querySelector('.detail-error').textContent = words;
+  const input = d.reason === 'detail_too_long' && row.querySelector('.detail-label').value.length > 60
+    ? row.querySelector('.detail-label') : row.querySelector('.detail-value');
+  input.focus();
+  return true;
+}
+
 // A new event whose cover didn't upload lands here, to try again.
 if (data.coverError){
   $('coverError').textContent = t('editor.coverNotSaved') + ' ' + (COPY.editor.coverErrors[data.coverError] || t('common.failed'));
@@ -504,7 +572,8 @@ form.addEventListener('submit', (e) => {
     // Empty is no limit. Anything else goes as typed; the API says if
     // it isn't a whole number in range.
     capacity: capacity.value.trim() === '' ? null : Number(capacity.value),
-    ...themeFields()
+    ...themeFields(),
+    details: detailsToSend()
   };
   // An empty end: none (and, editing, clear the one there was).
   if (ends) body.endsAt = ends;

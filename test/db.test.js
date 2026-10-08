@@ -155,6 +155,15 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   assert.equal(upgraded.updateEvent('AAAAAAAAAAAA', { themeGrayscale: true, accentHue: 200 }).accentHue, 200);
   assert.throws(() => upgraded.updateEvent('AAAAAAAAAAAA', { themeGrayscale: false }), /CHECK/);
   assert.equal(upgraded.updateEvent('AAAAAAAAAAAA', { themeGrayscale: false, accentHue: null }).accentHue, null);
+  // Version 13: an event's details, none for every event from before,
+  // stored as JSON and nothing else.
+  assert.deepEqual(upgraded.getEvent('AAAAAAAAAAAA').details, []);
+  const food = [{ type: 'food', label: null, value: 'Tacos' }];
+  assert.deepEqual(upgraded.updateEvent('AAAAAAAAAAAA', { details: food }).details, food);
+  assert.equal(upgraded.db.prepare("SELECT details FROM events WHERE id = 'AAAAAAAAAAAA'").get().details, JSON.stringify(food));
+  assert.deepEqual(upgraded.updateEvent('AAAAAAAAAAAA', { details: [] }).details, []);
+  assert.equal(upgraded.db.prepare("SELECT details FROM events WHERE id = 'AAAAAAAAAAAA'").get().details, null);
+  assert.throws(() => upgraded.db.prepare("UPDATE events SET details = 'not json' WHERE id = 'AAAAAAAAAAAA'").run(), /CHECK/);
   // And whoever was hosting at the upgrade has hosted, from when
   // they started; nobody else has, until they host.
   assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000001'), true);

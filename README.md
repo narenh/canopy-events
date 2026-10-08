@@ -130,9 +130,9 @@ event link on a phone.
 
 | | |
 |---|---|
-| `/e/<id>` | **An event**, what a shared link opens, drawn in the event's colour. On top, the cover (or a generated picture) as a 3:2 hero fading into the page, the title on the fade, and **when**, big: the day, the time, and a pill saying how soon ("Tomorrow", "This Saturday"). Then a card with the place, the hosts, the counts (people and their plus-ones) and spots left. Signed out: no address, and a big **RSVP** to the account service's quick sign-up, with a smaller "I have a Canopy account, sign in". Signed in: going / maybe / can't go, how many guests you're bringing (when the host allows any), the waitlist when it's full, friends going, who's coming by the host's visibility rule, and the **wall** (posts, and what happened: "Ana is going", "the time changed"), with a box to post in once you've answered. Hosts get share, invite, edit and the guest list with **Remove** (and the removed, with Undo) instead of answering; the creator also cancels, makes a **new link**, and adds and removes **co-hosts**; a co-host can step down. Someone a host removed sees the public details and a calm line saying they're not on the list. |
+| `/e/<id>` | **An event**, what a shared link opens, drawn in the event's colour. On top, the cover (or a generated picture) as a 3:2 hero fading into the page, the title on the fade, and **when**, big: the day, the time, and a pill saying how soon ("Tomorrow", "This Saturday"). Then a card with the place, the hosts, the counts (people and their plus-ones), spots left, the host's **details** (a link, the dress code, food, parking, where to stay, a phone number: a row each with its icon) and the description. Signed out: no address, no parking, place to stay or phone number (a line says more details show once you sign in), and a big **RSVP** to the account service's quick sign-up, with a smaller "I have a Canopy account, sign in". Signed in: going / maybe / can't go, how many guests you're bringing (when the host allows any), the waitlist when it's full, friends going, who's coming by the host's visibility rule, and the **wall** (posts, and what happened: "Ana is going", "the time changed"), with a box to post in once you've answered. Hosts get share, invite, edit and the guest list with **Remove** (and the removed, with Undo) instead of answering; the creator also cancels, makes a **new link**, and adds and removes **co-hosts**; a co-host can step down. Someone a host removed sees the public details and a calm line saying they're not on the list. |
 | `/` | **Your events**: invitations (going or can't go right there), what you're hosting, what's coming up, and what's past, each row a 3:2 picture, the date in bold, the title and the place. "New event" for verified people; unverified people get a line saying to confirm their email to host. Signed out: what this is, and sign in. |
-| `/new`, `/e/<id>/edit` | **The editor**, drawn like the event page: the cover as the hero (an upload button and a × on it, sent on save), the title typed where it shows, the date and times as big as the page's (each tapped to change), the time zone by friendly name with a "Change" menu (nearby zones first, then a search of all), the place and address, the description, who sees the guest list, plus-ones, capacity, and the event's colour (a slider that repaints the page as you drag). No help text. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
+| `/new`, `/e/<id>/edit` | **The editor**, drawn like the event page: the cover as the hero (an upload button and a × on it, sent on save), the title typed where it shows, the date and times as big as the page's (each tapped to change), the time zone by friendly name with a "Change" menu (nearby zones first, then a search of all), the place and address, the description, chips under it to add **details** ("+ Link", "+ Info", "+ Dress code", "+ Food", "+ Parking", "+ Stay", "+ Phone"; a row each, with a ×), who sees the guest list, plus-ones, capacity, and the event's colour (a slider that repaints the page as you drag). No help text. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
 | `/e/<id>/invite` | **Inviting** (hosts): find someone by their exact phone number or Instagram username (verified hosts; a name and a photo come back, never their details), then your friends with a search box, the ones already on the list (or removed, or hosting) marked. |
 | `/e/<id>/cohosts` | **Adding co-hosts** (the creator): your friends with a search box and "Add"; anyone who can't co-host yet (an unconfirmed email) is told why under their row. |
 | `/friends` | **Your friends**: your friend link with Share, Copy and its QR code (drawn on the server as an inline SVG, `lib/qr.js`), and Reset; "Add by phone or Instagram" (verified people; the invite page's lookup, with "Add friend"); and your list, how each is in it, with Remove (asked first). |
@@ -285,10 +285,20 @@ zone. Ids are strings.
 
 **What a signed-out caller sees of an event.** Enough for a link preview
 and a "sign in to answer" page: the title, description, times, place
-name, hosts, status and counts. Not the guest list, and not the street
-address: previews are fetched and kept by machines (Slack, iMessage,
-crawlers), and a home address shouldn't end up in their caches. Anyone
-signed in, even with a quick account, sees it.
+name, hosts, status and counts, and the event's public details (links,
+info, dress code, food). Not the guest list, not the street address and
+not the details that can hold one (parking, where to stay, a phone
+number; `hiddenDetails` counts them): previews are fetched and kept by
+machines (Slack, iMessage, crawlers), and a home address shouldn't end up
+in their caches. Anyone signed in, even with a quick account, sees them,
+except someone a host removed.
+
+**Event details** (`lib/details.js`) are optional extra fields: `details`,
+up to 10 of `{type, label, value}` (`link`, `info`, `dress_code`, `food`,
+`parking`, `accommodation`, `phone`), set on create and replaced whole by
+`PATCH`, stored as one JSON column on the event (schema version 13). Links
+are http(s) only, checked and tidied on the way in; phone numbers get a
+`tel:` `href`. docs/api.md ("Event details") has the rest.
 
 **The tests hold the server to the spec.** Every `/api/v1` route Express
 has must be in `openapi.yaml` and the other way round, and every JSON
@@ -343,8 +353,9 @@ profile's calendar section) and in the app's Profile.
 no end time is `null`, which the feed shows as an hour), the place's name
 and its address (everyone in the calendar is signed in and on the event,
 so they see the address on its page too), the event's link, and a
-description: their part in it, the host's description, and the link
-again (Google doesn't show the link otherwise). **Never anyone else**: no
+description: their part in it, the host's description, the event's
+details (every one, parking and phone included), and the link again
+(Google doesn't show the link otherwise). **Never anyone else**: no
 guest names, not the hosts' names, nobody's contact details. The feed ends
 up on Google's and Apple's servers, and the tests (`test/calendar.test.js`,
 and the leak walker on every answer) hold it to that.
