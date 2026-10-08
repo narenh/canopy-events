@@ -32,6 +32,30 @@ const editing = !!data.event;
 const form = document.getElementById('eventForm');
 const $ = (id) => document.getElementById(id);
 
+// No autofill on any of the event's fields: a place isn't your home
+// address, and a host's phone or link isn't yours. autocomplete="off" is
+// only a hint (Chrome ignores it for fields it takes for addresses, and
+// Safari guesses from labels), so each field also gets the password
+// managers' own opt-outs (1Password, LastPass, Bitwarden, Dashlane), and
+// fields added later (a new detail row) get the same as they appear.
+// Radios keep their name (it groups them); nothing else has one.
+function noAutofill(el){
+  if (!el.matches || !el.matches('input, textarea, select')) return;
+  if (['radio', 'checkbox', 'range', 'file', 'hidden'].includes(el.type)) return;
+  el.setAttribute('autocomplete', 'off');
+  el.setAttribute('data-1p-ignore', '');
+  el.setAttribute('data-lpignore', 'true');
+  el.setAttribute('data-bwignore', '');
+  el.setAttribute('data-form-type', 'other');
+  el.setAttribute('autocorrect', el.tagName === 'TEXTAREA' ? 'on' : 'off');
+}
+form.querySelectorAll('input, textarea, select').forEach(noAutofill);
+new MutationObserver((changes) => changes.forEach((c) => c.addedNodes.forEach((n) => {
+  if (n.nodeType !== 1) return;
+  noAutofill(n);
+  n.querySelectorAll && n.querySelectorAll('input, textarea, select').forEach(noAutofill);
+}))).observe(form, { childList: true, subtree: true });
+
 // The API's refusal, under the field it's about (and focus on it). The
 // words are copy.js's for the reasons it knows, otherwise the API's own.
 const FIELD_FOR = {
