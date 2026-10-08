@@ -1286,3 +1286,12 @@ Fixes for the security review's events findings (branch `fix/review`).
 - Measured on an event page (local, 6 guests): 1 request, 138 KB raw
   / 40 KB gzipped, 3.5 MB JS heap, 164 DOM elements, first paint about
   100 ms. Covers were the real weight.
+- **Ready for your review (not merged):** `feat/data-security`,
+  account f1a5686 (168 tests) and events 81b17eb (208 tests); both pass
+  and the events branch merges cleanly. Its full decision list is on
+  that branch. **The order matters when merging:** account first (with
+  `CONTACT_ENCRYPTION_KEYS` and `LOOKUP_HMAC_KEY` set in Coolify before
+  deploying), then events, because events' lookup becomes a POST that
+  only the new account service answers. iOS follow-up: events'
+  `/api/v1/me` stops returning your contact details, so the app's
+  profile must read them from the account service's `/api/native/v1/me`.
