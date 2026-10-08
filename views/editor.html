@@ -537,18 +537,31 @@ onActions({
   }
 });
 
+// A link's text field previews what the page shows without one: its
+// placeholder follows the address as it's typed.
+detailRows.addEventListener('input', (e) => {
+  const row = e.target.closest('.detail-edit[data-type="link"]');
+  if (row && e.target.classList.contains('detail-value')) {
+    row.querySelector('.detail-label').setAttribute('placeholder', UI.linkTextPlaceholder(e.target.value));
+  }
+});
+
 // The rows that go: [{ row, detail }], in order. A row with nothing typed
-// in it isn't sent.
+// in it isn't sent. A phone's row has no label field; a label it came
+// with goes back as it was.
 let detailsSent = [];
 function detailsToSend(){
-  detailsSent = rowsShown().map((row) => ({
-    row,
-    detail: {
-      type: row.getAttribute('data-type'),
-      label: row.querySelector('.detail-label').value.trim() || null,
-      value: row.querySelector('.detail-value').value
-    }
-  })).filter((x) => x.detail.label || x.detail.value.trim());
+  detailsSent = rowsShown().map((row) => {
+    const labelField = row.querySelector('.detail-label');
+    return {
+      row,
+      detail: {
+        type: row.getAttribute('data-type'),
+        label: (labelField ? labelField.value.trim() : row.getAttribute('data-label')) || null,
+        value: row.querySelector('.detail-value').value
+      }
+    };
+  }).filter((x) => x.detail.value.trim() || (x.detail.label && x.row.querySelector('.detail-label')));
   return detailsSent.map((x) => x.detail);
 }
 
@@ -557,8 +570,9 @@ function showDetailRefusal(d, words){
   if (!d || typeof d.index !== 'number' || !detailsSent[d.index]) return false;
   const row = detailsSent[d.index].row;
   row.querySelector('.detail-error').textContent = words;
-  const input = d.reason === 'detail_too_long' && row.querySelector('.detail-label').value.length > 60
-    ? row.querySelector('.detail-label') : row.querySelector('.detail-value');
+  const labelField = row.querySelector('.detail-label');
+  const input = d.reason === 'detail_too_long' && labelField && labelField.value.length > 60
+    ? labelField : row.querySelector('.detail-value');
   input.focus();
   return true;
 }

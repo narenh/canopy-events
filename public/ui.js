@@ -497,32 +497,50 @@
     }
   }
 
+  // A link with no text of its own is shown as its address, shortened:
+  // no http(s)://, no "www.", no slash at the end, and past LINK_TEXT_MAX
+  // characters cut with an ellipsis (the whole address is the link's
+  // title). The page's CSS also ellipsizes whatever doesn't fit the line.
+  const LINK_TEXT_MAX = 48;
+  function linkText(href) {
+    const s = String(href || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+    return s.length > LINK_TEXT_MAX ? s.slice(0, LINK_TEXT_MAX - 1) + '\u2026' : s;
+  }
+
   // Only a tel: link made of digits (and a +) makes it into an href.
   function safeTel(href) {
     return typeof href === 'string' && /^tel:\+?[0-9]+$/.test(href) ? href : null;
   }
 
-  // One detail, as a row like the place's: the icon, then the heading (the
-  // host's own, or the type's), then the value. A link is its text (or
-  // its host) to tap, with the host under it when it has text; a phone
-  // number is a tel: link; everything else is text with its line breaks.
+  // One detail, as a row like the place's, after its icon:
+  //
+  //   - a link: one line, its text (or, with none, its shortened address:
+  //     linkText) as the link, the whole address as its title;
+  //   - a phone: one line, the number as a tel: link, after the host's
+  //     label and a dot when there is one ("Ana's cell · (415) 555-0199");
+  //   - the rest: the heading (the host's own, or the type's), then the
+  //     text under it, with its line breaks.
   function detailRow(x) {
     if (!x || !DETAIL_ICON[x.type]) return '';
     let what;
+    let cls = 'meta detail';
     if (x.type === 'link') {
       const href = safeUrl(x.href);
-      const host = href ? linkHost(href) : x.value;
+      const text = x.label || linkText(href || x.value);
+      cls += ' detail-line';
       what = href
-        ? '<a class="detail-link" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(x.label || host) + '</a>'
-          + (x.label ? '<span class="sub">' + esc(host) + '</span>' : '')
-        : '<span>' + esc(x.label || x.value) + '</span>';
+        ? '<a class="detail-link" href="' + esc(href) + '" title="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(text) + '</a>'
+        : '<span>' + esc(text) + '</span>';
+    } else if (x.type === 'phone') {
+      const tel = safeTel(x.href);
+      cls += ' detail-line';
+      what = (x.label ? '<span class="detail-label">' + esc(x.label) + '</span> · ' : '')
+        + (tel ? '<a href="' + esc(tel) + '">' + esc(x.value) + '</a>' : '<span>' + esc(x.value) + '</span>');
     } else {
-      const heading = x.label || t('event.detailHeadings.' + x.type);
-      const tel = x.type === 'phone' ? safeTel(x.href) : null;
-      what = '<span class="detail-heading">' + esc(heading) + '</span>'
-        + (tel ? '<span class="sub"><a href="' + esc(tel) + '">' + esc(x.value) + '</a></span>' : '<span class="sub detail-value">' + esc(x.value) + '</span>');
+      what = '<span class="detail-heading">' + esc(x.label || t('event.detailHeadings.' + x.type)) + '</span>'
+        + '<span class="sub detail-value">' + esc(x.value) + '</span>';
     }
-    return '<div class="meta detail" data-type="' + esc(x.type) + '">' + DETAIL_ICON[x.type] + '<div class="what">' + what + '</div></div>';
+    return '<div class="' + cls + '" data-type="' + esc(x.type) + '">' + DETAIL_ICON[x.type] + '<div class="what">' + what + '</div></div>';
   }
 
   // The event's details, in the host's order, and, for someone signed out
@@ -1909,27 +1927,40 @@
   const DETAIL_LABEL_MAX = 60;
   const DETAIL_VALUE_MAX = 500;
 
+  // A link's text field's placeholder: what the page shows with none (the
+  // shortened address), or "Link text" before there's an address.
+  function linkTextPlaceholder(address) {
+    return linkText(address) || t('editor.detailLinkText');
+  }
+
   function detailEditRow(x) {
     x = x || {};
     if (!DETAIL_ICON[x.type]) return '';
     const type = x.type;
     const name = t('event.detailHeadings.' + type);
-    const labelPlaceholder = type === 'link' ? t('editor.detailLinkText') : name;
-    const label = '<input type="text" class="soft detail-label" maxlength="' + DETAIL_LABEL_MAX + '" autocomplete="off" placeholder="' + esc(labelPlaceholder)
-      + '" aria-label="' + esc(type === 'link' ? labelPlaceholder : t('editor.detailHeading', { name })) + '" value="' + esc(x.label || '') + '">';
-    let value;
+    let fields;
+    let attrs = '';
     if (type === 'link') {
-      value = '<input type="text" class="soft detail-value" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="' + DETAIL_VALUE_MAX
-        + '" placeholder="' + tx('editor.detailPlaceholders.link') + '" aria-label="' + tx('editor.detailAddress') + '" value="' + esc(x.value || '') + '">';
+      // The address, then its text: the text's placeholder is the page's
+      // own line for an empty one (views/editor.html keeps it in step).
+      fields = '<input type="text" class="soft detail-value" inputmode="url" autocapitalize="off" spellcheck="false" maxlength="' + DETAIL_VALUE_MAX
+        + '" placeholder="' + tx('editor.detailPlaceholders.link') + '" aria-label="' + tx('editor.detailAddress') + '" value="' + esc(x.value || '') + '">'
+        + '<input type="text" class="soft detail-label" maxlength="' + DETAIL_LABEL_MAX + '" placeholder="' + esc(linkTextPlaceholder(x.value))
+        + '" aria-label="' + tx('editor.detailLinkText') + '" value="' + esc(x.label || '') + '">';
     } else if (type === 'phone') {
-      value = '<input type="text" class="soft detail-value" inputmode="tel" autocomplete="off" maxlength="40" placeholder="' + tx('editor.detailPlaceholders.phone')
+      // One line, the number, as the page shows it. A label it was given
+      // (by an app) goes back unchanged.
+      fields = '<input type="text" class="soft detail-value" inputmode="tel" maxlength="40" placeholder="' + tx('editor.detailPlaceholders.phone')
         + '" aria-label="' + tx('editor.detailPlaceholders.phone') + '" value="' + esc(x.value || '') + '">';
+      if (x.label) attrs = ' data-label="' + esc(x.label) + '"';
     } else {
-      value = '<textarea class="soft detail-value" maxlength="' + DETAIL_VALUE_MAX + '" rows="2" placeholder="' + tx('editor.detailPlaceholders.' + type)
+      fields = '<input type="text" class="soft detail-label" maxlength="' + DETAIL_LABEL_MAX + '" placeholder="' + esc(name)
+        + '" aria-label="' + esc(t('editor.detailHeading', { name })) + '" value="' + esc(x.label || '') + '">'
+        + '<textarea class="soft detail-value" maxlength="' + DETAIL_VALUE_MAX + '" rows="2" placeholder="' + tx('editor.detailPlaceholders.' + type)
         + '" aria-label="' + esc(name) + '">' + esc(x.value || '') + '</textarea>';
     }
-    return '<div class="meta detail-edit" data-type="' + esc(type) + '">' + DETAIL_ICON[type]
-      + '<div class="what">' + label + value + '<div class="error detail-error" role="alert"></div></div>'
+    return '<div class="meta detail-edit" data-type="' + esc(type) + '"' + attrs + '>' + DETAIL_ICON[type]
+      + '<div class="what">' + fields + '<div class="error detail-error" role="alert"></div></div>'
       + '<button type="button" class="round-btn" data-action="remove-detail" aria-label="' + tx('editor.detailRemove', { name: name.toLowerCase() }) + '">' + ICON_CLOSE + '</button></div>';
   }
 
@@ -2009,7 +2040,7 @@
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
-    eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
+    eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED
   };

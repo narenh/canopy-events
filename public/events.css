@@ -461,7 +461,10 @@ a{color:var(--accent-text);font-weight:var(--link-weight, inherit);text-decorati
 .details-list{margin:22px 0 0;}
 .details-list > :last-child{margin-bottom:0;}
 .meta.detail .what .detail-value{white-space:pre-line;}
-.meta.detail .detail-link{display:inline-block;padding:2px 0;}
+/* A link and a phone are one line each; a long link ends in an ellipsis. */
+.meta.detail-line .what{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.meta.detail-line .detail-label{font-weight:600;}
+.meta.detail-line a{padding:2px 0;}
 .details-hidden{font-size:var(--fs-small);color:var(--muted);margin:0 0 16px 36px;}
 .state-line{font-size:var(--fs-body);color:var(--text);margin:0 0 12px;}
 .state-line.danger{color:var(--danger);}

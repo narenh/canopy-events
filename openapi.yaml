@@ -2042,13 +2042,13 @@ components:
 
         | type | heading | SF Symbol | `value` | `href` |
         |---|---|---|---|---|
-        | `link` | (none: show `label`, or the address's host) | `link` | an http(s) address | the same address |
+        | `link` | (none: one line, `label` or the shortened address as the link; docs/api.md) | `link` | an http(s) address | the same address |
         | `info` | Info | `info.circle` | text | null |
         | `dress_code` | Dress code | `tshirt` | text | null |
         | `food` | Food | `fork.knife` | text | null |
         | `parking` | Parking | `parkingsign` | text | null |
         | `accommodation` | Where to stay | `bed.double` | text | null |
-        | `phone` | Phone | `phone` | a number, as the host typed it | a `tel:` link |
+        | `phone` | (none: one line, "label · number", the number the link) | `phone` | a number, as the host typed it | a `tel:` link |
 
         Text keeps its line breaks and is plain (no markup, links not
         made clickable). Expect new types later: show nothing for one you

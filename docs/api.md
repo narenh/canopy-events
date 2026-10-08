@@ -195,16 +195,17 @@ for none) of:
 
 | `type` | Heading when `label` is null | SF Symbol | `value` | `href` | Signed out |
 |---|---|---|---|---|---|
-| `link` | none: show `label`, or the address's host ("partiful.com") | `link` | an http(s) address | the same | shown |
+| `link` | none (one line: see below) | `link` | an http(s) address | the same | shown |
 | `info` | Info | `info.circle` | text | null | shown |
 | `dress_code` | Dress code | `tshirt` | text | null | shown |
 | `food` | Food | `fork.knife` | text | null | shown |
 | `parking` | Parking | `parkingsign` | text | null | hidden |
 | `accommodation` | Where to stay | `bed.double` | text | null | hidden |
-| `phone` | Phone | `phone` | a number, as typed | `tel:` and its digits | hidden |
+| `phone` | none (one line: see below) | `phone` | a number, as typed | `tel:` and its digits | hidden |
 
-- `label` (up to 60 characters, one line, or null) is a link's text, or
-  a heading in place of the type's own ("Potluck" for a `food`).
+- `label` (up to 60 characters, one line, or null) is a link's text, a
+  phone's label, or a heading in place of the type's own ("Potluck" for
+  a `food`).
 - Text values are plain (up to 500 characters) and keep their line
   breaks. Draw them as text; don't turn anything in them into links.
 - A link opens in the browser (the web page opens a new tab, with no
@@ -212,10 +213,24 @@ for none) of:
   `href` (always http or https) and a `phone`'s (always `tel:`).
 - Several of one type are fine (two links). Show them in the order they
   come. Show nothing for a `type` you don't know: more may come.
-- The web draws each as a row like the place's (the icon in the event's
-  accent, the heading, the value under it), after the hosts and spots
-  and before the description; signed out, with `hiddenDetails` above 0,
-  a line under them: "More details show once you sign in."
+- **How to draw them** (the web does this; match it): each is a row
+  like the place's, its icon in the event's accent, after the hosts and
+  spots and before the description.
+  - **A link is one line, with no heading**: the icon, then its text as
+    the link. With no `label`, the text is the address itself, shortened:
+    drop `http://` or `https://`, a leading `www.` and a slash at the
+    end, keep the rest, and past 48 characters cut it to 47 and an
+    ellipsis ("…"); also let the line end in an ellipsis wherever it
+    doesn't fit. The whole address is the link's title (a long-press
+    preview in the app).
+  - **A phone is one line, with no heading**: the icon, then the number as
+    the `tel:` link; with a `label`, "<label> · <number>" (the label in
+    bold, the number the link). The web's editor doesn't ask for a phone
+    label, but keeps one an app set.
+  - **The rest** are two lines: the heading (`label`, or the type's from
+    the table) in bold, then the text under it, smaller, line breaks kept.
+  - Signed out, with `hiddenDetails` above 0, a line under them: "More
+    details show once you sign in."
 
 **Setting them**: `details` on `POST` and `PATCH /events`, a list of
 `{type, label?, value}`. A `PATCH` replaces the whole list (send all of

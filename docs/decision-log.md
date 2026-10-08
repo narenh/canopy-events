@@ -2426,6 +2426,30 @@ viewers like the address. The rest:
   signed in and out, adding a link row, a `javascript:` value refused
   under its row with focus on it, then fixed, a row removed, and Save
   storing the new list.
+- **(You)** Phone and link are one line each, no heading: a link is
+  its text, or with none its address shortened (no scheme, `www.` or
+  last slash; cut at 48 characters with "…", and CSS ellipsizes what
+  doesn't fit; the whole address in `title`); a phone is the number as a
+  `tel:` link, with "label · " in front when it has one.
+- **A phone's label is kept in the API and on the page, but the web
+  editor no longer asks for one**: the row is the number alone, one line
+  like the page; a label an app set rides along on the row
+  (`data-label`) and is sent back unchanged. · The owner's example has
+  none, and it keeps the row one line; dropping it from the API would
+  break nothing today but take away "Venue" vs "Ana's cell" for no gain.
+  · `detailEditRow`.
+- **The editor's link row is the address first, then the link text,
+  whose placeholder is what the page will show without one** (the
+  shortened address, updated as it's typed; "Link text" before there is
+  one). That's the editor's preview of the one-line link. · n/a ·
+  views/editor.html.
+- **The other types keep their heading-and-text layout, short or not.**
+  · "Dress code" over "Black tie" reads at a glance, and one rule is
+  simpler for the apps than a length cutoff. · n/a
+- **Detail inputs carry no `autocomplete` or `name` of their own** (the
+  editor's `noAutofill()` from main covers every field, rows added later
+  included); `inputmode` sets the keyboard. · The orchestrator's note. ·
+  n/a
 
 ## Guest menu (queued after event details)
 
