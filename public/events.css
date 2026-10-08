@@ -1001,3 +1001,12 @@ textarea.address-input{min-height:0;margin-top:8px;}
   .event-row.card .info, .invite-card .event-row .info{padding:12px 12px 12px 0;}
   .invite-card .reply{padding-top:12px;}
 }
+
+/* Your events' header: the calendar button (its popover is the Calendar
+   card) and "+ New event". The header sits above the sticky tabs and the
+   list, so the open popover is painted over them. */
+.home-top{position:relative;z-index:25;}
+.home-actions{display:flex;align-items:center;gap:10px;}
+.popover{position:absolute;right:0;top:calc(100% + 8px);z-index:30;width:min(340px, calc(100vw - 32px));}
+.popover[hidden]{display:none;}
+.popover .calendar-card{background:var(--theme-card-solid, #03200b);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 14px 40px rgba(0,0,0,.45);margin:0;}

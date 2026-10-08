@@ -2730,3 +2730,8 @@ with hosting blue. The rest:
   title) stretches it a little taller rather than leaving a gap. Desktop
   keeps the inset 3:2 thumbnail. Invitation cards do the same. The
   srcset hint asks for 162px (a 3:2 crop is drawn wider than its square).
+- **(You)** The Calendar card moved from the bottom of the home page
+  into a popover, opened by a calendar icon button next to "+ New event"
+  (shown to unverified people too). It's a dialog (it holds a link and a
+  switch): Escape or a tap outside closes it and focus returns to the
+  button.

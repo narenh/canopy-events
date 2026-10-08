@@ -187,13 +187,18 @@ module.exports = function pagesRoutes(ctx) {
     const make = me.emailVerified
       ? '<a class="nav-btn" href="/new" id="newEvent">+ New event</a>'
       : '';
-    let main = '<div class="section-heading home-top"><h1 style="color:var(--on-bg);margin:0">' + UI.tx('home.heading') + '</h1>' + make + '</div>';
+    // Next to "+ New event": a calendar button whose popover is the
+    // Calendar card (the feed's link, and invitations in it or not).
+    const cal = '<div class="menu-wrap"><button type="button" class="icon-btn" id="calendarBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="calendarPopover"'
+      + ' aria-label="' + UI.tx('home.calendarHeading') + '" title="' + UI.tx('home.calendarHeading') + '">' + UI.ICON_CALENDAR + '</button>'
+      + '<div class="popover" id="calendarPopover" role="dialog" aria-labelledby="calendarHeading" hidden>' + UI.calendarCard(calendar) + '</div></div>';
+    let main = '<div class="section-heading home-top"><h1 style="color:var(--on-bg);margin:0">' + UI.tx('home.heading') + '</h1>'
+      + '<div class="home-actions">' + cal + make + '</div></div>';
     if (!me.emailVerified) {
       main += '<p class="small" id="verifyToHost" style="color:var(--on-bg);margin:0 2px"><a href="'
         + UI.esc(canopy.verifyUrl(req, render.hereUrl(req))) + '">' + UI.tx('home.verifyToHost') + '</a></p>';
     }
     main += '<div id="lists" class="home-lists">' + UI.homeLists(data, { viewerZone: render.viewerZone(req) }) + '</div>';
-    main += UI.calendarCard(calendar);
     render.page(req, res, 'home.html', { current: 'home', main, data });
   }));
 
