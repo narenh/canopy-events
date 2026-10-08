@@ -2148,3 +2148,11 @@ events together) and that it's one way, like following. The rest:
   file, as the README says. · n/a
 - **`auth.returnTo` knows `:code`**: a signed-out accept's 401 sends
   people back to `/f/<code>`, not the home page. · lib/auth.js.
+- **(You) Reversed "buttons and links stay Canopy green":** on event
+  pages (and the editor's live preview) the accent follows the event's
+  colour: the photo ring, the "how soon" pill, icons, links and the main
+  button. Canopy green's three accent colours are turned to the event's
+  hue with their lightness kept (greyscale → neutral grey). Checked at
+  every hue and grey: dark text on the accent ≥ 6.8:1, links on the base
+  ≥ 14.5:1, accent vs base ≥ 7:1. Other pages stay green. · public/ui.js
+  themeStyle. The iOS app should match (accent from the same turn).
