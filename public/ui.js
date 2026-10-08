@@ -768,8 +768,9 @@
   // The editor's colour slider runs 0 to SLIDER_MAX: the first SLIDER_GREY
   // steps are grey (no colour), then the hues 0 to 359. A theme key to a
   // slider position and back; untouched, a new event's slider sits on
-  // Canopy green's hue.
-  const SLIDER_GREY = 30;
+  // Canopy green's hue. The grey stretch is short (about 3% of the track):
+  // it's one value, and a long stretch looked like a range of greys.
+  const SLIDER_GREY = 12;
   const SLIDER_MAX = SLIDER_GREY + 359;
   function sliderOf(key) {
     if (key === GREY) return Math.floor(SLIDER_GREY / 2);

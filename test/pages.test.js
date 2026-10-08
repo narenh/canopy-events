@@ -577,7 +577,7 @@ test('ui.js: the features, drawn', async (t) => {
     assert.match(UI.editorForm({ event: { ...base, coverHue: 200, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match">/);
     assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: true } }), /id="themeMatch" data-action="theme-match">/);
     assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match" hidden>/);
-    assert.match(UI.editorForm({ event: { ...base, themeGrayscale: true } }), /id="themeHue"[^>]*value="15"[^>]*aria-valuetext="No colour"/);
+    assert.match(UI.editorForm({ event: { ...base, themeGrayscale: true } }), new RegExp(`id="themeHue"[^>]*value="${UI.sliderOf('grey')}"[^>]*aria-valuetext="No colour"`));
   });
 
   await t.test('time zones by friendly name', () => {
@@ -990,8 +990,8 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.ok((await page(server, anon, `/e/${grey.id}`)).text.includes('<meta name="theme-color" content="#0e0e0e">'), 'grey: a neutral near-black');
     const edit = await page(server, ana, `/e/${purple.id}/edit`);
     assert.ok(edit.text.includes(`<html lang="en" style="${style}">`));
-    assert.match(edit.body, /<input type="range" id="themeHue" min="0" max="389" step="1" value="330"/);
-    assert.match((await page(server, ana, "/new")).body, /id="themeHue"[^>]*value="191"[^>]*aria-valuetext="Canopy green"[\s\S]*id="themeMatch" data-action="theme-match" hidden/);
+    assert.match(edit.body, new RegExp(`<input type="range" id="themeHue" min="0" max="${UI.SLIDER_MAX}" step="1" value="${UI.sliderOf(300)}"`));
+    assert.match((await page(server, ana, "/new")).body, new RegExp(`id="themeHue"[^>]*value="${UI.sliderOf(null)}"[^>]*aria-valuetext="Canopy green"[\\s\\S]*id="themeMatch" data-action="theme-match" hidden`));
     const home = await page(server, ana, '/');
     assert.ok(home.text.includes('<html lang="en">'), 'home stays green');
     assert.match(section(home.body, 'list-hosting'), /<a class="event-row card" href="\/e\/[^"]+" style="--card:rgba\(\d+,\d+,\d+,0\.45\)">/);
