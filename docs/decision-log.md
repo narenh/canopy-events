@@ -1631,3 +1631,6 @@ Fixes for the security review's events findings (branch `fix/review`).
 - The mesh rules are the copy of the account service's account.css: the
   same lvh fix belongs there (its pages have the same fixed layers). Not
   done here; this branch doesn't touch canopy-account-service. · n/a
+- The same background fix went to the account service (6aabda1): mesh
+  layers at 100lvh pinned to the top, and the page's min-height at
+  100svh. The photo-backdrop variant already did this.
