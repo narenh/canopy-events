@@ -117,6 +117,11 @@ app.use('/api/v1', (req, res) => fail(res, 404, 'not_found', 'there is no such A
 
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 
+// The web pages (routes/pages.js): an event, your events, the editor,
+// inviting, friends. They're clients of the API above, like the apps.
+const pages = require('./routes/pages')(ctx);
+app.use(pages.router);
+
 // There's no icon; this keeps every page load from logging a 404 for one.
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
@@ -129,6 +134,9 @@ app.use(
     }
   })
 );
+
+// Anything else a browser asks for: a page saying there's nothing here.
+app.use(pages.notFound);
 
 // Errors as JSON in the API's shape rather than Express's HTML page.
 app.use((err, req, res, next) => {

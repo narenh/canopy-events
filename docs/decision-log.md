@@ -131,6 +131,195 @@ Format: decision · why · how to reverse.
   every so often, just not every few minutes. So the iOS agent merges
   compiling work into main and pushes about once or twice an hour, or
   after major milestones.
+- **(You)** The iOS app stays fully mocked for now: no networking, no
+  real passkey calls, no API client. The mock flows work end to end:
+  fake sign-in and quick sign-up (with the verify banner and a fake
+  verify), creating, editing and cancelling events, viewing them,
+  RSVPs including plus-ones and the waitlist, the wall, invites and the
+  inbox. All of it lives in memory behind protocols shaped like the API,
+  and a fresh launch resets to the seed data.
+- **(You)** The app has three tabs: **Events** (going and maybe),
+  **Invites** (invited but not answered, with a link at the top to
+  declined events) and **Profile** (your own info). There's no Friends
+  or Inbox tab.
+- **(You)** Hosting appears in stages. Someone who has never hosted
+  gets three tabs, with a "+" on Events. Creating a first event (or
+  being made a co-host) adds a **Hosting** tab and a quick-create
+  button in the tab bar, which replaces the "+".
+- Assumed: once a host, always a host (the tab stays even when every
+  hosted event is past or cancelled). Once Hosting exists, hosted events
+  live there, not in Events. Events keeps going, maybe and waitlisted
+  (with a badge), plus a "Past events" link. The API gets
+  `hasHosted` on `/me` to drive it.
+- Assumed: friends appear only in the invite picker and as "friends
+  going" on an event. Notifications get no screen for now; push covers
+  them later. · They have nowhere else to go with three tabs.
+- The API will need `GET /api/v1/me/events/declined` (not_going) for the
+  Declined list. Noted for the next API pass. The mock app doesn't
+  need it tonight.
+
+## Accounts: native sign-in (canopy-account-service, `/api/native/v1`)
+
+- **(You)** Built tonight instead of later, because both apps ship
+  before launch.
+- Every web handler is a named function, and the native routes mount
+  the same functions. · The rules and limit counters are the same by
+  construction, not by copy. · n/a
+- A sign-in or sign-up starts with `POST auth/begin`, which returns a
+  `ceremony` value. Every later step sends it as the bearer token. ·
+  It's one uniform rule for the Origin exemption. · n/a
+- The token is **rotated** at sign-in (the ceremony value never becomes
+  the signed-in token). · The same rule as the web: a value seen before
+  sign-in never becomes a signed-in one. · Cost: if the last answer is
+  lost on the network, the app signs in again.
+- The Origin exemption is narrow: only `/api/native/v1` requests with
+  `Authorization: Bearer` (and `auth/begin` with a JSON body). A bearer
+  header on a web route skips nothing. Native routes never read the
+  cookie. · n/a
+- Ceremony steps refuse a signed-in token (409 `signed_in`). "One token
+  per install" is enforced by signing out first. · n/a
+- Passkey origins accepted for apps: Canopy origins (including
+  `https://canopysf.com`) plus Android hashes from
+  `ANDROID_APK_KEY_HASHES`. The web still accepts Canopy origins only.
+  · **The iOS origin (`https://canopysf.com`) rests on an Apple
+  engineer's forum answer, not formal docs, and hasn't been tried on a
+  real phone.** Android's is confirmed in Android's docs. · lib/domain.js.
+- Sessions record which client they are (web, ios or android) and a
+  name ("Safari on iPhone", "Canopy Events on iPhone"). The profile
+  gains a "Signed in on" list with sign out for each, and a new **sign
+  out everywhere**. · Apps make many sessions, and people need to cut
+  one off. · Schema v7.
+- App photo uploads must be JPEG, and EXIF/XMP metadata (location
+  included) is now stripped server side from **every** JPEG upload. ·
+  App uploads don't go through the browser's canvas, and the README
+  promises no location data. · lib/photoStore.js `withoutMetadata`.
+- `/photo/:id` accepts a bearer token. · Otherwise apps couldn't show
+  photos. · n/a
+- Errors that had no `reason` gained one (`names_required`,
+  `not_found`, `no_passkeys`, `too_large`, `bad_upload`, `bad_json`). ·
+  Apps need machine-readable reasons. · Additive.
+- The admin pages, setup password, recovery and setup links stay
+  web-only. · n/a
+- `assetlinks.json` has placeholders: package `com.canopysf.events` and
+  an all-zero fingerprint. **To do (you):** copy
+  `docs/well-known/apple-app-site-association` (filled in with
+  `UC3Y84QJ83.com.canopysf.CanopyEvents`) to the canopysf.com site, with
+  a `Content-Type: application/json` header rule. Fill in assetlinks
+  when the Android app exists.
+
+
+## Events web
+
+- **The pages are clients of the API**, even on the server: each page
+  asks this server's own `/api/v1` over loopback, as the visitor (their
+  cookie, their host), and draws the answer. · One copy of the
+  visibility and never-leak rules, and API changes being built in
+  parallel (plus-ones, waitlist, moderation) reach the pages with no
+  second copy to forget. Costs one local request per list; the session
+  lookup is cached. · `apiGet` in routes/pages.js could call lib/views
+  and the store directly.
+- Pages are drawn on the server **and** redrawn in the browser by the
+  same file, `public/ui.js`, which runs in Node and in the page. Each
+  page carries the API answers it was drawn from as JSON, so its script
+  starts there without asking again. · Instant on a phone, link previews
+  and no-JS readers get the content, tests can read the HTML, and the
+  two can't drift. · Draw only in the browser from the embedded JSON.
+- Server-side additions are `routes/pages.js`, `lib/render.js`,
+  `views/*` and `public/*`, plus four lines in `server.js` (mount the
+  pages; an HTML "nothing here" for other browser GETs). Nothing in the
+  API, `routes/` or `lib/` otherwise changed. · Clean merges. · n/a
+- Link previews (Open Graph and Twitter): the title (prefixed
+  "Cancelled:" when it is), and "<date>, <time> <zone> · <place name>".
+  Never the address and never the description (the host's own words can
+  say anything, an address included). `twitter:card` is `summary` until
+  there's an image. · The spec: title, date, place name. ·
+  `eventMeta()` in lib/render.js.
+- The cover image hook is `UI.coverUrl(event)`, reading
+  `event.coverImageUrl`. That field name is a guess; whoever adds covers
+  points it at the real one, and the page and the preview both follow. ·
+  n/a · public/ui.js.
+- Every page is `noindex, nofollow` (meta tag and `X-Robots-Tag`), and
+  `Cache-Control: no-store`. · Events are link-only; pages say who's
+  going. Previews ignore robots tags. · routes/pages.js, lib/render.js.
+- **Time zone labels**: an event's times are always in its zone, and
+  labelled ("Times are Los Angeles time (PDT)" on the event, "PDT" after
+  the time in lists) when the viewer's clock reads differently at that
+  moment, not when the zone names differ (Phoenix and Los Angeles in
+  summer get no label). The browser tells the server its zone in a `tz`
+  cookie (a year, `SameSite=Lax`), so only the very first page is drawn
+  with labels everywhere and then redrawn. · The spec asks for a label
+  when it differs. · `sameClock()` in public/ui.js; drop the cookie in
+  public/events.js.
+- Home shows **invitations first**, then hosting, coming up, past (the
+  spec lists hosting first). Empty lists are left out. · Invitations are
+  the one list asking for something. · `HOME_LISTS` in public/ui.js.
+- An invitation on the home page offers **Going** and **Can't go** only;
+  "Maybe" is on the event page. · "Accept/decline right there". ·
+  `invitationCard()` in public/ui.js.
+- Inviting friends is **its own page**, `/e/<id>/invite`, not a sheet
+  over the event. · A long list with a search box scrolls better on a
+  phone as a page, and the back button works. · n/a
+- The invite page loads all your friends (100 drawn by the server, then
+  up to 10 more pages of 100 in the browser) so the search box filters
+  everyone, client-side. It reads up to 2,000 of the guest list to mark
+  who's already on it. · No search endpoint, and friends lists are
+  small. · constants in routes/pages.js and views/invite.html.
+- `/new` for an unverified person is a page saying to confirm the email,
+  with the button, rather than a redirect to the account service. Editing
+  is for hosts and isn't gated on being verified, the same as the API's
+  PATCH. · They see why. · routes/pages.js.
+- **Validation messages**: which field comes from the API's `reason`;
+  the words come from copy.js for the reasons it lists (so every sentence
+  stays in copy.js), and are the API's own `error` sentence otherwise.
+  · The API's sentences are written for developers ("startsAt is a date
+  and time with a time zone offset…"). · `COPY.editor.errors`.
+- The editor uses `datetime-local` fields and a time zone list (every
+  zone the browser knows, the browser's own chosen for a new event). A
+  typed time is read on the chosen zone's clock; changing the zone keeps
+  the clock time. The start is empty for a new event rather than
+  guessed. An emptied end time clears it. · Native pickers on phones; no
+  library. · public/ui.js `fromLocalInput`.
+- Descriptions are plain text with their line breaks; links aren't made
+  clickable. · Simplest safe thing. · `details()` in public/ui.js.
+- An address gets an "Open in Maps" link to Apple Maps
+  (`maps.apple.com/?q=`), which opens Maps on an iPhone and Apple's web
+  map elsewhere. · One link for every phone. · `details()`.
+- Names: full names on the guest list, hosts and friends; `shortName`
+  ("Ben O") in the small friends-going chips. · n/a · public/ui.js.
+- The guest list shows 50 at a time, grouped going / maybe / waitlisted
+  / can't go / (hosts) invited, with "show more". Counts in the event
+  card include "N invited" for hosts only. · n/a · public/ui.js.
+- Hosts can **bring back** a cancelled event (the API allows it). Once
+  an event is over, invite and cancel are hidden; edit stays. ·
+  `hostSection()` in public/ui.js.
+- Signed out, a cancelled or past event shows its state and a small
+  sign-in link, not the big RSVP. · Nothing to answer. ·
+  `signedOutSection()`.
+- Share uses the phone's share sheet where there is one, otherwise copies
+  the link. Cancelling and bringing back ask with `confirm()`, as the
+  account pages do. · n/a · views/event.html.
+- The header, signed out, has a "Sign in" button; sign out is a link at
+  the foot of every page rather than in the header. · The header is full
+  at 375px. · lib/render.js.
+- `color-scheme: dark` is added to the copied tokens. · Native date
+  pickers and the time zone list's pop-up otherwise draw light (a
+  `<select>` list was white on white). · public/events.css.
+- The viewport tag is the account service's, `maximum-scale=1,
+  user-scalable=no`, kept for the same look and no zoom-on-focus. It
+  stops pinch zoom on Android (iOS ignores it). · Matching. · each view.
+- A page's embedded data holds the visitor as `{id, firstName,
+  emailVerified}` only, never their own contact details, and the page
+  tests hold every page to having nobody's (the visitor's included). ·
+  The pages never show them. · `meView()` in routes/pages.js.
+- A photo that won't load (signed out, the account service won't serve
+  it) becomes initials. Photos are fetched with no referrer. · n/a ·
+  public/events.js.
+- The wording is "Confirm your email", as on the account service's
+  profile, not "verify". · One word for one thing across Canopy. ·
+  public/copy.js.
+- Visual checks used a scratch fake account service with photos and
+  seeded events (not committed), not the real account service. ·
+  Passkeys can't be made from the test browser. · n/a
 
 ## Events features
 

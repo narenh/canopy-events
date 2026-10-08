@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>__PAGE_TITLE__</title>
+<meta name="theme-color" content="#03120c">
+<meta name="robots" content="noindex, nofollow">
+<!-- The link preview: title, when, the place's name. lib/render.js's
+     eventMeta(), which is also where the cover image goes once there is
+     one. -->
+<!-- PAGE:META -->
+<link rel="stylesheet" href="/events.css">
+</head>
+<!-- An event: what a shared link opens. The content is drawn by
+     public/ui.js (eventPage), on the server first and again here after a
+     change. Its sections, top to bottom, each a card with an id:
+
+       #details        the event: title, when, where, hosts, description
+       #rsvp           signed out: RSVP (quick sign-up) and sign in;
+                       signed in: going / maybe / can't go
+       #host           hosts instead of #rsvp: share, invite, edit, cancel
+       #friends-going  friends going, when there are any
+       #guests         who's coming, by the host's visibility rule
+
+     Still to come, each its own section: the activity wall (after
+     #guests), co-hosts and plus-ones (in #host and #rsvp), the waitlist
+     (#rsvp). -->
+<body class="mesh-bg">
+<!-- PAGE:HEADER -->
+<main class="wrap">
+  <!-- PAGE:BANNER -->
+  <article id="main" class="stack event"><!-- PAGE:MAIN --></article>
+</main>
+<!-- PAGE:FOOTER -->
+<script type="application/json" id="pageData">__PAGE_DATA__</script>
+<script src="/copy.js"></script>
+<script src="/ui.js"></script>
+<script src="/events.js"></script>
+<script>
+applyCopy();
+
+const data = pageData();
+const zone = viewerZone();
+const main = document.getElementById('main');
+const eventPath = '/events/' + encodeURIComponent(data.event.id);
+
+function draw(){
+  main.innerHTML = UI.eventPage(data, { viewerZone: zone });
+}
+// The server drew the times for the zone it knew (or for none, with a
+// label on everything). Only redraw if this viewer's is different.
+if (data.drawnZone !== zone) draw();
+
+function show(id, text){
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+// The guest list again, after an answer: answering can be what lets
+// someone see the names.
+async function reloadGuests(){
+  if (!data.me) return;
+  const { res, data: g } = await api('GET', eventPath + '/guests?limit=50');
+  if (res.ok) data.guests = g;
+}
+
+// An answer, or taking it back. Both answer with the whole event.
+async function answer(method, body, btn){
+  let refusal = '';
+  await busy(btn, document.getElementById('rsvpError'), async () => {
+    const { res, data: d } = await api(method, eventPath + '/rsvp', body);
+    if (res.ok){
+      data.event = d.event;
+      await reloadGuests();
+      draw();
+      return;
+    }
+    // Cancelled, over, or now hosting it: say why, and show it as it is.
+    refusal = sentence(d.error);
+    const again = await api('GET', eventPath);
+    if (again.res.ok){ data.event = again.data.event; await reloadGuests(); draw(); }
+  });
+  if (refusal) show('rsvpError', refusal);
+}
+
+// Cancelling, or bringing it back. Hosts only.
+async function setStatus(status, btn){
+  if (!confirm(t(status === 'cancelled' ? 'event.cancelConfirm' : 'event.restoreConfirm'))) return;
+  let refusal = '';
+  await busy(btn, document.getElementById('hostError'), async () => {
+    const { res, data: d } = await api('PATCH', eventPath, { status });
+    if (!res.ok){ refusal = sentence(d.error); return; }
+    data.event = d.event;
+    draw();
+  });
+  if (refusal) show('hostError', refusal);
+}
+
+onActions({
+  answer: (btn) => answer('PUT', { status: btn.getAttribute('data-status') }, btn),
+  withdraw: (btn) => answer('DELETE', undefined, btn),
+  cancel: (btn) => setStatus('cancelled', btn),
+  restore: (btn) => setStatus('active', btn),
+
+  // The phone's share sheet where there is one; otherwise the link is
+  // copied.
+  share: async (btn) => {
+    const url = btn.getAttribute('data-url');
+    if (navigator.share){
+      try{ await navigator.share({ title: btn.getAttribute('data-title'), url }); }catch(e){}
+      return;
+    }
+    try{
+      await navigator.clipboard.writeText(url);
+      show('hostNotice', t('event.copied'));
+    }catch(e){
+      window.prompt('', url);
+    }
+  },
+
+  'more-guests': (btn) => busy(btn, null, async () => {
+    const { res, data: g } = await api('GET', eventPath + '/guests?limit=50&cursor=' + encodeURIComponent(data.guests.nextCursor));
+    if (!res.ok) return;
+    data.guests.guests = data.guests.guests.concat(g.guests);
+    data.guests.nextCursor = g.nextCursor;
+    draw();
+  })
+});
+</script>
+</body>
+</html>

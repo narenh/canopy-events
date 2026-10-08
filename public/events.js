@@ -1,0 +1,91 @@
+// Shared by every events page, in the browser: talking to the API, the
+// page's data, photos that won't load, and the viewer's time zone.
+// Inlined into each page by lib/render.js, after copy.js and ui.js.
+
+// The data the server drew the page from: the same API answers, so the
+// page's script starts where the server left off without asking again.
+function pageData(){
+  const el = document.getElementById('pageData');
+  try{ return el ? JSON.parse(el.textContent) : {}; }catch(e){ return {}; }
+}
+
+// The viewer's own time zone, as the browser knows it.
+function viewerZone(){
+  try{ return Intl.DateTimeFormat().resolvedOptions().timeZone || null; }catch(e){ return null; }
+}
+
+// Told to the server as a cookie, so the next page it draws already
+// knows whether an event's times need "Los Angeles time" under them. The
+// first page anyone sees says it (it can't know), then this redraws it.
+(function rememberZone(){
+  const zone = viewerZone();
+  if (!zone) return;
+  const now = (document.cookie.match(/(?:^|;\s*)tz=([^;]*)/) || [])[1];
+  if (now && decodeURIComponent(now) === zone) return;
+  document.cookie = 'tz=' + encodeURIComponent(zone) + '; path=/; max-age=31536000; samesite=lax';
+})();
+
+// A photo that won't load (signed out, the account service only gives
+// photos to a Canopy session) becomes the person's initials.
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (!img || img.tagName !== 'IMG') return;
+  const box = img.closest('.avatar');
+  if (!box) return;
+  box.textContent = box.getAttribute('data-initials') || '';
+}, true);
+
+// The API, with the cookie. Answers { res, data } for the caller to
+// look at, except the answers every page treats the same way:
+//
+//   401 sign_in_required -> off to sign in, and back here;
+//   403 email_unverified -> off to confirm the email, and back here;
+//   503 accounts_unreachable -> throws, and busy() says so.
+class AccountsDown extends Error {}
+
+async function api(method, path, body){
+  const res = await fetch('/api/v1' + path, {
+    method,
+    headers: Object.assign({ Accept: 'application/json' }, body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && data.signIn){ window.location.href = data.signIn; return new Promise(() => {}); }
+  if (res.status === 403 && data.reason === 'email_unverified' && data.verify){ window.location.href = data.verify; return new Promise(() => {}); }
+  if (res.status === 503) throw new AccountsDown(data.error || '');
+  return { res, data };
+}
+
+// Disables a button while `work` runs, and turns a network failure (or
+// the account service being down) into words in errorEl.
+async function busy(btn, errorEl, work){
+  if (errorEl) errorEl.textContent = '';
+  if (btn) btn.disabled = true;
+  try{
+    return await work();
+  }catch(err){
+    if (errorEl) errorEl.textContent = t(err instanceof AccountsDown ? 'common.accountsDown' : 'common.unreachable');
+  }finally{
+    if (btn) btn.disabled = false;
+  }
+}
+
+// The API's sentence for a refusal, as a sentence: capital first, full
+// stop last.
+function sentence(text){
+  const s = String(text || '').trim();
+  if (!s) return t('common.failed');
+  return s.charAt(0).toUpperCase() + s.slice(1) + (/[.!?]$/.test(s) ? '' : '.');
+}
+
+// Clicks on anything with data-action="name" go to handlers[name], with
+// the element. One listener for the page, so content drawn again after a
+// change still works.
+function onActions(handlers){
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-action]');
+    if (!el || !handlers[el.getAttribute('data-action')]) return;
+    e.preventDefault();
+    handlers[el.getAttribute('data-action')](el, e);
+  });
+}
