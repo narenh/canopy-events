@@ -111,4 +111,66 @@ test('cover images', async (t) => {
     // Nothing else answers under /covers.
     for (const p of ['/covers/x.jpg', `/covers/${e.id}.jpg`, '/covers/AAAAAAAAAAAA.png']) assert.equal((await fetch(server.base + p)).status, 404, p);
   });
+
+  await t.test('an upload says the colour that matches the photo, and never changes the event\'s own', async () => {
+    const e = await makeEvent(ana, { themeHue: 300 });
+    const red = await sharp({ create: { width: 600, height: 400, channels: 3, background: '#d62828' } }).jpeg().toBuffer();
+    const up = (await put(ana, e.id, red)).data.event;
+    assert.ok(up.coverHue >= 15 && up.coverHue <= 40, `red: ${up.coverHue}`);
+    assert.equal(up.coverGrayscale, false);
+    assert.equal(up.themeHue, 300, 'the upload leaves the colour alone');
+    assert.equal(up.themeGrayscale, false);
+    // Signed out sees it too (covers are public).
+    assert.equal((await anon.get(`/api/v1/events/${e.id}`)).data.event.coverHue, up.coverHue);
+    const grey = await sharp({ create: { width: 600, height: 400, channels: 3, background: '#7a7a7a' } }).png().toBuffer();
+    const g = (await put(ana, e.id, grey)).data.event;
+    assert.equal(g.coverHue, null);
+    assert.equal(g.coverGrayscale, true);
+    const gone = (await ana.del(`/api/v1/events/${e.id}/cover`)).data.event;
+    assert.equal(gone.coverHue, null);
+    assert.equal(gone.coverGrayscale, false);
+  });
+});
+
+// The hue that matches a photo (lib/coverImage.js hueOf, which is
+// public/ui.js hueFromPixels on a 64×64 copy), on made-up photos.
+test('the colour that matches a photo', async (t) => {
+  const { hueOf } = require('../lib/coverImage');
+  // A photo of bands of colour, top to bottom: [[css colour, share], ...].
+  const bands = async (list, { width = 300, height = 300 } = {}) => {
+    let y = 0;
+    const parts = list.map(([colour, share]) => {
+      const h = Math.round(height * share);
+      const part = `<rect x="0" y="${y}" width="${width}" height="${h}" fill="${colour}"/>`;
+      y += h;
+      return part;
+    }).join('');
+    return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${parts}</svg>`)).jpeg().toBuffer();
+  };
+  const near = (hue, target, within = 15) => Math.min(Math.abs(hue - target), 360 - Math.abs(hue - target)) <= within;
+
+  await t.test('mostly red is about red', async () => {
+    const { hue, grayscale } = await hueOf(await bands([['#c81e1e', 0.85], ['#f2f2f2', 0.15]]));
+    assert.equal(grayscale, false);
+    assert.ok(near(hue, 27), `red: ${hue}`);
+  });
+
+  await t.test('a blue sky over a green field: whichever there is more of', async () => {
+    const sky = (await hueOf(await bands([['#3b82f6', 0.65], ['#2e9e44', 0.35]]))).hue;
+    assert.ok(near(sky, 260), `mostly sky: ${sky}`);
+    const field = (await hueOf(await bands([['#3b82f6', 0.3], ['#2e9e44', 0.7]]))).hue;
+    assert.ok(near(field, 146), `mostly field: ${field}`);
+  });
+
+  await t.test('a grey photo has no hue, even with a speck of colour', async () => {
+    assert.deepEqual(await hueOf(await bands([['#111', 0.3], ['#777', 0.4], ['#eee', 0.3]])), { hue: null, grayscale: true });
+    assert.deepEqual(await hueOf(await bands([['#808080', 0.98], ['#ff0000', 0.02]])), { hue: null, grayscale: true });
+  });
+
+  await t.test('very dark and very light colour doesn\'t count; a hue wraps round 0', async () => {
+    // Nearly black blue and a pastel that's nearly white, with a little
+    // magenta-red, which is the only colour that counts.
+    const { hue } = await hueOf(await bands([['#05060f', 0.45], ['#fdfbff', 0.45], ['#d6246a', 0.1]]));
+    assert.ok(near(hue, 0, 25), `wraps: ${hue}`);
+  });
 });

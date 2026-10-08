@@ -1,11 +1,15 @@
-// Events themselves: making one, reading one, and editing one (which
-// includes cancelling it, and taking that back). Mounted at /api/v1.
+// Events themselves: making one, reading one, editing one (which includes
+// cancelling it, and taking that back), and deleting one. Mounted at
+// /api/v1.
 //
-// There's no deleting. A cancelled event keeps its link, its guest list
-// and its history, so the people who had it in their calendar can open it
-// and see that it's off.
+// Cancelling is how an event that's off is told to everyone: it keeps its
+// link, its guest list and its history, so people who had it in their
+// calendar can open it and see that it's off. Deleting (the creator only)
+// is for an event that shouldn't exist at all: everything under it goes,
+// and the link is a 404 like any wrong one. Nobody is told.
 
 const express = require('express');
+const coverStore = require('../lib/coverStore');
 const { handle, fail, loadEvent } = require('../lib/api');
 const { guessLimits } = require('../lib/limits');
 const { cleanEventInput } = require('../lib/eventInput');
@@ -72,6 +76,17 @@ module.exports = function eventsRoutes(ctx) {
     if (promoted.length) notify('waitlist_promoted', { to: promoted, eventId: event.id });
     res.json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });
   }));
+
+  // The creator deletes the event: it, its hosts, answers, wall and
+  // everyone's inbox entries about it (the database cascades), and the
+  // cover's file. No notification: there's no event left to open, and
+  // cancelling is the way to tell people it's off.
+  router.delete('/events/:id', auth.requirePerson, withEvent, (req, res) => {
+    if (req.role !== 'creator') return fail(res, 403, 'creator_only', 'only the person who made this event can delete it');
+    store.deleteEvent(req.event.id);
+    coverStore.remove(req.event.id);
+    res.json({ ok: true });
+  });
 
   return router;
 };

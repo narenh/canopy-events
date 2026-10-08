@@ -20,7 +20,7 @@ const { guessLimits } = require('../lib/limits');
 const { PERSON_ID_RE } = require('../lib/ids');
 const { ANSWERS, ALL_STATUSES, isHost, canSeeGuestNames, visibleStatuses, filterableStatuses, answerRefusal, inviteRefusal } = require('../lib/rules');
 const { loadPeople, personFrom } = require('../lib/people');
-const { eventView, guestView } = require('../lib/views');
+const { eventView, countsView, guestView } = require('../lib/views');
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -93,7 +93,7 @@ module.exports = function rsvpsRoutes(ctx) {
     const page = pageParams(req, res);
     if (!page) return;
     const event = req.event;
-    const counts = store.countsFor([event.id]).get(event.id);
+    const counts = countsView(store.countsFor([event.id]).get(event.id), req.role);
     let statuses = visibleStatuses(req.role);
     if (req.query.status !== undefined) {
       if (!ALL_STATUSES.includes(req.query.status)) {

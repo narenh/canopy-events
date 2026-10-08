@@ -37,8 +37,8 @@ events; co-hosts and plus-ones; the activity wall; cover images and
 capacity with a waitlist; notifications (the inbox and phone
 registration; push itself only logs until the APNs and FCM keys come
 with the apps); removing guests and making a new link; and finding people
-by phone or Instagram. The web pages (below) cover the core; pages for
-the rest come next.
+by phone or Instagram; and each event's colour. The web pages (below)
+cover all of it except notifications, which belong to the apps.
 
 ## How it works
 
@@ -69,8 +69,10 @@ the rest come next.
     person who did it. `push.js` sends to their phones; for now its
     sender only logs (the APNs and FCM senders need the apps' keys).
   - `coverImage.js` turns an uploaded photo into the stored JPEG (with
-    `sharp`, and `heic-decode` for iPhone photos), and `coverStore.js`
-    keeps them in `DATA_DIR/covers`.
+    `sharp`, and `heic-decode` for iPhone photos), in a worker thread
+    (`coverWorker.js`, one upload at a time) so the HEIC decoder, which
+    is synchronous, never holds up other requests. `coverStore.js` keeps
+    them in `DATA_DIR/covers`.
   - `people.js` is **the only place a person is turned into JSON**:
     `publicPerson` (the five public fields, copied by name), the former
     member, and `ownPerson` for `/me`.
@@ -103,7 +105,8 @@ the rest come next.
   process on a scratch `DATA_DIR`, against a fake account service
   (`test/fakeAccount.js`). `npm test` runs them all. `pages.test.js` holds
   the pages to the same rules, as someone signed out, an unverified
-  account, a guest and a host.
+  account, a guest, someone waitlisted, someone removed, a co-host and
+  the creator.
 
 `GET /healthz` answers `{"ok":true}`, and `GET /favicon.ico` answers an
 empty 204.
@@ -116,10 +119,11 @@ event link on a phone.
 
 | | |
 |---|---|
-| `/e/<id>` | **An event**, what a shared link opens. Signed out: the title, when, the place's name, the hosts and the counts, with a big **RSVP** that goes to the account service's quick sign-up and back, and a smaller "I have a Canopy account, sign in". Signed in: the address, going / maybe / can't go (change it, or take it back), friends going, and who's coming by the host's visibility rule (counts only, with why, when the names aren't yours to see). Hosts get share, invite friends, edit and cancel (or bring it back) instead of answering. Cancelled and past events say so at the top and take no answers. |
-| `/` | **Your events**: invitations (going or can't go right there), what you're hosting, what's coming up, and what's past. "New event" for verified people; unverified people get a line saying to confirm their email to host. Signed out: what this is, and sign in. |
-| `/new`, `/e/<id>/edit` | **The editor**: title, description, start and end, the time zone (the browser's by default), the place and its address, and who sees the guest list. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
-| `/e/<id>/invite` | **Inviting friends** (hosts): your friends with a search box, the ones already on the list marked with what they said. Finding people by phone number or Instagram goes here later; `public/ui.js` marks the spot. |
+| `/e/<id>` | **An event**, what a shared link opens, drawn in the event's colour. On top, the cover (or a generated picture) as a 3:2 hero fading into the page, the title on the fade, and **when**, big: the day, the time, and a pill saying how soon ("Tomorrow", "This Saturday"). Then a card with the place, the hosts, the counts (people and their plus-ones) and spots left. Signed out: no address, and a big **RSVP** to the account service's quick sign-up, with a smaller "I have a Canopy account, sign in". Signed in: going / maybe / can't go, how many guests you're bringing (when the host allows any), the waitlist when it's full, friends going, who's coming by the host's visibility rule, and the **wall** (posts, and what happened: "Ana is going", "the time changed"), with a box to post in once you've answered. Hosts get share, invite, edit and the guest list with **Remove** (and the removed, with Undo) instead of answering; the creator also cancels, makes a **new link**, and adds and removes **co-hosts**; a co-host can step down. Someone a host removed sees the public details and a calm line saying they're not on the list. |
+| `/` | **Your events**: invitations (going or can't go right there), what you're hosting, what's coming up, and what's past, each row a 3:2 picture, the date in bold, the title and the place. "New event" for verified people; unverified people get a line saying to confirm their email to host. Signed out: what this is, and sign in. |
+| `/new`, `/e/<id>/edit` | **The editor**: title, description, the cover (previewed at 3:2, sent on save), the event's colour (a slider that repaints the page as you drag), start and end, the time zone (the browser's by default), the place and its address, plus-ones, capacity, and who sees the guest list. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
+| `/e/<id>/invite` | **Inviting** (hosts): find someone by their exact phone number or Instagram username (verified hosts; a name and a photo come back, never their details), then your friends with a search box, the ones already on the list (or removed, or hosting) marked. |
+| `/e/<id>/cohosts` | **Adding co-hosts** (the creator): your friends with a search box and "Add"; anyone who can't co-host yet (an unconfirmed email) is told why under their row. |
 | `/friends` | **Your friends**: people you've been to an event with, and how many events in common. |
 
 Every page has the header (the logo, your events, friends, and your
@@ -163,11 +167,20 @@ The browser tells the server its zone in a `tz` cookie, so pages after
 the first are drawn right the first time.
 
 **Link previews.** An event page carries Open Graph and Twitter tags:
-the title, and a line with the date, time and the place's name. Never
-the street address (the preview is of what a signed-out visitor sees, and
+the title, a line with the date, time and the place's name, and the
+cover as `og:image` (`summary_large_image`) when there is one. Never the
+street address (the preview is of what a signed-out visitor sees, and
 previews are kept by the machines that fetch them) and never the
-description. There's no image yet: `UI.coverUrl()` in `public/ui.js` is
-where the cover image plugs in, for the page and the preview both.
+description. The page crops the cover to 3:2; the preview gets the whole
+photo.
+
+**The look.** Type is bigger than the account service's (17px body,
+15px secondary, big bold titles; a scale of custom properties at the top
+of the events half of `public/events.css`), and tap targets are at least
+44px. **Event colours**: an event's `themeHue` turns the page's mesh to
+that hue in OKLCH, keeping every colour's lightness, so contrast is the
+same at every hue (`public/ui.js` `themeColors`; docs/api.md, "Event
+colours"). Buttons and links stay Canopy green.
 
 **Nothing is for search engines.** Events are link-only, so every page
 says `noindex, nofollow` (a meta tag and `X-Robots-Tag`). Link previews
@@ -220,6 +233,7 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `POST /api/v1/events` | make an event (verified people) |
 | `GET /api/v1/events/{id}` | one event (anyone with the link) |
 | `PATCH /api/v1/events/{id}` | edit it (hosts), cancel or un-cancel it (the creator) |
+| `DELETE /api/v1/events/{id}` | delete it and everything under it (the creator); nobody is notified |
 | `POST /api/v1/events/{id}/cohosts` | make someone a co-host (the creator; verified people only) |
 | `DELETE /api/v1/events/{id}/cohosts/{personId}` | take a co-host off (the creator), or step down |
 | `GET /api/v1/events/{id}/wall` | the activity wall, newest first (whoever sees the guest list) |
@@ -402,9 +416,10 @@ Its tables are `events`, `hosts` (who hosts each event: the creator and
 any co-hosts), `rsvps` (one row per person per event: invited, or their
 answer), `wall` (the activity wall: posts, and the server's typed
 entries), `notifications` (each person's inbox), `devices` (push tokens,
-one phone each) and `verified_people` (who events has seen signed in with a
+one phone each), `verified_people` (who events has seen signed in with a
 proven email, since only they may co-host and the account service doesn't
-say so about anyone but the visitor). There are no names, emails or
+say so about anyone but the visitor) and `hosted_people` (who has ever
+hosted, for `/api/v1/me`'s `hasHosted`: once a host, always a host). There are no names, emails or
 photos: only person ids.
 Friends aren't stored at all; they're worked out from `hosts` and `rsvps`
 each time.

@@ -6,9 +6,8 @@
 <title>__PAGE_TITLE__</title>
 <meta name="theme-color" content="#03120c">
 <meta name="robots" content="noindex, nofollow">
-<!-- The link preview: title, when, the place's name. lib/render.js's
-     eventMeta(), which is also where the cover image goes once there is
-     one. -->
+<!-- The link preview: title, when, the place's name, and the cover
+     image when there is one. lib/render.js's eventMeta(). -->
 <!-- PAGE:META -->
 <link rel="stylesheet" href="/events.css">
 </head>
@@ -16,16 +15,20 @@
      public/ui.js (eventPage), on the server first and again here after a
      change. Its sections, top to bottom, each a card with an id:
 
-       #details        the event: title, when, where, hosts, description
+       #details        the event: the cover, title, when, where, hosts,
+                       counts (people and their plus-ones), spots left,
+                       the description
        #rsvp           signed out: RSVP (quick sign-up) and sign in;
-                       signed in: going / maybe / can't go
-       #host           hosts instead of #rsvp: share, invite, edit, cancel
+                       signed in: going / maybe / can't go, the guests
+                       they're bringing, the waitlist; or, for someone a
+                       host removed, a calm line saying so
+       #host           hosts instead of #rsvp: share, invite, edit; the
+                       creator also cancels, makes a new link, and adds
+                       and removes co-hosts; a co-host can step down
        #friends-going  friends going, when there are any
-       #guests         who's coming, by the host's visibility rule
-
-     Still to come, each its own section: the activity wall (after
-     #guests), co-hosts and plus-ones (in #host and #rsvp), the waitlist
-     (#rsvp). -->
+       #guests         who's coming, by the host's visibility rule; for
+                       hosts, "Remove" on each, and who's been removed
+       #wall           the activity wall: posts and what happened -->
 <body class="mesh-bg">
 <!-- PAGE:HEADER -->
 <main class="wrap">
@@ -43,63 +46,271 @@ applyCopy();
 const data = pageData();
 const zone = viewerZone();
 const main = document.getElementById('main');
-const eventPath = '/events/' + encodeURIComponent(data.event.id);
+const GUESTS = 50;
+const WALL = 20;
 
+// The event's API path. Its id is its link, which a new link changes.
+function eventPath(){
+  return '/events/' + encodeURIComponent(data.event.id);
+}
+
+// Draws the page again from `data`, keeping anything half-typed on the
+// wall.
 function draw(){
+  const box = document.getElementById('wallText');
+  const typed = box ? box.value : '';
+  const focused = !!box && document.activeElement === box;
   main.innerHTML = UI.eventPage(data, { viewerZone: zone });
+  const again = document.getElementById('wallText');
+  if (again && typed) again.value = typed;
+  if (again && focused) again.focus();
 }
 // The server drew the times for the zone it knew (or for none, with a
 // label on everything). Only redraw if this viewer's is different.
 if (data.drawnZone !== zone) draw();
+
+// Attending's row of faces: as many as fit this row's width, at least
+// MIN_GAP apart (the server drew it for a phone). Worked out again when
+// the window changes size.
+const MIN_GAP = 5;
+function fitAvatars(){
+  const row = document.getElementById('attendRow');
+  if (!row) return false;
+  const size = parseFloat(getComputedStyle(row).getPropertyValue('--av')) || 56;
+  const slots = Math.max(2, Math.floor((row.clientWidth + MIN_GAP) / (size + MIN_GAP)));
+  if (slots === data.attendSlots) return false;
+  data.attendSlots = slots;
+  return true;
+}
+if (fitAvatars()) draw();
+let resizing = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizing);
+  resizing = setTimeout(() => { if (fitAvatars()) draw(); }, 150);
+});
+// The host's ⋯ menu: opens under its button, arrow keys move through it,
+// Escape (or a tap anywhere else, or picking something) shuts it and puts
+// focus back on the button.
+function menuParts(){
+  return { btn: document.getElementById('hostMenuBtn'), menu: document.getElementById('hostMenu') };
+}
+function closeMenu(focusButton){
+  const { btn, menu } = menuParts();
+  if (!menu || menu.hidden) return;
+  menu.hidden = true;
+  btn.setAttribute('aria-expanded', 'false');
+  if (focusButton) btn.focus();
+}
+function openMenu(){
+  const { btn, menu } = menuParts();
+  menu.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+  const first = menu.querySelector('[role=menuitem]');
+  if (first) first.focus();
+}
+document.addEventListener('click', (e) => {
+  const { menu } = menuParts();
+  if (!menu || menu.hidden) return;
+  if (e.target.closest('#hostMenuBtn')) return;
+  // A tap outside, or on an item (whose own action then runs).
+  closeMenu(false);
+}, true);
+document.addEventListener('keydown', (e) => {
+  const { menu } = menuParts();
+  if (!menu || menu.hidden) return;
+  const items = Array.from(menu.querySelectorAll('[role=menuitem]'));
+  const at = items.indexOf(document.activeElement);
+  if (e.key === 'Escape'){ e.preventDefault(); closeMenu(true); }
+  else if (e.key === 'ArrowDown'){ e.preventDefault(); items[(at + 1) % items.length].focus(); }
+  else if (e.key === 'ArrowUp'){ e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+  else if (e.key === 'Home'){ e.preventDefault(); items[0].focus(); }
+  else if (e.key === 'End'){ e.preventDefault(); items[items.length - 1].focus(); }
+  else if (e.key === 'Tab') closeMenu(false);
+});
+
+// "View all" stays open (or shut) when the page is drawn again.
+document.addEventListener('toggle', (e) => {
+  if (e.target && e.target.id === 'viewAll') data.showAll = e.target.open;
+}, true);
 
 function show(id, text){
   const el = document.getElementById(id);
   if (el) el.textContent = text;
 }
 
-// The guest list again, after an answer: answering can be what lets
-// someone see the names.
-async function reloadGuests(){
-  if (!data.me) return;
-  const { res, data: g } = await api('GET', eventPath + '/guests?limit=50');
-  if (res.ok) data.guests = g;
+// The words for a refusal: copy.js's for the reasons it knows (under
+// COPY[group].errors), otherwise the API's own sentence.
+function refusal(group, d, vars){
+  const words = COPY[group] && COPY[group].errors && COPY[group].errors[d.reason];
+  return words ? t(group + '.errors.' + d.reason, vars) : sentence(d.error);
 }
 
-// An answer, or taking it back. Both answer with the whole event.
+function viewer(){
+  return data.event.viewer || {};
+}
+
+// Everything under the event again, after a change: the event itself
+// (with `withEvent`), then the guest list, the removed (hosts) and the
+// wall, as far as this viewer now sees them. Answering can be what lets
+// someone see the names; being made or stepping down as a co-host
+// changes what's theirs to see.
+async function refresh(withEvent){
+  if (withEvent){
+    const again = await api('GET', eventPath());
+    if (again.res.ok) data.event = again.data.event;
+  }
+  const v = viewer();
+  const insider = !!data.me && !(v.rsvp && v.rsvp.status === 'removed');
+  const [g, removed, wall] = await Promise.all([
+    insider ? api('GET', eventPath() + '/guests?limit=' + GUESTS) : null,
+    insider && v.canEdit ? api('GET', eventPath() + '/guests?status=removed&limit=' + GUESTS) : null,
+    insider ? api('GET', eventPath() + '/wall?limit=' + WALL) : null
+  ]);
+  data.guests = g && g.res.ok ? g.data : (insider ? data.guests : null);
+  data.removed = removed && removed.res.ok ? removed.data : null;
+  data.wall = wall && wall.res.ok ? wall.data : (insider ? data.wall : null);
+}
+
+// An answer (with the guests it brings), or taking it back. Both answer
+// with the whole event.
 async function answer(method, body, btn){
-  let refusal = '';
+  let words = '';
   await busy(btn, document.getElementById('rsvpError'), async () => {
-    const { res, data: d } = await api(method, eventPath + '/rsvp', body);
+    const { res, data: d } = await api(method, eventPath() + '/rsvp', body);
     if (res.ok){
       data.event = d.event;
-      await reloadGuests();
+      data.pendingGuests = 0;
+      await refresh(false);
       draw();
       return;
     }
-    // Cancelled, over, or now hosting it: say why, and show it as it is.
-    refusal = sentence(d.error);
-    const again = await api('GET', eventPath);
-    if (again.res.ok){ data.event = again.data.event; await reloadGuests(); draw(); }
-  });
-  if (refusal) show('rsvpError', refusal);
-}
-
-// Cancelling, or bringing it back. Hosts only.
-async function setStatus(status, btn){
-  if (!confirm(t(status === 'cancelled' ? 'event.cancelConfirm' : 'event.restoreConfirm'))) return;
-  let refusal = '';
-  await busy(btn, document.getElementById('hostError'), async () => {
-    const { res, data: d } = await api('PATCH', eventPath, { status });
-    if (!res.ok){ refusal = sentence(d.error); return; }
-    data.event = d.event;
+    // Cancelled, over, now hosting it, no room: say why, and show it as
+    // it is.
+    words = refusal('event', d);
+    await refresh(true);
     draw();
   });
-  if (refusal) show('hostError', refusal);
+  if (words) show('rsvpError', words);
 }
 
+// The plus-ones the answer would bring: what the stepper shows, never
+// more than the host allows now (an answer over the limit changes to
+// fit, as the note under it says).
+function guestsToSend(status){
+  if (status === 'not_going') return 0;
+  return Math.min(UI.guestsShown(data.event, data), data.event.guestsAllowed || 0);
+}
+
+// One more or one fewer guest. Before answering, it's only remembered
+// (the answer takes it along); after, it changes the answer.
+function stepGuests(btn){
+  const e = data.event;
+  const now = UI.guestsShown(e, data);
+  const next = Math.max(0, Math.min(now + Number(btn.getAttribute('data-delta')), e.guestsAllowed || 0));
+  const rsvp = viewer().rsvp;
+  const status = rsvp && ['going', 'maybe', 'waitlisted'].includes(rsvp.status) ? rsvp.status : null;
+  if (!status){
+    data.pendingGuests = next;
+    draw();
+    return;
+  }
+  if (next === now) return;
+  answer('PUT', { status: status === 'waitlisted' ? 'going' : status, guests: next }, btn);
+}
+
+// Cancelling, or bringing it back. The creator only.
+async function setStatus(status, btn){
+  if (!confirm(t(status === 'cancelled' ? 'event.cancelConfirm' : 'event.restoreConfirm'))) return;
+  let words = '';
+  await busy(btn, document.getElementById('hostError'), async () => {
+    const { res, data: d } = await api('PATCH', eventPath(), { status });
+    if (!res.ok){ words = refusal('event', d); return; }
+    data.event = d.event;
+    await refresh(false);
+    draw();
+  });
+  if (words) show('hostError', words);
+}
+
+// A change from the host's area or the guest list that answers with the
+// event or { ok }: `work` makes the request; then everything is fetched
+// again. A refusal is said in `errorId`.
+async function hostChange(btn, errorId, group, work, vars){
+  let words = '';
+  await busy(btn, document.getElementById(errorId), async () => {
+    const { res, data: d } = await work();
+    if (!res.ok){ words = refusal(group, d, vars); return; }
+    if (d.event) data.event = d.event;
+    await refresh(!d.event);
+    draw();
+  });
+  if (words) show(errorId, words);
+}
+
+async function copyLink(url){
+  try{
+    await navigator.clipboard.writeText(url);
+    show('hostNotice', t('event.copied'));
+  }catch(e){
+    window.prompt('', url);
+  }
+}
+
+// Posting on the wall. The form is drawn again with the page, so the
+// listener is the document's.
+document.addEventListener('submit', (e) => {
+  if (e.target.id !== 'wallForm') return;
+  e.preventDefault();
+  const box = document.getElementById('wallText');
+  const text = box.value.trim();
+  if (!text){ box.focus(); return; }
+  let words = '';
+  busy(document.getElementById('wallPost'), document.getElementById('wallError'), async () => {
+    const { res, data: d } = await api('POST', eventPath() + '/wall', { text });
+    if (!res.ok){ words = refusal('wall', d); return; }
+    data.wall.entries.unshift(d.entry);
+    box.value = '';
+    draw();
+  }).then(() => { if (words) show('wallError', words); });
+});
+
 onActions({
-  answer: (btn) => answer('PUT', { status: btn.getAttribute('data-status') }, btn),
+  answer: (btn) => {
+    const status = btn.getAttribute('data-status');
+    answer('PUT', { status, guests: guestsToSend(status) }, btn);
+  },
   withdraw: (btn) => answer('DELETE', undefined, btn),
+  'host-menu': (btn) => {
+    if (btn.getAttribute('aria-expanded') === 'true') closeMenu(true);
+    else openMenu();
+  },
+
+  // The co-hosts, from the menu: shown in the host's area.
+  cohosts: () => {
+    data.showCohosts = true;
+    draw();
+    const box = document.getElementById('cohosts');
+    if (box) box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  },
+
+  // Deleting, for good. The confirm names the event, and when people
+  // have said they're coming, says cancelling would tell them.
+  'delete-event': () => {
+    const e = data.event;
+    const coming = ((e.counts || {}).going || 0) + ((e.counts || {}).maybe || 0);
+    const live = UI.phaseOf(e) === 'upcoming' || UI.phaseOf(e) === 'now';
+    const words = live && coming
+      ? (coming === 1 ? t('event.deleteConfirmOne', { title: e.title }) : t('event.deleteConfirmComing', { title: e.title, count: coming }))
+      : t('event.deleteConfirm', { title: e.title });
+    if (!confirm(words)) return;
+    let refused = '';
+    busy(null, document.getElementById('hostError'), async () => {
+      const { res, data: d } = await api('DELETE', eventPath());
+      if (!res.ok){ refused = refusal('event', d); return; }
+      window.location.href = '/';
+    }).then(() => { if (refused) show('hostError', refused); });
+  },
+  guests: (btn) => stepGuests(btn),
   cancel: (btn) => setStatus('cancelled', btn),
   restore: (btn) => setStatus('active', btn),
 
@@ -111,21 +322,75 @@ onActions({
       try{ await navigator.share({ title: btn.getAttribute('data-title'), url }); }catch(e){}
       return;
     }
-    try{
-      await navigator.clipboard.writeText(url);
-      show('hostNotice', t('event.copied'));
-    }catch(e){
-      window.prompt('', url);
-    }
+    copyLink(url);
+  },
+  copy: (btn) => copyLink(btn.getAttribute('data-url')),
+  select: (el) => el.select(),
+
+  // A new link: the old one stops working for everyone. This page moves
+  // to the new one, and shows it to share.
+  'new-link': (btn) => {
+    if (!confirm(t('event.newLinkConfirm'))) return;
+    let words = '';
+    busy(btn, document.getElementById('hostError'), async () => {
+      const { res, data: d } = await api('POST', eventPath() + '/new-link');
+      if (!res.ok){ words = refusal('event', d); return; }
+      data.event = d.event;
+      data.newLink = true;
+      history.replaceState(null, '', '/e/' + encodeURIComponent(d.event.id));
+      draw();
+      const box = document.getElementById('newLink');
+      if (box) box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }).then(() => { if (words) show('hostError', words); });
   },
 
+  'remove-cohost': (btn) => {
+    const name = btn.getAttribute('data-name');
+    if (!confirm(t('event.removeCohostConfirm', { name }))) return;
+    hostChange(btn, 'cohostError', 'cohosts', () => api('DELETE', eventPath() + '/cohosts/' + encodeURIComponent(btn.getAttribute('data-person'))), { name });
+  },
+
+  // A co-host steps down: they're a guest again (invited), and the page
+  // turns into a guest's.
+  'step-down': (btn) => {
+    if (!confirm(t('event.stepDownConfirm'))) return;
+    hostChange(btn, 'cohostError', 'cohosts', () => api('DELETE', eventPath() + '/cohosts/' + encodeURIComponent(data.me.id)));
+  },
+
+  'remove-guest': (btn) => {
+    if (!confirm(t('event.removeGuestConfirm', { name: btn.getAttribute('data-name') }))) return;
+    hostChange(btn, 'guestsError', 'event', () => api('PUT', eventPath() + '/removed/' + encodeURIComponent(btn.getAttribute('data-person'))));
+  },
+  'undo-remove': (btn) => hostChange(btn, 'guestsError', 'event', () => api('DELETE', eventPath() + '/removed/' + encodeURIComponent(btn.getAttribute('data-person')))),
+
   'more-guests': (btn) => busy(btn, null, async () => {
-    const { res, data: g } = await api('GET', eventPath + '/guests?limit=50&cursor=' + encodeURIComponent(data.guests.nextCursor));
+    const { res, data: g } = await api('GET', eventPath() + '/guests?limit=' + GUESTS + '&cursor=' + encodeURIComponent(data.guests.nextCursor));
     if (!res.ok) return;
     data.guests.guests = data.guests.guests.concat(g.guests);
     data.guests.nextCursor = g.nextCursor;
     draw();
-  })
+  }),
+
+  'more-wall': (btn) => busy(btn, null, async () => {
+    const { res, data: w } = await api('GET', eventPath() + '/wall?limit=' + WALL + '&cursor=' + encodeURIComponent(data.wall.nextCursor));
+    if (!res.ok) return;
+    data.wall.entries = data.wall.entries.concat(w.entries);
+    data.wall.nextCursor = w.nextCursor;
+    draw();
+  }),
+
+  // Your own post, or (hosts) anything on the wall.
+  'delete-entry': (btn) => {
+    if (!confirm(t(btn.getAttribute('data-type') === 'post' ? 'wall.deleteConfirm' : 'wall.deleteEntryConfirm'))) return;
+    const id = btn.getAttribute('data-entry');
+    let words = '';
+    busy(btn, document.getElementById('wallError'), async () => {
+      const { res, data: d } = await api('DELETE', eventPath() + '/wall/' + encodeURIComponent(id));
+      if (!res.ok && res.status !== 404){ words = refusal('wall', d); return; }
+      data.wall.entries = data.wall.entries.filter((x) => x.id !== id);
+      draw();
+    }).then(() => { if (words) show('wallError', words); });
+  }
 });
 </script>
 </body>

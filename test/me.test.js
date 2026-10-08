@@ -98,7 +98,7 @@ test('me', async (t) => {
     assert.equal((await anon.get('/api/v1/me/events/hosting')).status, 401);
   });
 
-  await t.test('hasHosted: once you host or co-host anything, cancelled and past included', async () => {
+  await t.test('hasHosted: once a host, always a host', async () => {
     const eve = client(server, 'eve');
     const fay = client(server, 'fay');
     const hasHosted = async (who) => (await who.get('/api/v1/me')).data.hasHosted;
@@ -108,13 +108,17 @@ test('me', async (t) => {
     await eve.patch(`/api/v1/events/${e.id}`, { status: 'cancelled' });
     server.setTimes(e.id, { startedAgoMs: 9 * DAY, overInMs: -8 * DAY });
     assert.equal(await hasHosted(eve), true, 'cancelled and over still counts');
-    // A co-host has hosted; stepping down from their only one takes it back.
+    // A co-host has hosted, and still has after stepping down from their
+    // only one, or being taken off.
     await fay.get('/api/v1/me');
     const party = await makeEvent(ana, { title: 'Co-hosted' });
     await ana.post(`/api/v1/events/${party.id}/cohosts`, { personId: P.fay.id });
     assert.equal(await hasHosted(fay), true);
-    await fay.del(`/api/v1/events/${party.id}/cohosts/${P.fay.id}`);
-    assert.equal(await hasHosted(fay), false);
+    assert.equal((await fay.del(`/api/v1/events/${party.id}/cohosts/${P.fay.id}`)).status, 200);
+    assert.equal(await hasHosted(fay), true, 'stepping down keeps it');
+    await ana.post(`/api/v1/events/${party.id}/cohosts`, { personId: P.fay.id });
+    assert.equal((await ana.del(`/api/v1/events/${party.id}/cohosts/${P.fay.id}`)).status, 200);
+    assert.equal(await hasHosted(fay), true, 'being taken off keeps it');
   });
 
   await t.test('a page at a time, without repeats, however many there are', async () => {

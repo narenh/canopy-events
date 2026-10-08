@@ -667,6 +667,388 @@ waitlist, notifications, host moderation and lookup, built on branch
   "findable", and switches to make it refuse in each way the real one
   can. · n/a
 
+## Events web, features pass
+
+Web pages for co-hosts, plus-ones, the wall, covers, capacity and the
+waitlist, host moderation and lookup, plus one API fix, built on branch
+`feat/web-features`.
+
+- **`hasHosted` is "once a host, always a host"**, recorded in a new
+  `hosted_people` table (schema version 7), written in the same
+  transaction as making an event or being made a co-host, and never
+  deleted. The upgrade fills it from everyone in `hosts` at the time
+  plus everyone in a wall `cohost_added` entry (which remembers co-hosts
+  who have since stepped down), with the earliest time of either. · The
+  app's Hosting tab shouldn't vanish when a co-host steps down (the
+  earlier entry under "Two small additions" chose otherwise). · Cost: a
+  co-host who stepped down before version 7 *and* whose wall entry a
+  host deleted isn't known, and reads false until they host again. ·
+  Point `hasHosted` in lib/store/people.js back at `hosts` (and leave
+  the table).
+- **The editor sends cover changes on Save**, not when a photo is
+  picked: picking or removing only changes the preview, and the PUT or
+  DELETE goes after the event's own PATCH (or POST). · One rule for the
+  whole form ("nothing changes until you save"), and a new event has no
+  id to upload to before it's made. · views/editor.html `saveCover`.
+- A new event whose cover upload fails is still made, and the browser
+  goes to its editor with `?coverError=<reason>`, which says so under
+  the cover field. An edit whose cover fails stays on the page, saying
+  the rest was saved. · The event is the important part; the cover can
+  be tried again. · views/editor.html, routes/pages.js.
+- Covers over 15 MB are refused in the browser before uploading, and a
+  413 with no JSON (a proxy's) reads as "too big". · A phone on a slow
+  connection shouldn't upload 20 MB to be told no. · views/editor.html.
+- **No waitlist position.** The API doesn't give one, so a waitlisted
+  viewer sees their status ("You're on the waitlist. You'll move up if
+  a spot opens."). · The brief: position only if the API gives it. ·
+  Add `position` to `Rsvp` and a line in `rsvpSection`.
+- "It's full: you'll join the waitlist" shows when `spotsLeft` is 0 and
+  the viewer isn't already going or waitlisted. It doesn't work out
+  whether a party bigger than the spots left would fit. · The API says
+  `waitlisted: true` either way, and the page redraws to say so. · n/a
+- **The plus-ones stepper**: before answering, it only remembers the
+  number (the answer takes it along); once someone has answered going,
+  maybe or waitlisted, each tap changes the answer straight away. An
+  answer over a lowered limit keeps its number, with a note saying that
+  changing the answer will bring it down to the limit, which the page
+  then does. · No extra "save" button under the answers. · `guestsShown`
+  in public/ui.js, `stepGuests` in views/event.html.
+- Counts read "4 going +2 guests · 1 maybe", and the guest list's
+  groups "Going · 4 +2 guests". People first, plus-ones after. · The
+  API's top-level counts are people; this keeps that meaning. ·
+  `countsLine` in public/ui.js.
+- **Adding co-hosts is its own page**, `/e/<id>/cohosts` (the creator
+  only), picking from friends with a search box, like inviting. Removing
+  a co-host and stepping down are buttons on the event page, with a
+  `confirm()`. Refusals (an unconfirmed email, too many) show under that
+  friend's row, in copy.js's words. Lookup isn't offered there. · The
+  invite page's pattern; a co-host is someone you know. · n/a
+- **Co-hosts no longer see Cancel or Bring back**, which the first
+  pages showed every host and the API refuses (`creator_only`); "New
+  link" is the creator's too. A co-host's area says what they can do. ·
+  `hostSection` in public/ui.js.
+- **A removed viewer's page** fetches no guest list or wall (the API
+  would only say no), and its RSVP card is a calm line: "You're not on
+  the list for this event. A host has taken you off it, so you can't
+  answer. If you think that's a mistake, ask whoever invited you."
+  `status.removed` ("Removed") is in copy.js for hosts' own lists. ·
+  The brief: no raw key, nothing harsh. · `removedSection`.
+- Hosts see the first 50 removed people, with no "show more". · Nobody
+  removes 50 people from a party. · routes/pages.js `GUESTS_SHOWN`.
+- The invite page marks hosts ("Hosting", "Co-hosting") and removed
+  people, as it marks answers, rather than offering a checkbox the API
+  would skip. · n/a · routes/pages.js.
+- **Lookup reads what's typed**: a letter or a leading `@` means an
+  Instagram username, anything else a phone number (the account service
+  cleans both). An all-digit username needs its `@`. · One field, as
+  the brief asks. · views/invite.html.
+- `lookup_not_allowed` swaps the lookup box for a line saying it isn't
+  available yet (until the page is opened again). An unverified host
+  gets a "confirm your email" link in its place, and a 403
+  `email_unverified` from the lookup is said in place, not a redirect.
+  · Nobody is sent away mid-typing. · `api(..., { stay: true })` in
+  public/events.js.
+- **The wall shows the newest 20**, with "show more"; times are "just
+  now", "5m", "3h", then the date. A post being typed survives the page
+  redrawing (an answer, a delete). After an answer the wall is fetched
+  again from the top. · n/a · views/event.html.
+- Hosts' "Delete" on the server's entries ("Ana is going") asks "Take
+  this off the wall?"; on posts, "Delete this post?". Unknown entry
+  types are left out, as the spec says. · n/a
+- **A new link** replaces the page's address in place (no reload) and
+  shows the new link in a box with Share and Copy, under the confirm
+  that explains the old one stops working. · n/a · views/event.html.
+
+### Bigger type, and covers first (the owner's design direction)
+
+- **A type scale in custom properties** (`--fs-body` 17px, `--fs-small`
+  15px, `--fs-button` 17px, `--fs-h3` 19px, `--fs-title` 32px on a
+  phone and 36px from 700px, `--fs-list-title` 19–20px, `--tap` 44px),
+  set in the events half of events.css, which overrides the copied
+  account.css sizes rather than editing them, so that half stays
+  diffable against the account service. Fields are 17px. Colours are
+  unchanged, so the contrast notes stay true. · The owner: friendlier,
+  larger. · `:root` in the events half of public/events.css.
+- Status pills (GOING, CANCELLED) stay at 13px, uppercase and bold: the
+  one thing under 15px. · At 15px uppercase they shout and crowd a
+  list row; they're labels next to bigger text, not something read. ·
+  `.tag`.
+- **The hero**: the cover at 3:2 (`object-fit: cover`), edge to edge on
+  a phone (negative margins equal to the page gutter, safe areas
+  included), inside the column with rounded corners from 700px. A
+  gradient overlay fades it into the mesh's base colour (clear at 55%,
+  70% at 80%, solid at the bottom), and the last 12% also melts away
+  with a mask, so no edge shows against the mesh's glows. The title
+  overlaps the bottom 64px (80px on desktop), where the overlay is at
+  least 70%, with a text shadow. · The owner's brief; the overlap depth
+  is what keeps a white title readable over a white sky. · `.hero`,
+  `.head-text`.
+- **No cover: a generated picture** at the same 3:2 in the same hero:
+  three glows in one of six Canopy-green palettes, placed by an FNV
+  hash of the event's id, drawn in CSS (no image file, no words). It's
+  never a link preview image (`og:image` is only ever the real cover).
+  · Every event page has the same shape; a preview of a gradient tells
+  nobody anything. · `coverArt` in public/ui.js.
+- **List rows get a 3:2 thumbnail** (132px wide on a phone, 168px from
+  700px) with the date on it, the generated picture when there's no
+  cover, and the title in two lines at 19px. Not a full-width card
+  image per event. · A full-width 3:2 image is ~230px tall on a phone;
+  twenty of them make the home page a long scroll to find one event. ·
+  `.event-row .thumb`; for full cards, move `.thumb` above `.info`.
+- The editor's preview is the cover at 3:2, cropped as the page crops
+  it, without the fade (inside a glass card the fade reads as a
+  smudge). · n/a · `.cover-preview`.
+- **The 3:2 crop is display-only.** The API keeps the whole photo
+  (within 1600px), and `og:image` is that photo. A server-side 3:2 crop
+  for previews isn't worth it yet: iMessage and WhatsApp crop the image
+  to their own shapes anyway, and Slack/X want about 1.91:1, not 3:2,
+  so one more crop wouldn't match them either. If previews look bad, the
+  fix is a second file at upload (1200×630, centre crop) used only for
+  `og:image`. · n/a
+
+### When, up front (the owner's second note)
+
+- **The event page says when right under the title**, on the fade: the
+  day at 24px semibold ("Tuesday, October 13"), the time under it at
+  21px ("7:30 PM – 11:30 PM"), 26px and 23px from 700px; the zone line
+  ("Times are Los Angeles time (PDT).") small under that, by the old
+  rule. The when row left the details card, which now starts with the
+  place. Signed out gets the same. · The owner's brief. · `whenHead`,
+  `details()` in public/ui.js.
+- **More than one day**: the date line is the two days, short ("Sat,
+  Oct 17 – Mon, Oct 19"), and the time line the two times ("4:30 PM –
+  11:30 AM"). Long day names for both didn't fit a phone's line. · n/a
+- **The relative hint is a pill above the title** (where the "Happening
+  now" and "Ended" tags were): Today (Tonight from 5 PM), Tomorrow, This
+  Saturday (this calendar week, Monday first), Next Tuesday (next
+  calendar week), In N weeks (under 4 weeks), In a month, In N months,
+  Happening now, Ended. Cancelled shows the Cancelled tag instead. Days
+  are counted on the event's own clock against now. The browser
+  recomputes every pill on load and each minute (`refreshRelative` in
+  public/events.js), so a page left open, or cached by a phone, says it
+  right. · "This Tuesday" six days out (next week's Tuesday) read
+  wrongly, hence calendar weeks. · `relativeWhen`.
+- **List rows lead with when**: "SUN, OCT 11 · 8:30 PM" in bold
+  uppercase in the link colour above the title, the zone's short name
+  added when it differs, the two days for a multi-day event; then the
+  title (two lines at most) and the place. The date chip that sat on
+  the thumbnail went (it said the same thing twice). The pieces never
+  break inside ("8:30 PM" stays together). · n/a · `whenRow`, `.row-when`.
+- The friends page lists people, not events, so it has nothing to date.
+  · n/a
+
+### An event's colour (`themeHue`)
+
+- **`themeHue` is folded into schema version 7** (the step that also
+  adds `hosted_people`), as `events.theme_hue INTEGER` with a CHECK of 0
+  to 359, NULL for Canopy green. · Version 7 isn't merged or deployed,
+  so one step is simpler than two. · If 7 has shipped by the time this
+  is read, it's frozen as it is; a later change is version 8.
+- Any host sets it (co-hosts too), on create and PATCH; it's on every
+  Event (signed out included) and on the notification `EventSummary`. ·
+  It's how the page looks, not who runs it. · n/a
+- **The model**: each colour of the mesh (base, five glows, the card's
+  tint) is today's hex converted to OKLCH, with L and C kept and only the
+  hue turned: hue = themeHue + that colour's offset from the brightest
+  glow's hue. Canopy green is **161** (the brightest glow, `#145c3e`, is
+  160.65°). `null` draws today's hex exactly; 161 is within 2/255 per
+  channel. Out-of-gamut colours have their chroma lowered (binary
+  search, L and hue kept). The constants are in `public/ui.js`
+  (`THEME_MESH`) and docs/api.md's table, for the apps. · Same
+  lightness means same contrast. · n/a
+- **The contrast check** (white text on a card over the brightest glow,
+  composited in linear light; same method for every row): Canopy green
+  9.52:1; red (25°) 10.28; orange (60°) 10.13; yellow (100°) 9.86; cyan
+  (193°, the worst on the wheel) 9.35; blue (255°) 9.91; purple (305°)
+  10.23; pink (345°) 10.32. Muted text is 7.72–8.53, links 7.49–8.28,
+  danger text 6.82–7.53, white straight on the brightest glow 7.83–8.75.
+  All far past 4.5:1, and within 2% of the green's at worst. (This
+  method gives slightly lower numbers than the 10.3:1 in the CSS comment,
+  which was worked out differently; the comparison between hues is what
+  matters here.) Only the card tint near yellow and `--card-solid`
+  (unused by events) leave sRGB; no glow does, so no per-hue chroma
+  table was needed beyond the general fit. A test holds white-on-card at
+  ≥ 9:1 for eight hues. · n/a · test/pages.test.js.
+- **Buttons, links and grey text stay Canopy green at every hue.**
+  Turned, the accent `#2ec44f` leaves sRGB at most hues (clipped, it
+  drifts in lightness), dark text on it drops to 6.5:1, and the link
+  colour to 7.1:1; kept, they're the same everywhere and say "Canopy".
+  · Looked right on purple, blue, red and olive in the browser. · To
+  turn them, add `accent`/`accentText` rows to `THEME_MESH` and the
+  `--theme-*` variables.
+- **Yellow comes out olive**: a yellow as dark as the green is olive,
+  which is what equal darkness means. Accepted rather than brightening
+  yellow (which would break the "same darkness" rule the contrast rests
+  on). · n/a
+- The theme rides on `<html style="--theme-…">` (lib/render.js), so the
+  page's own background, the overscroll area, the mesh, the cards, the
+  hero's fade and the title's shadow all follow, and `<meta
+  name="theme-color">` (the phone's browser bar) is the turned base.
+  The generated cover picture turns with it too. · n/a
+- **Where it applies**: the event page (signed in and out) and its
+  editor. Home tints that event's card glass (the card tint at 45%
+  rather than 30%, so it shows on the green); home, friends, inviting
+  and co-hosts otherwise stay green. · The brief. · `eventRow`.
+- **The editor's slider** is a native `<input type=range>` (0–359)
+  under the cover, on its own row, with a rainbow track drawn at a
+  visible lightness (the mesh's own colours are too dark to tell apart
+  on a thin track) and a 30px thumb in the current glow colour; dragging
+  it repaints the editor page itself. "Canopy green" sets null and is
+  disabled while it is. Nothing is saved until Save. · Native ranges
+  work with touch everywhere; no library. · `themeField`,
+  views/editor.html. (Superseded below: the reset button went.)
+
+### Cover geometry, a photo's colour, and no colour (schema version 8)
+
+- **The frame**: 3:2, its top 16:9 the clear picture, the band below
+  (width × 0.1042) the fade, and the title's top at the band's top. The
+  overlap is `-10.4167cqw` on `.event-head`, a size container as wide as
+  the frame, so it's exact at every width; on phones the whole head is
+  full-bleed (its text and card put the gutter back). No rounding at the
+  bottom ever; top corners only, from 700px. The how-soon pill sits
+  inside the 16:9, 10px above the band, on the left. · The owner's
+  geometry. · `.event-head`, `.hero`, `.head-text` in public/events.css.
+- **The fade starts above the band**: clear to 62% of the frame's
+  height, 72% at the band's top (84.375%), 92% at 93%, solid at 100%,
+  then a mask melts the last 6% into the mesh. So the lowest ~quarter of
+  the 16:9 darkens gently. · Starting the fade only at the band would
+  put the title's first line on bare photo: white on a white sky would
+  be 1:1. At 72% base under the title's top it's about 8:1 over pure
+  white, at any hue (the fade is the hue-turned base). · The gradient
+  stops in `.hero::after`.
+- **The editor's preview is the same frame**: 3:2, top corners rounded,
+  with the band under the 16:9 dimmed (42% black) below a dashed guide
+  line. · "Lightly show where the safe area ends." · `.safe-guide`.
+- List thumbnails stay plain 3:2, no fade (at 116px a fade only muddies
+  them). · n/a
+- **`coverHue` is worked out by one function in `public/ui.js`**
+  (`hueFromPixels`), run by the cover worker on a 64×64 copy of the
+  stored JPEG, and by the editor in the browser on a photo just picked
+  (a canvas). Pixels go to OKLCH; near-grey (C < 0.04), dark (L < 0.2)
+  and light (L > 0.93) ones are skipped; the rest add their chroma to
+  one-degree hue bins; the best ±12° window wins, refined to its
+  chroma-weighted circular mean. Under 4% of pixels counting is grey. ·
+  One function means the slider's jump and the stored suggestion agree.
+  The thresholds were picked on synthetic photos (tests: mostly red →
+  ~27°, sky over field → whichever is bigger, grey with a 2% speck of
+  red → grey, dark and pastel ignored). · Tune the constants in
+  `hueFromPixels`.
+- **The editor still sends the cover on Save**, so "right after an
+  upload" is right after the photo is picked: the browser works out the
+  same hue and the slider jumps there (unless the browser can't draw the
+  photo, e.g. HEIC outside Safari: then no jump, and the server's
+  `coverHue` is there next time). "Match photo" shows only when the
+  photo's colour is known (a stored cover's `coverHue`/`coverGrayscale`,
+  or the picked one's), and re-applies it. · Uploading on pick would
+  change the live page before Save, which the editor otherwise never
+  does. · views/editor.html `matchPicked`.
+- A failure working out the hue never fails the upload: the cover is
+  stored with no suggestion. · It's a suggestion. · lib/coverWorker.js.
+- **No colour: `themeGrayscale: true`**, a second field beside
+  `themeHue`, not a magic hue. While true, `themeHue` is ignored but
+  kept, so turning grey off goes back to the old hue. Grey keeps every
+  colour's L and sets C to 0 (neutral greys exactly as light, so the
+  contrast holds; a test checks white on a card over the brightest glow
+  is still ≥ 9:1). The generated picture and the card tints go grey too.
+  · The orchestrator's suggested shape; a `theme` object would have
+  meant changing `themeHue`, which the iOS app already reads. · n/a
+- **`coverGrayscale` sits beside `coverHue`**, because "no hue" means
+  two things: a grey photo, or not known (a cover from before version
+  8, or none). Both are null/false with no cover. · Without it, every
+  old cover would read as grey. · n/a
+- Buttons and links stay Canopy green on grey too. · Same reasons as
+  for hues; it's the one bit of colour left, and it says Canopy. · n/a
+- **The slider**: 0–389, the first 30 steps grey (about 8% of the
+  track, drawn as a grey stretch at the rainbow's lightness), then the
+  hues 0–359. An untouched new event's slider sits on Canopy green's
+  hue and saves null; "Canopy green" (the reset) is gone, as asked;
+  dragging back to 161 looks the same as null. · n/a · `SLIDER_GREY`,
+  `sliderOf`, `keyOfSlider` in public/ui.js.
+
+### Attending (the owner's reference screenshot)
+
+- **The summary counts people**, "4 Going · 2 Maybe", adding "· 3
+  Waitlist" only when there is one, and the plus-ones going and maybe
+  bring after them ("· +3 guests"). · Everywhere else counts people
+  with plus-ones beside them, and "+N" on the faces is people too, so
+  the numbers agree. · `attendSummary`.
+- **"+N" is people**: everyone going or maybe (from the counts, not just
+  the 50 loaded) less the faces shown. Waitlisted and can't-go people
+  aren't in the row; they're in View all. · "Attending" means going or
+  maybe. · `attendRow`.
+- **The row's order**: friends going first (the API's friends-going
+  list), then going, then maybe, newest answer first within each. ·
+  The brief. · `attendPeople`.
+- **How many faces fit is worked out by the page**: the server draws 5
+  (a phone), and the script measures the row and redraws with as many
+  56px circles (64px from 700px) as fit at least 8px apart, the last
+  one "+N" when there are more; again on resize. A CSS grid of that many
+  columns, `space-between`, keeps them even. · Only the browser knows
+  the width. · views/event.html `fitAvatars`.
+- **"View all" is a `<details>`** whose summary is the pill, placed level
+  with the heading; it opens the whole list by answer under the row,
+  with the host's tools (Remove, the invited group, the removed with
+  Undo, Show more). The page remembers it open across redraws (after a
+  remove, say). In-page rather than a new page, so the host's tools keep
+  working as they are and nothing loads twice. · `guestsSection`,
+  `guestGroups`.
+- **The "Friends going" card is gone**: friends lead the row. When the
+  names are hidden (the responded-only rule) the section keeps the
+  heading and counts, says "2 friends going" if any, and the old reason;
+  no faces and no View all. Signed out: the heading and counts only. ·
+  The count of friends is the one thing the card said that the row
+  can't when names are hidden. · n/a
+- The details card no longer repeats the counts (Attending says them,
+  signed out too); it keeps spots left. Hosts' "N invited" is now the
+  invited group's count inside View all. · One place for counts. · n/a
+- Faces with no photo are initials on the event's brightest glow colour
+  (`--mesh-3`), so they follow the hue (and go grey). Tapping a face
+  does nothing; each has the person's name as a `title`. · n/a
+- The minimum gap between faces is 5px, which fits 5 at 375px (8px
+  fitted only 4) and 9 at desktop width. · Seen in the browser. ·
+  `MIN_GAP` in views/event.html.
+
+### The host's controls, and deleting an event
+
+- **Layout**: "Share link" and "Invite" side by side (while the event is
+  on), then "Edit" wide with a ⋯ button beside it. The creator's menu:
+  Co-hosts…, Make a new link… (while on), Cancel event or Bring back
+  event, and Delete event… last, in red under a rule. A co-host's: Step
+  down as co-host. Those controls are nowhere else on the page now. ·
+  The owner's layout. · `hostSection` in public/ui.js.
+- **The menu** is a `role="menu"` popover under the ⋯ (a button with
+  `aria-haspopup="menu"`, `aria-expanded`, `aria-controls`), drawn as a
+  solid card in the event's own card colour (`--theme-card-solid`), not
+  glass, since it floats over other buttons. Opening focuses the first
+  item; arrows, Home and End move; Escape closes and returns focus to
+  ⋯; Tab, a tap outside, or picking an item closes it. The host's card
+  is lifted above the cards after it (each glass card is its own
+  stacking context, so the menu was painted under the next one). · A
+  sheet would be more work for four items. · views/event.html.
+- **"Co-hosts…"** opens the existing co-hosts block (list with Remove,
+  and Add co-host) inside the host's card, and scrolls to it. · The
+  brief. · `d.showCohosts`.
+- **`DELETE /api/v1/events/{id}`**, the creator only (403
+  `creator_only` for a co-host, a guest or anyone else; 401 signed out).
+  It deletes the row, and the database's cascades take its hosts,
+  answers, invitations, wall and every inbox entry about it; the route
+  removes the cover file. `hosted_people` keeps its hosts (once a host,
+  always a host). The link is a 404 `event_not_found` afterwards. No
+  schema change. · routes/events.js.
+- **Nobody is notified of a deletion**, and its existing notifications
+  go with it. · There's no event left to open, so a notification could
+  only say "something you were going to is gone" with nothing behind it;
+  cancelling is the way to tell people, and the confirm says so. ·
+  Notify `audienceOf` with an `event_deleted` type carrying the title
+  (needs `event` null in the inbox and a new type for the apps).
+- **The confirm** names the event; when people have said going or maybe
+  and the event isn't over, it says how many, that deleting doesn't tell
+  them and cancelling does, and still lets the host delete. After
+  deleting, the page goes to Your events. · The brief. · `delete-event`
+  in views/event.html.
+- The Invite button says "Invite" (was "Invite friends"): it also finds
+  people by phone or Instagram now, and two buttons share the row. · n/a
+
 ## Security review (both services)
 
 The review found no critical or high issues. Fixes are in progress
@@ -752,6 +1134,158 @@ The review found no critical or high issues. Fixes are in progress
   self-serve account deletion, and a lookup audit log. They're on
   `feat/data-security` in both repos, for your review. Their judgment
   calls get logged on that branch.
+
+## Events review fixes
+
+Fixes for the security review's events findings (branch `fix/review`).
+
+- **The whole cover conversion runs in one worker thread**
+  (`lib/coverWorker.js`), not just the HEIC decode, one upload at a time
+  in a queue. · The WebAssembly decoder is synchronous (100 ms to most of
+  a second per photo), and sharp's raw-pixel copies are big; a single
+  worker keeps peak memory to one decode. Covers are rare, so a queue
+  costs little. · Make `toCoverJpeg` call `convert` directly.
+- The worker is **stopped after 30 s idle, after any failed job, and
+  after a job that runs past 30 s** (refused as 400 `bad_image`, "took
+  too long to read"). · A WebAssembly heap only grows while its worker
+  lives, and heic-decode doesn't free its decoder when a file won't
+  parse (that's inside the library); replacing the worker after a
+  failure means a stream of broken files can't build up a leak. The
+  cost is starting a worker (about half a second) on the next upload. ·
+  `IDLE_MS`, `JOB_TIMEOUT_MS` and `finish()` in lib/coverImage.js.
+- **HEIC is capped at 25 megapixels** (other formats stay at 50). ·
+  HEIC is decoded whole into memory, about 10 bytes a pixel twice over,
+  so a 48 MP "HEIF Max" photo needed several hundred MB at once. 25 MP
+  takes the 12 and 24 MP photos iPhones save by default; Safari sends
+  the web page a JPEG anyway, and the app can shrink first. ·
+  `MAX_HEIC_PIXELS` in lib/coverImage.js.
+- The HEIC fixtures were made with macOS `sips`: `cover-2mp.heic`
+  (657 KB of noise, so it's slow to decode like a real photo and a leak
+  shows) and `cover-26mp.heic` (14 KB, plain, just over the cap). · The
+  489-byte `cover.heic` leaks too little to measure. · n/a
+- The leak test checks the **libheif WebAssembly heap size**
+  (`HEAPU8.length`) to within 2 MB, and RSS through the worker only
+  loosely (under 80 MB growth over 20). · RSS moves a lot with GC and
+  allocator timing; the heap size is exact (17 MB steady after the fix,
+  +12 MB over 12 conversions without it). The /healthz test calibrates
+  itself: no /healthz may take half as long as the upload (4 ms vs a
+  133 ms upload after the fix; 100 ms of 126 ms before). · n/a
+- **Removing or uninviting someone deletes all their notifications about
+  that event**, in the same transaction (lib/store/rsvps.js
+  `removeGuest`, `uninvite`). Undoing a removal doesn't bring them
+  back. · Every entry carries the event's link. · Drop
+  `forgetNotifications`.
+- **The inbox's `event` is null** (not "title only") for anyone not on
+  the event now: not a host, and no invited-or-answered row that isn't
+  `removed` (`store.isOnEvent`). · Null was already allowed by the spec,
+  so apps need no new shape, and it gives away nothing; a title-only
+  object would have been a new schema with optional `id`. · lib/views.js
+  `notificationViews`.
+- That rule also covers **someone who answered without an invitation
+  and took the answer back**: their old entries stay but lose the
+  event. · They're off the list, the same as an uninvited person, and a
+  host may have made a new link with them in mind. The cost is an inbox
+  line they can't open; answering again at the link brings it back. ·
+  Count a deleted answer as "on" (needs a record of it).
+- **The push payload follows the same rule** (`eventId` and
+  `eventTitle` null for someone not on the event), checked when it's
+  queued. Everyone notified today is on the event, so this changes
+  nothing now; it's a guard for later triggers. There's no persistent
+  push queue (`push.queue` sends on the next tick), so there was no
+  queued push to delete. · n/a
+- **The other places that give out the current link were checked and
+  left alone**: `/me/events/*` lists only events you host or have a
+  non-removed row on; the wall, the guest list, cover URLs, friends and
+  `/me` don't carry an event's id; every `/events/{id}` route needs the
+  current link to begin with. · n/a
+- **A cover upload that isn't a well-formed form is 400 `bad_image`**,
+  not a new `bad_upload`. · multer's own errors (wrong field, too many
+  files) were already `bad_image`, and apps branch on one reason for "the
+  upload was wrong". Every non-multer error from the form parser counts,
+  since memory storage can't fail on our side. · routes/covers.js
+  `receive`.
+- **The error handler honours a 4xx `err.status`**: under `/api/` it's
+  that status with reason `bad_request` (`too_large` for 413) and our own
+  sentence, never `err.message`. `bad_request` is new, and `400` was
+  added to the five operations that didn't list one (`getEvent`,
+  `deleteWallEntry`, `deleteCover`, `newLink`,
+  `markAllNotificationsRead`), which a broken `%` escape or a broken
+  JSON body can reach. · Express already marks undecodable params as
+  400; a 404 would have needed no spec change but would claim the URL
+  was well-formed. · server.js.
+- **For a page URL** (`/e/%E0%A4%A`) it's the existing "nothing here"
+  page (`pages.notFound`, a 404) for a browser asking for HTML, and a
+  plain-text 400 otherwise. No view or `lib/render.js` change. · The
+  page machinery offers only that page; a 404 says the same thing to a
+  person. · server.js.
+- A GET to a path that only has other methods (`GET
+  /api/v1/events/{id}/wall/%zz`) is a 400 too, not the catch-all 404,
+  because Express decodes params while matching a path before checking
+  the method. · Harmless, and not worth a special case. · n/a
+- **`counts.invited` is null for non-hosts** (signed out included), on
+  the event, in every list, and on `/guests`; the key stays, so `Counts`
+  keeps the same required fields. · The spec models "not yours to see"
+  as null elsewhere (`viewer`, `locationAddress`, `spotsLeft`), and a
+  missing key would break apps that decode `Counts` strictly. The pages
+  only showed it to hosts, so nothing visible changes (that's true of
+  `feat/web-features`' `public/ui.js` too, checked at the time). ·
+  lib/views.js `countsView`.
+- **(You) Partly undone:** unverified accounts are findable by
+  **Instagram** again, because on a new network most people never
+  confirm their email. Phone lookups still need a verified account,
+  since numbers can be enumerated. · The impostor case is back for
+  Instagram, but only while the real owner hasn't claimed their own
+  handle. · Account service `findPerson` (2866489 on main). The real fix is
+  proving the handle (see "Instagram ownership" below).
+- **(You)** Cover geometry: a 3:2 frame whose top 16:9 is the
+  semi-safe image area (the relative-time pill may sit there). The
+  remaining bottom band fades into the background and holds the event
+  title. Bottom corners are never rounded.
+- **(You)** Uploading a cover suggests a hue that matches the photo,
+  and the host can still change it.
+- Assumed: the server computes `coverHue` (a chroma-weighted OKLCH hue
+  histogram's peak, or null for greyscale) and stores it with the cover.
+  The web editor jumps the slider to it after an upload and offers a
+  "Match photo" button. `themeHue` only changes when the host saves, and
+  an API-only upload never changes it, so the apps decide for
+  themselves.
+- **(You)** No "Canopy green" button: green is just where the slider
+  starts. One end of the slider is fully greyscale, for colour-free
+  events. A greyscale cover makes "Match photo" choose greyscale.
+- Assumed (the agent may refine it): the API is `themeHue` plus a
+  `themeGrayscale` boolean, with no magic hue values. Greyscale keeps
+  the same lightness as every other position, so contrast holds.
+- **(You)** The theme API (`themeHue` + `themeGrayscale`) is fine.
+- **(You)** The guest section is called "Attending". It has a large
+  heading, a "82 Going · 64 Maybe" summary, a "View all" pill, and one
+  row of large round avatars ending in a "+N" circle (from your
+  reference screenshot).
+- Assumed: the avatars don't overlap, and as many fit as the width
+  allows. Order is friends first, then going before maybe, then newest.
+  +N counts people. The grouped list and the host's tools live behind
+  "View all". When the list is hidden, the counts stay and a one-line
+  reason replaces the avatars.
+- **(You)** Host controls on the event page: "Share link" and "Invite"
+  on one line, then "Edit" with a ⋯ menu beside it. Co-hosts, new
+  link, cancel and delete all live in that menu.
+- Assumed: you meant the event page's host area, not the editor. Delete
+  is new: `DELETE /api/v1/events/{id}`, creator only, removing everything
+  (the link then 404s). The confirm suggests cancelling instead when
+  people have answered. Co-hosts get "Step down" in the menu.
+- **(You)** UI updates reach events main more often. The web agent
+  merges main into its branch, runs the tests, and fast-forwards main
+  after each finished change, instead of the orchestrator merging at the
+  end. · Schema steps deploy as they land, so a step on main is never
+  edited, only followed by the next one.
+
+## Performance
+
+- **(You)** Covers get resized variants now. Caching and asset tuning
+  (external versioned JS/CSS, cache headers, an SVG logo) wait until
+  development is closer to done.
+- Measured on an event page (local, 6 guests): 1 request, 138 KB raw
+  / 40 KB gzipped, 3.5 MB JS heap, 164 DOM elements, first paint about
+  100 ms. Covers were the real weight.
 
 ## Contact data security (feat/data-security)
 

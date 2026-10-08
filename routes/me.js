@@ -15,9 +15,9 @@ module.exports = function meRoutes(ctx) {
   // details, not even your own (lib/people.js says why; the apps get them
   // from the account service's /api/native/v1/me). `verifyUrl` is where an unverified
   // account proves its email (apps show the same banner the pages do);
-  // null once it's verified. `hasHosted`: whether they host or co-host any
-  // event, cancelled and past ones included (the app shows its Hosting tab
-  // only then).
+  // null once it's verified. `hasHosted`: whether they've ever hosted or
+  // co-hosted an event (the app shows its Hosting tab only then). Once a
+  // host, always a host: stepping down doesn't take it back.
   router.get('/me', auth.requirePerson, (req, res) => {
     const person = ownPerson(req.person);
     res.json({

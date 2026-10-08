@@ -1,6 +1,7 @@
 // The web pages: an event (/e/<id>, what a shared link opens), your
 // events (/), making and editing one (/new, /e/<id>/edit), inviting
-// friends (/e/<id>/invite) and your friends (/friends).
+// friends or anyone by phone or Instagram (/e/<id>/invite), adding
+// co-hosts (/e/<id>/cohosts) and your friends (/friends).
 //
 // **The pages are a client of the API, the same as the apps.** Each page
 // asks this server's own /api/v1 for what it shows (over loopback, as
@@ -30,6 +31,7 @@ const { publicBase } = require('../lib/domain');
 // then "show more"; inviting reads everyone already on the list, up to
 // MAX_PAGES pages of 100, so it can mark them.
 const GUESTS_SHOWN = 50;
+const WALL_SHOWN = 20;
 const FRIENDS_SHOWN = 50;
 const LIST_SHOWN = 20;
 const PAST_SHOWN = 10;
@@ -189,15 +191,27 @@ module.exports = function pagesRoutes(ctx) {
     const event = await loadEvent(req, res);
     if (!event) return;
     const here = `${publicBase(req)}/e/${event.id}`;
-    // Signed in, the guest list as far as they may see it (the API says).
-    const guests = req.person ? want(await apiGet(req, `/events/${event.id}/guests?limit=${GUESTS_SHOWN}`)) : null;
+    // Signed in, the guest list and the wall as far as they may see them
+    // (the API says), and for hosts, who they've removed. Someone a host
+    // removed gets neither: the API would only say they can't see them.
+    const viewer = event.viewer || {};
+    const removedViewer = !!(viewer.rsvp && viewer.rsvp.status === 'removed');
+    const insider = !!req.person && !removedViewer;
+    const [guests, removed, wall] = await Promise.all([
+      insider ? apiGet(req, `/events/${event.id}/guests?limit=${GUESTS_SHOWN}`).then((r) => want(r)) : null,
+      insider && viewer.canEdit ? apiGet(req, `/events/${event.id}/guests?status=removed&limit=${GUESTS_SHOWN}`).then((r) => want(r)) : null,
+      insider ? apiGet(req, `/events/${event.id}/wall?limit=${WALL_SHOWN}`).then((r) => want(r)) : null
+    ]);
     const data = {
       me: meView(req.person),
       event,
       guests,
+      removed,
+      wall,
       links: req.person ? null : { quickSignUp: canopy.quickSignUpUrl(req, here), signIn: canopy.signInUrl(req, here) }
     };
     render.page(req, res, 'event.html', {
+      theme: UI.themeKeyOf(event),
       title: event.title,
       meta: render.eventMeta(event),
       main: UI.eventPage(data, { viewerZone: render.viewerZone(req) }),
@@ -225,8 +239,11 @@ module.exports = function pagesRoutes(ctx) {
     const event = await loadEvent(req, res);
     if (!event) return;
     if (!event.viewer || !event.viewer.canEdit) return hostsOnly(req, res, event, 'editor.notHost');
-    const data = { me: meView(req.person), event };
-    render.page(req, res, 'editor.html', { title: t('editor.editHeading'), main: UI.editorForm(data), data });
+    // ?coverError=<reason>: a new event was made, and its cover didn't
+    // upload (views/editor.html sends them here to try again).
+    const coverError = /^[a-z_]{1,40}$/.test(String(req.query.coverError || '')) ? req.query.coverError : null;
+    const data = { me: meView(req.person), event, coverError };
+    render.page(req, res, 'editor.html', { title: t('editor.editHeading'), main: UI.editorForm(data), data, theme: UI.themeKeyOf(event) });
   }));
 
   // ---------------- Inviting friends ----------------
@@ -235,19 +252,40 @@ module.exports = function pagesRoutes(ctx) {
     const event = await loadEvent(req, res);
     if (!event) return;
     if (!event.viewer || !event.viewer.canEdit) return hostsOnly(req, res, event, 'invite.notHost');
-    // Everyone already on the list, invited or answered, so they're
-    // marked rather than offered.
+    // The hosts, everyone already on the list, invited or answered, and
+    // everyone a host removed, so they're marked rather than offered.
     const onList = {};
-    let cursor = '';
-    for (let i = 0; i < MAX_PAGES; i++) {
-      const page = want(await apiGet(req, `/events/${event.id}/guests?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`));
-      page.guests.forEach((g) => { onList[g.person.id] = g.status; });
-      if (!page.nextCursor) break;
-      cursor = page.nextCursor;
+    event.hosts.forEach((h) => { onList[h.person.id] = h.role === 'creator' ? 'hosting' : 'cohosting'; });
+    for (const status of ['', 'removed']) {
+      let cursor = '';
+      for (let i = 0; i < MAX_PAGES; i++) {
+        const page = want(await apiGet(req, `/events/${event.id}/guests?limit=100${status ? `&status=${status}` : ''}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`));
+        page.guests.forEach((g) => { onList[g.person.id] = g.status; });
+        if (!page.nextCursor) break;
+        cursor = page.nextCursor;
+      }
     }
     const friends = want(await apiGet(req, '/me/friends?limit=100'));
-    const data = { me: meView(req.person), event, onList, friends: friends.friends, nextCursor: friends.nextCursor, phase: UI.phaseOf(event) };
+    const me = meView(req.person);
+    const data = {
+      me, event, onList, friends: friends.friends, nextCursor: friends.nextCursor, phase: UI.phaseOf(event),
+      // Finding people by phone or Instagram is for verified people.
+      links: me.emailVerified ? null : { verify: canopy.verifyUrl(req, render.hereUrl(req)) }
+    };
     render.page(req, res, 'invite.html', { title: t('invite.heading'), main: UI.invitePage(data), data });
+  }));
+
+  // ---------------- Adding co-hosts ----------------
+
+  // The creator only, as the API has it. Friends to pick from, the same
+  // as inviting; the API says who can't (an unverified email).
+  router.get('/e/:id/cohosts', attach, signedIn, pageRoute(async (req, res) => {
+    const event = await loadEvent(req, res);
+    if (!event) return;
+    if (!event.viewer || event.viewer.role !== 'creator') return hostsOnly(req, res, event, 'cohosts.creatorOnly');
+    const friends = want(await apiGet(req, '/me/friends?limit=100'));
+    const data = { me: meView(req.person), event, friends: friends.friends, nextCursor: friends.nextCursor, phase: UI.phaseOf(event) };
+    render.page(req, res, 'cohosts.html', { title: t('cohosts.heading'), main: UI.cohostPage(data), data });
   }));
 
   // ---------------- Friends ----------------

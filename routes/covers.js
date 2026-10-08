@@ -23,7 +23,7 @@ const { guessLimits } = require('../lib/limits');
 const { isHost } = require('../lib/rules');
 const { newEventId } = require('../lib/ids');
 const { eventView } = require('../lib/views');
-const { toCoverJpeg, BadImage } = require('../lib/coverImage');
+const { toCover, BadImage } = require('../lib/coverImage');
 const coverStore = require('../lib/coverStore');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -52,13 +52,17 @@ module.exports = function coverRoutes(ctx) {
     next();
   }
 
-  // multer, with its errors in the API's shape.
+  // multer, with its errors in the API's shape. Besides its own
+  // MulterErrors, the form parser underneath (busboy) throws plain Errors
+  // for a body that isn't a well-formed form ("Unexpected end of form" for
+  // one cut off, a bad part header...). Memory storage can't fail on our
+  // side, so every one of them is the upload's fault: a 400, not a 500.
   function receive(req, res, next) {
     upload(req, res, (err) => {
       if (!err) return next();
       if (err.code === 'LIMIT_FILE_SIZE') return fail(res, 413, 'too_large', `a cover is at most ${MAX_UPLOAD / 1024 / 1024} MB`);
       if (err instanceof multer.MulterError) return fail(res, 400, 'bad_image', "send one image, in a form field named 'cover'");
-      next(err);
+      fail(res, 400, 'bad_image', "that upload was cut off or isn't a form: send one image, in a form field named 'cover'");
     });
   }
 
@@ -68,17 +72,20 @@ module.exports = function coverRoutes(ctx) {
       return fail(res, 429, 'rate_limited', "that's a lot of covers for one day -- try again tomorrow");
     }
     uploadLimits.hit(req, req.person.id);
-    let jpeg;
+    let cover;
     try {
-      jpeg = await toCoverJpeg(req.file.buffer);
+      cover = await toCover(req.file.buffer);
     } catch (err) {
       if (err instanceof BadImage) return fail(res, 400, 'bad_image', err.message);
       throw err;
     }
     let key = newEventId();
     while (store.getEventByCoverKey(key)) key = newEventId();
-    coverStore.save(req.event.id, jpeg);
-    const event = store.setCover(req.event.id, key);
+    coverStore.save(req.event.id, cover.jpeg);
+    // The hue that matches it is only a suggestion (`coverHue`): the
+    // event's own colour (themeHue) is the host's to change, and an upload
+    // never does.
+    const event = store.setCover(req.event.id, key, { hue: cover.hue, grayscale: cover.grayscale });
     res.json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });
   }));
 

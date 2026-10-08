@@ -25,6 +25,25 @@ function viewerZone(){
   document.cookie = 'tz=' + encodeURIComponent(zone) + '; path=/; max-age=31536000; samesite=lax';
 })();
 
+// "Tomorrow", "This Saturday": the server drew them when it sent the
+// page, which may have been a while ago (a tab left open overnight). The
+// browser says them again now, and every minute while the page is open.
+function refreshRelative(){
+  document.querySelectorAll('[data-rel-start]').forEach((el) => {
+    const e = {
+      startsAt: el.getAttribute('data-rel-start'),
+      endsAt: el.getAttribute('data-rel-end') || null,
+      timeZone: el.getAttribute('data-rel-zone'),
+      status: el.getAttribute('data-rel-status')
+    };
+    const words = UI.relativeWhen(e);
+    if (words && el.textContent !== words) el.textContent = words;
+    el.classList.toggle('off', UI.phaseOf(e) === 'over');
+  });
+}
+refreshRelative();
+setInterval(refreshRelative, 60000);
+
 // A photo that won't load (signed out, the account service only gives
 // photos to a Canopy session) becomes the person's initials.
 document.addEventListener('error', (e) => {
@@ -39,19 +58,23 @@ document.addEventListener('error', (e) => {
 // look at, except the answers every page treats the same way:
 //
 //   401 sign_in_required -> off to sign in, and back here;
-//   403 email_unverified -> off to confirm the email, and back here;
+//   403 email_unverified -> off to confirm the email, and back here
+//                           (unless opts.stay: the page says it instead);
 //   503 accounts_unreachable -> throws, and busy() says so.
+//
+// `body` is JSON, or a FormData (a file upload), sent as it is.
 class AccountsDown extends Error {}
 
-async function api(method, path, body){
+async function api(method, path, body, opts){
+  const form = typeof FormData !== 'undefined' && body instanceof FormData;
   const res = await fetch('/api/v1' + path, {
     method,
-    headers: Object.assign({ Accept: 'application/json' }, body === undefined ? {} : { 'Content-Type': 'application/json' }),
-    body: body === undefined ? undefined : JSON.stringify(body)
+    headers: Object.assign({ Accept: 'application/json' }, body === undefined || form ? {} : { 'Content-Type': 'application/json' }),
+    body: body === undefined ? undefined : (form ? body : JSON.stringify(body))
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && data.signIn){ window.location.href = data.signIn; return new Promise(() => {}); }
-  if (res.status === 403 && data.reason === 'email_unverified' && data.verify){ window.location.href = data.verify; return new Promise(() => {}); }
+  if (res.status === 403 && data.reason === 'email_unverified' && data.verify && !(opts && opts.stay)){ window.location.href = data.verify; return new Promise(() => {}); }
   if (res.status === 503) throw new AccountsDown(data.error || '');
   return { res, data };
 }

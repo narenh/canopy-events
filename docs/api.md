@@ -89,9 +89,10 @@ lists. They **can't make events** (403 `email_unverified`) or be co-hosts.
 }
 ```
 
-`hasHosted` is true once you host or co-host any event, cancelled and past
-ones included: show the Hosting tab only then. (A co-host who steps down
-from their only event is back to false; there'd be nothing in the tab.)
+`hasHosted` is true once you've hosted or co-hosted any event: show the
+Hosting tab only then. Once a host, always a host: it stays true after a
+co-host steps down (or is taken off), and when every event they hosted is
+over or cancelled, so the tab doesn't come and go.
 
 While `emailVerified` is false, **show a verify-your-email banner on every
 screen, and don't let it be dismissed**. It's never a hard block: the app
@@ -140,8 +141,15 @@ Optional: `description`, `endsAt` (after `startsAt`), `locationName`,
 co-hosts). Send only what changes; `null` or `""` clears an optional
 field. `{"status": "cancelled"}` cancels it, and `{"status": "active"}`
 takes that back; only the creator can do either (403 `creator_only`).
-There's no delete: a cancelled event keeps its link and guest list so
-people can see it's off.
+A cancelled event keeps its link and guest list so people can see it's
+off, and they're notified (`event_cancelled`).
+
+`DELETE /api/v1/events/{id}` deletes it for good (the creator only; 403
+`creator_only` for anyone else): its hosts, answers, invitations, wall,
+everyone's notifications about it and its cover all go, and the link is
+a 404 `event_not_found` afterwards. **Nobody is notified**, so when
+people have answered going or maybe, suggest cancelling instead (the web
+page's confirm does) and delete only if the host still wants to.
 
 `guestsAllowed` (0 to 10, 0 by default) is how many plus-ones each answer
 may bring. See "Plus-ones" below.
@@ -235,9 +243,12 @@ no cap).
 
 `PUT /api/v1/events/{id}/cover` (hosts) uploads one, as
 `multipart/form-data` with the image in a field named `cover`: JPEG, PNG,
-WebP or HEIC, up to 15 MB. Send the photo as it is: the server turns it
-upright, shrinks it to fit 1600 px, and stores a JPEG with **no EXIF**,
-so where it was taken never leaves the phone. `DELETE` removes it.
+WebP or HEIC, up to 15 MB and 50 megapixels (**HEIC up to 25
+megapixels**: the 12 and 24 megapixel photos iPhones take by default are
+fine, but shrink a 48-megapixel "HEIF Max" one, or send it as a JPEG).
+Send the photo as it is: the server turns it upright, shrinks it to fit
+1600 px, and stores a JPEG with **no EXIF**, so where it was taken never
+leaves the phone. `DELETE` removes it.
 
 ```bash
 curl -s "${auth[@]}" -X PUT -F cover=@IMG_0001.HEIC $API/events/4fQ9xKpL2mZa/cover
@@ -248,6 +259,89 @@ with that URL can load it, no sign-in, because link previews (iMessage,
 Slack) fetch it without anyone's session. The URL is random and isn't the
 event's link, and every upload makes a new one (the old one stops
 working), so cache by URL. `null` is no cover.
+
+**How the web draws it.** A frame of **3:2** (height = width × 2/3),
+the photo filling it `object-fit: cover` style (centred, cropped). The
+frame's top **16:9** (height = width × 9/16) is where the photo shows
+clearly; the band below it (the last width × 0.104) is where it fades
+into the page's base colour (clear at 62% of the frame's height, 72% at
+the band's top, 92% at 93%, solid at the bottom), and the **title
+starts at the top of that band**, running on below the frame. The "how
+soon" pill sits low on the left inside the 16:9. Phones: edge to edge, no
+rounded corners; wider: in the column, top corners rounded only. The
+crop is display-only: the stored image is the whole photo. An event with
+no cover gets a generated picture in the same frame (soft glows in its
+colours); draw your own, or use the event's colours below.
+
+**The colour that matches the photo.** Every upload works out
+`coverHue` (0–359), the hue that suits the photo, or says
+`coverGrayscale: true` for an essentially grey one (then `coverHue` is
+null). Both are null/false with no cover, and for covers uploaded before
+this existed. **An upload never changes the event's colour**
+(`themeHue`, `themeGrayscale`): it's a suggestion. The web editor jumps
+its colour slider to it when a photo is picked and has a "Match photo"
+button; nothing is saved until the host saves. Do the same in the app:
+offer it, and PATCH `themeHue` (or `themeGrayscale: true`) only if the
+host takes it.
+
+How it's worked out, if you want to suggest one before uploading: shrink
+the photo to fit 64×64; turn each pixel into OKLCH; skip near-greys (C <
+0.04), very dark (L < 0.2) and very light (L > 0.93) pixels; add each
+other pixel's chroma C into its hue's one-degree bin (360 bins); find
+the bin whose ±12° window has the most; the answer is the
+chroma-weighted circular mean of the bins in that window, rounded. If
+fewer than 4% of the pixels counted, the photo is grey. The code is
+`hueFromPixels` in `public/ui.js`.
+
+## Event colours
+
+Every event has two fields for its colour:
+
+- `themeHue`: the hue, in degrees (0–359), its page's background is
+  turned to, or `null` for Canopy's own green, which is the default.
+- `themeGrayscale`: `true` for **no colour at all**, a neutral grey page.
+  While it's true, `themeHue` is ignored (and kept, so turning grey off
+  goes back to it).
+
+Any host sets them, co-hosts included, on `POST /events` or `PATCH
+/events/{id}` (400 `bad_theme_hue` for a hue outside 0–359 or not a
+whole number, `bad_theme_grayscale` for anything but true or false).
+They're on every event, signed out too, since the page a guest opens from
+a text is drawn in them. The web's slider is grey at its left end, then
+the wheel; an event nobody has coloured sits on Canopy green's hue.
+
+The background is the dark Canopy mesh: a base colour with five soft
+glows, and cards of 30% tinted glass over it. Each colour is defined in
+**OKLCH** (lightness, chroma, hue). For a `themeHue` of *H*, each
+colour keeps its lightness and chroma and takes the hue *H + offset*:
+
+| Colour | Role | L | C | hue offset | Today's green |
+|---|---|---|---|---|---|
+| base | the page behind everything | 0.1652 | 0.0266 | +6.4 | `#03120c` |
+| glow 1 | top left (12% 18%, to 50%) | 0.3655 | 0.0715 | +1.4 | `#0f4a33` |
+| glow 2 | top right (88% 8%, to 45%) | 0.3166 | 0.0559 | +9.8 | `#0a3b2e` |
+| glow 3 | the brightest, lower right (72% 78%, to 50%) | 0.4233 | 0.0856 | −0.4 | `#145c3e` |
+| glow 4 | lower left (18% 88%, to 55%) | 0.2597 | 0.0466 | +5.8 | `#072b1f` |
+| glow 5 | the middle (50% 45%, to 60%) | 0.3122 | 0.0590 | +1.9 | `#0c3a28` |
+| card | glass tint, at 30% opacity | 0.2150 | 0.0537 | −11.2 | `#03200b` |
+
+**Grey** (`themeGrayscale: true`): the same lightness L, chroma 0. Every
+colour becomes a neutral grey exactly as light as its green, so contrast
+is the same as for any hue.
+
+Hues wrap at 360. Convert with the standard OKLCH → OKLab → linear sRGB
+→ sRGB maths (Björn Ottosson's matrices, as in CSS Color 4). If a
+colour falls outside sRGB, **lower its chroma** (keep L and hue) until
+it fits; at these lightnesses that only happens to the card tint near
+yellow. Canopy green is hue **161**: `null` means "use the hex column
+exactly", and 161 comes out within 2/255 of it.
+
+Because only the hue turns, every hue is as dark as the green, so white
+and light text keep their contrast over it (round the whole wheel, white
+on a card over the brightest glow stays at least 9.3:1). Buttons, links
+and grey text stay Canopy green (`#2ec44f` with `#03190a` on it, links
+`#b6f5c3`) at every hue, and on grey. The web's code for all of this is
+`public/ui.js` (`themeColors`).
 
 ## Plus-ones
 
@@ -269,6 +363,10 @@ numbers in `counts` are people. `counts.guests` is their plus-ones, and
 
 "6 going" on a screen is `total.going`; "4 people (+2)" is `going` and
 `guests.going`.
+
+`invited` (invited, no answer yet) is **for hosts only**: it's null for
+everyone else, signed out included, the same way only hosts see who's
+invited on the guest list.
 
 **When the host lowers `guestsAllowed`**, answers that already bring more
 are kept as they are: nobody's plus-one disappears without them knowing.
@@ -307,7 +405,8 @@ can answer like anyone else.
 
 ## The guest list, and who sees it
 
-`GET /api/v1/events/{id}/guests` (signed in). **Counts are always there.**
+`GET /api/v1/events/{id}/guests` (signed in). **Counts are always there**
+(`invited` only for hosts, null for anyone else).
 Names depend on the host's `guestListVisibility`:
 
 | You are | `everyone` | `responded` |
@@ -383,7 +482,8 @@ host): their status becomes `removed`.
   `viewer.rsvp.status: "removed"` so the app can say so. The link is the
   event, and hiding it from them alone would hide nothing: they could
   sign out and look. If that's not enough, make a new link (below).
-- Nobody is notified.
+- Nobody is notified, and their own notifications about the event are
+  deleted (so their inbox can't hand them a new link).
 - You can remove someone before they've answered, or been invited.
 
 `DELETE /api/v1/events/{id}/removed/{personId}` undoes it: they're left
@@ -447,6 +547,12 @@ and `count`. Word them in the app:
   newest, it moves to the top) instead of making another, and only the
   first one of a batch pushes. Once it's read, the next answer starts a
   new one. A change of plus-ones alone isn't news.
+- **`event` can be null**: once you're no longer on the event (a host
+  took your invitation back or removed you, or you took back an answer
+  you gave without being invited), the inbox stops giving you its link,
+  because a host may have made a new one to keep you out. Show the line
+  without a way to open it. Being removed or uninvited also deletes your
+  notifications about that event.
 - The push carries the same `type`, the notification's id, the event's id
   and title, and `badge` (the unread count). The senders will turn it into
   a localized alert (`loc-key` and its arguments) for the app to word.
@@ -532,7 +638,7 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |

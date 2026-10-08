@@ -74,7 +74,17 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   old.prepare("INSERT INTO events (id, title, starts_at, over_at, time_zone, created_at, updated_at) VALUES ('AAAAAAAAAAAA', 'Kept', 1, 2, 'UTC', 1, 1)").run();
   old.prepare(`INSERT INTO rsvps (event_id, person_id, status, guests, invited_by, invited_at, responded_at, status_at, created_at)
                VALUES ('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003', 'going', 2, 'x', 5, 6, 7, 8)`).run();
+  old.prepare(`INSERT INTO hosts (event_id, person_id, role, added_by, added_at)
+               VALUES ('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000001', 'creator', NULL, 3)`).run();
   old.close();
+  // A co-host who had stepped down before version 7 (version 3's wall
+  // remembers them), added to the file once it's at version 6.
+  {
+    const v6 = new Database(file);
+    prepareSchema(v6, file, { version: 6 });
+    v6.prepare(`INSERT INTO wall (event_id, type, person_id, created_at) VALUES ('AAAAAAAAAAAA', 'cohost_added', '00000000-0000-4000-8000-000000000005', 4)`).run();
+    v6.close();
+  }
 
   const upgraded = init({ file, snapshots: false });
   const fresh = init({ file: path.join(dir, 'fresh.db'), snapshots: false });
@@ -101,6 +111,29 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   });
   assert.equal(upgraded.removeGuest('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003').outcome, 'removed');
   assert.equal(upgraded.getRsvp('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003').status, 'removed');
+  // Version 7: an event's colour, Canopy green (null) until a host picks
+  // one, and nothing outside 0-359 stored.
+  assert.equal(upgraded.getEvent('AAAAAAAAAAAA').themeHue, null);
+  assert.equal(upgraded.updateEvent('AAAAAAAAAAAA', { themeHue: 300 }).themeHue, 300);
+  assert.throws(() => upgraded.db.prepare("UPDATE events SET theme_hue = 360 WHERE id = 'AAAAAAAAAAAA'").run(), /CHECK/);
+  // Version 8: grey pages, and the colour of a cover (unknown for a cover
+  // from before).
+  assert.equal(upgraded.getEvent('AAAAAAAAAAAA').themeGrayscale, false);
+  assert.equal(upgraded.updateEvent('AAAAAAAAAAAA', { themeGrayscale: true }).themeGrayscale, true);
+  assert.deepEqual([upgraded.getEvent('AAAAAAAAAAAA').coverHue, upgraded.getEvent('AAAAAAAAAAAA').coverGrayscale], [null, false]);
+  const hued = upgraded.setCover('AAAAAAAAAAAA', 'CoverKey5678', { hue: 200 });
+  assert.deepEqual([hued.coverHue, hued.coverGrayscale], [200, false]);
+  const cleared = upgraded.setCover('AAAAAAAAAAAA', null);
+  assert.deepEqual([cleared.coverHue, cleared.coverGrayscale], [null, false]);
+  // And whoever was hosting at the upgrade has hosted, from when
+  // they started; nobody else has, until they host.
+  assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000001'), true);
+  assert.deepEqual(upgraded.db.prepare('SELECT first_at FROM hosted_people WHERE person_id = ?').get('00000000-0000-4000-8000-000000000001'), { first_at: 3 });
+  assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000005'), true, 'a co-host the wall remembers');
+  assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000003'), false);
+  upgraded.addCohost('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000001');
+  upgraded.removeCohost('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003');
+  assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000003'), true, 'and keeps it after stepping down');
   assert.equal(upgraded.db.pragma('foreign_key_check').length, 0);
   assert.equal(upgraded.isKnownVerified('00000000-0000-4000-8000-000000000001'), true);
   upgraded.db.close();

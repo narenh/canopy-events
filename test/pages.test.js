@@ -24,7 +24,7 @@ async function page(server, who, url, headers = {}) {
   assert.deepEqual(leaks, [], `contact details in ${url}`);
   // What the page shows: its body, without the scripts inlined after it
   // (whose source would match anything the renderer can draw).
-  const start = r.text.indexOf('<body');
+  const start = r.text.indexOf('<body class=');
   const end = r.text.indexOf('<script type="application/json" id="pageData">');
   r.body = start < 0 ? r.text : r.text.slice(start, end < 0 ? undefined : end);
   return r;
@@ -138,12 +138,15 @@ test('pages', async (t) => {
     assert.ok(html.includes('The address shows once you sign in.'));
     assert.ok(html.includes('Hosted by Ana Lima'), 'hosts are public');
     for (const name of ['Ben', 'Okafor', 'Cy Park', 'Dee']) assert.ok(!html.includes(name), `no guest name: ${name}`);
-    assert.ok(html.includes('1 going · 1 maybe'), 'counts are public');
+    assert.ok(section(html, 'guests').includes('<p class="attend-sum">1 Going · 1 Maybe</p>'), 'counts are public');
     const here = encodeURIComponent(`${server.base}/e/${party.id}`);
     const rsvp = section(html, 'rsvp');
     assert.ok(rsvp.includes(`href="${server.fake.base}/?quick=1&amp;return=${here}">RSVP</a>`), rsvp);
     assert.ok(rsvp.includes(`href="${server.fake.base}/?return=${here}">I have a Canopy account, sign in</a>`));
-    assert.equal(section(html, 'guests'), null);
+    // Attending, signed out: the heading and counts, no faces, no list.
+    const attend = section(html, 'guests');
+    assert.ok(attend.includes('>Attending</h2>'));
+    assert.ok(!attend.includes('avatar-row') && !attend.includes('View all'));
     assert.equal(section(html, 'host'), null);
     assert.ok(!html.includes('id="verifyBanner"'));
     assert.match(r.text, /<meta name="robots" content="noindex, nofollow">/);
@@ -210,14 +213,16 @@ test('pages', async (t) => {
 
   await t.test('friends going, with names when the list is visible', async () => {
     const html = (await page(server, cy, `/e/${party.id}`)).body;
-    const friends = section(html, 'friends-going');
-    assert.ok(friends.includes('1 friend going') && friends.includes('Ben O'), friends);
+    // Friends come first in Attending's row (there's no separate card).
+    assert.equal(section(html, 'friends-going'), null);
+    assert.match(section(html, 'guests'), /<ul class="avatar-row" id="attendRow" style="--slots:5"><li title="Ben Okafor">/);
   });
 
   await t.test('responded-only list, not answered yet: counts, and why there are no names', async () => {
     const html = (await page(server, dee, `/e/${quiet.id}`)).body;
     const guests = section(html, 'guests');
-    assert.ok(guests.includes('1 going'));
+    assert.ok(guests.includes('1 Going · 0 Maybe'));
+    assert.ok(!guests.includes('avatar-row') && !guests.includes('View all'), 'no faces, no list');
     assert.ok(guests.includes('The host shows who&#39;s coming to people who&#39;ve answered.'));
     assert.ok(!html.includes('Ben Okafor') && !html.includes('Ben O<'), 'no names anywhere');
     assert.ok(section(html, 'rsvp').includes('You&#39;re invited. Are you going?'));
@@ -232,7 +237,8 @@ test('pages', async (t) => {
     assert.equal(section(html, 'rsvp'), null, 'hosts don\'t answer');
     const guests = section(html, 'guests');
     assert.ok(guests.includes("Invited, hasn&#39;t answered · 1") && guests.includes('Dee Ruiz'), guests);
-    assert.ok(html.includes('1 going · 1 maybe · 1 invited'));
+    assert.ok(section(html, 'guests').includes('1 Going · 1 Maybe'));
+    assert.ok(section(html, 'guests').includes('<details class="view-all" id="viewAll"><summary class="pill-btn">'), 'View all, shut');
   });
 
   await t.test('a cancelled event reads as cancelled, and takes no answers', async () => {
@@ -253,7 +259,7 @@ test('pages', async (t) => {
 
   await t.test('a past event reads as ended', async () => {
     const html = (await page(server, ben, `/e/${before.id}`)).body;
-    assert.ok(html.includes('class="tag off">Ended<'));
+    assert.match(html, /class="tag rel off"[^>]*>Ended</);
     assert.ok(html.includes('This event has ended.'));
     assert.ok(!html.includes('data-action="answer"'));
     const host = section((await page(server, ana, `/e/${before.id}`)).body, 'host');
@@ -398,4 +404,440 @@ test('pages when Canopy accounts can\'t be reached: a page that says so', async 
   const r = await page(server, 'ben', '/');
   assert.equal(r.status, 503);
   assert.ok(r.body.includes("Canopy accounts can&#39;t be reached right now."));
+});
+
+// ---------------- The features: covers, capacity and plus-ones, co-hosts,
+// the wall, moderation and lookup, each section as every kind of viewer.
+
+test('ui.js: the features, drawn', async (t) => {
+  await t.test('plus-ones allowed in the editor are the API\'s', () => {
+    assert.equal(UI.MAX_GUESTS_ALLOWED, require('../lib/eventInput').MAX_GUESTS_ALLOWED);
+  });
+
+  await t.test('when, big: the day, the time, and days spanning more than one', () => {
+    const one = { startsAt: '2030-10-12T02:30:00.000Z', endsAt: '2030-10-12T06:00:00.000Z', timeZone: 'America/Los_Angeles' };
+    assert.deepEqual(UI.whenHead(one, 'America/Los_Angeles'), { date: 'Friday, October 11, 2030', time: '7:30 PM – 11:00 PM', zoneNote: null });
+    assert.equal(UI.whenHead(one, 'Europe/London').zoneNote, 'Times are Los Angeles time (PDT).');
+    const weekend = { startsAt: '2030-10-12T02:30:00.000Z', endsAt: '2030-10-13T18:00:00.000Z', timeZone: 'America/Los_Angeles' };
+    assert.deepEqual(UI.whenHead(weekend, 'America/Los_Angeles'), { date: 'Fri, Oct 11, 2030 – Sun, Oct 13, 2030', time: '7:30 PM – 11:00 AM', zoneNote: null });
+    assert.equal(UI.whenRow(one, 'America/Los_Angeles'), 'Fri, Oct 11, 2030 · 7:30 PM');
+    assert.equal(UI.whenRow(one, 'Europe/London'), 'Fri, Oct 11, 2030 · 7:30 PM PDT');
+    assert.equal(UI.whenRow(weekend, 'America/Los_Angeles'), 'Fri, Oct 11, 2030 – Sun, Oct 13, 2030');
+  });
+
+  await t.test('how soon, counted in days on the event\'s clock', () => {
+    // Now: Wednesday 2030-10-09, 10:00 in Los Angeles.
+    const now = Date.parse('2030-10-09T17:00:00.000Z');
+    const at = (iso) => UI.relativeWhen({ startsAt: iso, endsAt: null, timeZone: 'America/Los_Angeles', status: 'active' }, now);
+    assert.equal(at('2030-10-09T20:00:00.000Z'), 'Today'); // 1 PM
+    assert.equal(at('2030-10-10T02:30:00.000Z'), 'Tonight'); // 7:30 PM, still the 9th there
+    assert.equal(at('2030-10-10T19:00:00.000Z'), 'Tomorrow');
+    assert.equal(at('2030-10-12T19:00:00.000Z'), 'This Saturday');
+    assert.equal(at('2030-10-19T19:00:00.000Z'), 'Next Saturday');
+    assert.equal(at('2030-10-15T19:00:00.000Z'), 'Next Tuesday', 'six days away, but next week');
+    assert.equal(at('2030-10-30T19:00:00.000Z'), 'In 3 weeks');
+    assert.equal(at('2030-11-12T19:00:00.000Z'), 'In a month');
+    assert.equal(at('2031-01-09T19:00:00.000Z'), 'In 3 months');
+    assert.equal(at('2030-10-09T16:00:00.000Z'), 'Happening now');
+    assert.equal(at('2030-10-01T16:00:00.000Z'), 'Ended');
+    assert.equal(UI.relativeWhen({ startsAt: '2030-10-12T19:00:00.000Z', timeZone: 'UTC', status: 'cancelled' }, now), '');
+  });
+
+  await t.test('an event\'s colour: null is today\'s green, hue 161 the same, every hue as dark', () => {
+    assert.equal(UI.themeStyle(null), '');
+    assert.equal(UI.themeStyle(360), '');
+    const hex = (rgb) => '#' + rgb.map((x) => x.toString(16).padStart(2, '0')).join('');
+    const green = UI.themeColors(UI.THEME_DEFAULT_HUE);
+    const today = { base: '#03120c', m1: '#0f4a33', m2: '#0a3b2e', m3: '#145c3e', m4: '#072b1f', m5: '#0c3a28', card: '#03200b' };
+    for (const [k, v] of Object.entries(today)) {
+      const near = green[k].every((x, i) => Math.abs(x - parseInt(v.slice(1 + 2 * i, 3 + 2 * i), 16)) <= 2);
+      assert.ok(near, `${k}: ${hex(green[k])} vs ${v}`);
+    }
+    // White on the card over the brightest glow, composited in linear
+    // light, at a few hues: never under 9:1 (the green's is 9.5:1).
+    const lin = (b) => { const c = b / 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const lum = (rgb) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    for (const hue of [UI.THEME_DEFAULT_HUE, 25, 60, 100, 193, 255, 305, 345]) {
+      const c = UI.themeColors(hue);
+      const overGlow = c.m3.map((x, i) => 0.7 * lin(x) + 0.3 * lin(c.card[i]));
+      const ratio = 1.05 / (lum(overGlow) + 0.05);
+      assert.ok(ratio >= 9, `hue ${hue}: ${ratio.toFixed(2)}`);
+    }
+    // The generated picture turns with it.
+    assert.notEqual(UI.coverArt({ id: 'AAAAAAAAAAAA', themeHue: 300 }), UI.coverArt({ id: 'AAAAAAAAAAAA', themeHue: null }));
+  });
+
+  await t.test('no colour: every colour a neutral grey exactly as light, and the same contrast', () => {
+    assert.equal(UI.themeKeyOf({ themeHue: 30, themeGrayscale: true }), 'grey');
+    assert.equal(UI.themeKeyOf({ themeHue: 30, themeGrayscale: false }), 30);
+    assert.equal(UI.themeKeyOf({ themeHue: null, themeGrayscale: false }), null);
+    const c = UI.themeColors('grey');
+    for (const [k, rgb] of Object.entries(c)) assert.ok(rgb[0] === rgb[1] && rgb[1] === rgb[2], `${k} is neutral: ${rgb}`);
+    const lin = (b) => { const x = b / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+    const lum = (rgb) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    const overGlow = c.m3.map((x, i) => 0.7 * lin(x) + 0.3 * lin(c.card[i]));
+    assert.ok(1.05 / (lum(overGlow) + 0.05) >= 9, 'white on a card over the brightest glow');
+    // The generated picture goes grey too.
+    assert.match(UI.coverArt({ id: 'AAAAAAAAAAAA', themeGrayscale: true }), /--c1:#([0-9a-f]{2})\1\1;/);
+    // The slider: grey at the left, then the wheel; untouched, Canopy green.
+    assert.equal(UI.sliderOf(null), UI.SLIDER_GREY + 161);
+    assert.equal(UI.keyOfSlider(0), 'grey');
+    assert.equal(UI.keyOfSlider(UI.SLIDER_GREY - 1), 'grey');
+    assert.equal(UI.keyOfSlider(UI.SLIDER_GREY), 0);
+    assert.equal(UI.keyOfSlider(UI.SLIDER_MAX), 359);
+    for (const key of ['grey', 0, 161, 359]) assert.equal(UI.keyOfSlider(UI.sliderOf(key)), key);
+  });
+
+  await t.test('the editor offers "Match photo" only once there\'s a photo whose colour is known', () => {
+    const base = { id: 'AAAAAAAAAAAA', title: 'T', startsAt: '2030-01-01T20:00:00.000Z', timeZone: 'UTC', guestListVisibility: 'everyone' };
+    assert.match(UI.editorForm({ event: { ...base, coverHue: 200, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match">/);
+    assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: true } }), /id="themeMatch" data-action="theme-match">/);
+    assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match" hidden>/);
+    assert.match(UI.editorForm({ event: { ...base, themeGrayscale: true } }), /id="themeHue"[^>]*value="15"[^>]*aria-valuetext="No colour"/);
+  });
+
+  await t.test('Attending: friends first, going before maybe, newest first, and +N for everyone else', () => {
+    const person = (n) => ({ id: 'p' + n, firstName: 'P' + n, lastName: 'X', shortName: 'P' + n, photoUrl: null });
+    // Answers oldest first, as the API lists them: 1..40 going, 41..60 maybe.
+    const guests = [];
+    for (let n = 1; n <= 60; n++) guests.push({ person: person(n), status: n <= 40 ? 'going' : 'maybe', guests: 0 });
+    const e = {
+      counts: { going: 82, maybe: 64, notGoing: 3, invited: null, waitlisted: 0, guests: { going: 5, maybe: 0, waitlisted: 0 } },
+      friendsGoing: { count: 1, people: [person(7)] }
+    };
+    const g = { guestsVisible: true, guests, nextCursor: 'more' };
+    assert.deepEqual(UI.attendPeople(e, g).slice(0, 3).map((p) => p.id), ['p7', 'p40', 'p39']);
+    assert.equal(UI.attendPeople(e, g)[40].id, 'p60', 'maybe after going');
+    const row = UI.attendRow(e, g, 6);
+    assert.equal((row.match(/<li title=/g) || []).length, 5, 'five faces and the +N in six places');
+    assert.ok(row.includes('<span>+141</span>'), 'everyone else going or maybe, people not guests: 146 - 5');
+    assert.equal(UI.attendSummary(e), '82 Going · 64 Maybe · +5 guests');
+    assert.equal(UI.attendSummary({ counts: { ...e.counts, waitlisted: 3 } }), '82 Going · 64 Maybe · 3 Waitlist · +5 guests');
+    // Few enough to fit: everyone, no +N.
+    const few = UI.attendRow({ counts: { going: 2, maybe: 1 } }, { guests: guests.slice(0, 2).concat(guests.slice(45, 46)) }, 5);
+    assert.equal((few.match(/<li title=/g) || []).length, 3);
+    assert.ok(!few.includes('more-circle'));
+    // Nobody yet: no row at all.
+    assert.equal(UI.attendRow({ counts: { going: 0, maybe: 0 } }, { guests: [] }, 5), '');
+  });
+
+  await t.test('counts are people, plus the guests they bring', () => {
+    const counts = { going: 4, maybe: 1, notGoing: 0, invited: 2, waitlisted: 1, guests: { going: 2, maybe: 1, waitlisted: 0 } };
+    assert.equal(UI.countsLine({ counts }, false), '4 going +2 guests · 1 maybe +1 guest · 1 on the waitlist');
+    assert.equal(UI.countsLine({ counts }, true), '4 going +2 guests · 1 maybe +1 guest · 1 on the waitlist · 2 invited');
+  });
+
+  await t.test('wall entries: names escaped and in bold, unknown types left out', () => {
+    const person = { id: 'p', firstName: '<i>Ana', lastName: 'L', shortName: 'A', photoUrl: null };
+    const entry = { id: '1', type: 'going', createdAt: new Date().toISOString(), person, text: null, details: null, canDelete: false };
+    const html = UI.wallEntry(entry, { timeZone: 'UTC' }, {});
+    assert.ok(html.includes('<strong>&lt;i&gt;Ana L</strong> is going.'), html);
+    assert.ok(!html.includes('<i>'));
+    assert.equal(UI.wallEntry({ ...entry, type: 'something_new' }, { timeZone: 'UTC' }, {}), '');
+    const place = UI.wallEntry({ ...entry, type: 'place_changed', details: { locationName: null, locationAddress: null } }, { timeZone: 'UTC' }, {});
+    assert.ok(place.includes('took the place off.'));
+    assert.equal(UI.ago(new Date(Date.now() - 5 * 60e3).toISOString(), 'UTC'), '5m');
+    assert.equal(UI.ago(new Date(Date.now() - 3 * 3600e3).toISOString(), 'UTC'), '3h');
+    assert.equal(UI.ago('2030-01-02T12:00:00.000Z', 'UTC', Date.parse('2030-01-09T12:00:00.000Z')), 'Jan 2');
+  });
+
+  await t.test('someone removed never sees a raw copy key, whatever the event\'s state', () => {
+    const e = { id: 'AAAAAAAAAAAA', guestsAllowed: 0, capacity: null, viewer: { role: null, canEdit: false, rsvp: { status: 'removed', guests: 0, guestsOverLimit: false } } };
+    for (const phase of ['upcoming', 'cancelled', 'over']) {
+      const html = UI.rsvpSection(e, phase, {});
+      assert.ok(html.includes('You&#39;re not on the list for this event.'), phase);
+      assert.ok(!/(status|event|wall)\.[a-zA-Z]/.test(html), phase);
+    }
+  });
+
+  await t.test('a lookup shows a name and a photo, and nothing else of theirs', () => {
+    const p = { id: 'x', firstName: 'Ana', lastName: 'Lima', shortName: 'Ana L', photoUrl: 'https://a/photo/x', phone: '+14155550000', instagram: 'ana.insta' };
+    const html = UI.lookupResult(p, {});
+    assert.ok(html.includes('Ana Lima') && html.includes('https://a/photo/x') && html.includes('data-action="invite-found"'));
+    assert.ok(!html.includes('4155550000') && !html.includes('ana.insta'));
+    assert.ok(UI.lookupResult(p, { x: 'removed' }).includes('class="tag off">Removed<'));
+  });
+
+  await t.test('lookup is for verified hosts; anyone else is told how', () => {
+    const event = { id: 'AAAAAAAAAAAA', title: 'T' };
+    const quick = UI.invitePage({ event, me: { emailVerified: false }, links: { verify: 'https://a/profile?verify=1' }, friends: [], onList: {}, phase: 'upcoming' });
+    assert.ok(quick.includes('href="https://a/profile?verify=1"') && !quick.includes('lookupForm'));
+    const verified = UI.invitePage({ event, me: { emailVerified: true }, friends: [], onList: {}, phase: 'upcoming' });
+    assert.ok(verified.includes('id="lookupForm"'));
+    const over = UI.invitePage({ event, me: { emailVerified: true }, friends: [], onList: {}, phase: 'over' });
+    assert.ok(!over.includes('lookupForm'));
+  });
+});
+
+test('pages: the features, as everyone who might look', async (t) => {
+  const sharp = require('sharp');
+  const server = await startServer();
+  t.after(() => server.stop());
+  const P = server.people;
+  const [ana, ben, cy, dee, eve, fay, una] = ['ana', 'ben', 'cy', 'dee', 'eve', 'fay', 'una'].map((n) => client(server, n));
+  const anon = client(server, null);
+  const ADDRESS = '1 Market St';
+
+  // Fay has opened events with a confirmed email, so she can co-host.
+  await fay.get('/api/v1/me');
+  // Friends: ana hosted a picnic ben, cy, dee and fay went to.
+  const before = await makeEvent(ana, { title: 'Picnic before' });
+  for (const who of [ben, cy, dee, fay]) await who.put(`/api/v1/events/${before.id}/rsvp`, { status: 'going' });
+  server.setTimes(before.id, { startedAgoMs: 9 * 86400e3, overInMs: -8 * 86400e3 });
+
+  // The party: room for 2, up to 2 guests each, a cover, fay co-hosting.
+  // Ben goes with a guest (full), cy is waitlisted, una says maybe, and
+  // dee was invited and then removed.
+  const party = await makeEvent(ana, { title: 'Garden party', capacity: 2, guestsAllowed: 2 });
+  const jpeg = await sharp({ create: { width: 1200, height: 675, channels: 3, background: '#0A3800' } }).jpeg().toBuffer();
+  const up = await ana.upload('PUT', `/api/v1/events/${party.id}/cover`, jpeg, { type: 'image/jpeg', filename: 'cover.jpg' });
+  assert.equal(up.status, 200, up.text);
+  const cover = up.data.event.coverImageUrl;
+  assert.equal((await ana.post(`/api/v1/events/${party.id}/cohosts`, { personId: P.fay.id })).status, 200);
+  await ana.post(`/api/v1/events/${party.id}/invites`, { personIds: [P.dee.id] });
+  await ben.put(`/api/v1/events/${party.id}/rsvp`, { status: 'going', guests: 1 });
+  assert.equal((await cy.put(`/api/v1/events/${party.id}/rsvp`, { status: 'going' })).data.waitlisted, true);
+  await una.put(`/api/v1/events/${party.id}/rsvp`, { status: 'maybe' });
+  assert.equal((await ana.put(`/api/v1/events/${party.id}/removed/${P.dee.id}`)).status, 200);
+  assert.equal((await ben.post(`/api/v1/events/${party.id}/wall`, { text: 'See you there! <b>bold</b>' })).status, 201);
+  await ana.patch(`/api/v1/events/${party.id}`, { locationName: 'The garden' });
+
+  await t.test('signed out: the cover as the hero and in the preview, the spots, no wall', async () => {
+    const r = await page(server, anon, `/e/${party.id}`);
+    const details = section(r.body, 'details');
+    assert.ok(details.includes(`<img class="cover" src="${cover}" alt="">`), details);
+    assert.equal(meta(r.text, 'og:image'), cover);
+    assert.equal(meta(r.text, 'twitter:image'), cover);
+    assert.equal(meta(r.text, 'twitter:card'), 'summary_large_image');
+    assert.ok(section(r.body, 'guests').includes('1 Going · 1 Maybe · 1 Waitlist · +1 guest'), section(r.body, 'guests'));
+    assert.ok(details.includes('Full. New answers join the waitlist.'));
+    assert.ok(details.includes('Hosted by Ana Lima and Fay Tran'));
+    assert.equal(section(r.body, 'wall'), null);
+    assert.ok(!r.body.includes('data-action="remove-guest"') && !r.body.includes('data-action="guests"'));
+    assert.equal(pageData(r.text).wall, null);
+  });
+
+  await t.test('without a cover: the same hero with a generated picture, and no image in the preview', async () => {
+    const plain = await makeEvent(ana, { title: 'No picture' });
+    const r = await page(server, anon, `/e/${plain.id}`);
+    assert.equal(meta(r.text, 'og:image'), null);
+    assert.equal(meta(r.text, 'twitter:card'), 'summary');
+    const details = section(r.body, 'details');
+    assert.ok(!details.includes('<img class="cover"'));
+    assert.match(details, /<div class="hero"><span class="cover-art" style="[^"]+" aria-hidden="true"><\/span><div class="tags"><span class="tag rel"[^>]*>[^<]+<\/span><\/div><\/div>/);
+    // The same event always gets the same picture, and the picture has
+    // no words in it.
+    assert.equal(UI.coverArt({ id: plain.id }), UI.coverArt({ id: plain.id }));
+    assert.notEqual(UI.coverArt({ id: plain.id }), UI.coverArt({ id: 'BBBBBBBBBBBB' }));
+  });
+
+  await t.test('unverified, maybe: the guests stepper, and the wall with a box to post in', async () => {
+    const html = (await page(server, una, `/e/${party.id}`)).body;
+    assert.ok(html.includes('id="verifyBanner"'));
+    const rsvp = section(html, 'rsvp');
+    assert.ok(rsvp.includes('data-status="maybe" aria-pressed="true"'));
+    assert.ok(rsvp.includes('data-action="guests" data-delta="1"') && rsvp.includes('<output id="guestCount" aria-live="polite">0</output>'), rsvp);
+    assert.ok(rsvp.includes('You can bring up to 2.'));
+    const wall = section(html, 'wall');
+    assert.ok(wall.includes('id="wallForm"'));
+    assert.ok(wall.includes('See you there! &lt;b&gt;bold&lt;/b&gt;'), 'posts are escaped');
+    assert.ok(!wall.includes('data-action="delete-entry"'), 'nothing of hers to delete');
+  });
+
+  await t.test('a guest going with a plus-one: their count, the waitlist group, their own post to delete', async () => {
+    const r = await page(server, ben, `/e/${party.id}`);
+    const rsvp = section(r.body, 'rsvp');
+    assert.ok(rsvp.includes('data-status="going" aria-pressed="true"'));
+    assert.ok(rsvp.includes('<output id="guestCount" aria-live="polite">1</output>'));
+    assert.ok(!rsvp.includes('It&#39;s full.'), 'already going');
+    const guests = section(r.body, 'guests');
+    assert.ok(guests.includes('Going · 1 +1 guest') && guests.includes('Ben Okafor'), guests);
+    assert.match(guests, /Ben Okafor<\/div><div class="sub">\+1 guest</);
+    assert.ok(guests.includes('Waitlist · 1') && guests.includes('Cy Park'));
+    assert.ok(!guests.includes('Dee Ruiz'), 'the removed are only for hosts');
+    assert.ok(!guests.includes('data-action="remove-guest"') && !guests.includes('removedGroup'));
+    const wall = section(r.body, 'wall');
+    assert.ok(wall.includes('<strong>Ben Okafor</strong> is going.'), wall);
+    assert.ok(wall.includes('<strong>Ana Lima</strong> changed the place to <strong>The garden</strong>.'));
+    assert.ok(wall.includes('<strong>Fay Tran</strong> is co-hosting.'));
+    assert.equal((wall.match(/data-action="delete-entry"/g) || []).length, 1, 'only his own post');
+    const d = pageData(r.text);
+    assert.deepEqual(d.wall, (await ben.get(`/api/v1/events/${party.id}/wall?limit=20`)).data);
+    assert.equal(d.removed, null);
+    // How many are invited is the hosts' business: null, and not drawn.
+    assert.equal(d.event.counts.invited, null);
+    assert.ok(!section(r.body, 'details').includes('invited'));
+  });
+
+  await t.test('waitlisted: their place, and no "it\'s full" warning; someone new gets the warning', async () => {
+    const rsvp = section((await page(server, cy, `/e/${party.id}`)).body, 'rsvp');
+    assert.ok(rsvp.includes('You&#39;re on the waitlist.'));
+    assert.ok(rsvp.includes('data-status="going" aria-pressed="true"'));
+    assert.ok(!rsvp.includes('It&#39;s full.'));
+    const fresh = section((await page(server, eve, `/e/${party.id}`)).body, 'rsvp');
+    assert.ok(fresh.includes('It&#39;s full. If you say going, you&#39;ll join the waitlist'), fresh);
+  });
+
+  await t.test('removed: a calm line, and nothing about who\'s coming', async () => {
+    const r = await page(server, dee, `/e/${party.id}`);
+    assert.equal(r.status, 200);
+    const rsvp = section(r.body, 'rsvp');
+    assert.ok(rsvp.includes('You&#39;re not on the list for this event.'), rsvp);
+    assert.ok(!r.body.includes('status.removed') && !/>\s*(status|event|wall)\.[a-zA-Z]/.test(r.body), 'no raw copy keys');
+    assert.ok(!r.body.includes('data-action="answer"') && !r.body.includes('Take back my answer'));
+    for (const id of ['guests', 'wall', 'friends-going', 'host']) assert.equal(section(r.body, id), null, id);
+    assert.ok(!r.body.includes(ADDRESS), 'no address');
+    for (const name of ['Ben Okafor', 'Cy Park', 'Una Quick']) assert.ok(!r.body.includes(name), name);
+    const d = pageData(r.text);
+    assert.equal(d.event.viewer.rsvp.status, 'removed');
+    assert.equal(d.guests, null);
+    assert.equal(d.wall, null);
+  });
+
+  await t.test('a co-host: running it, removing and undoing, stepping down, but not cancelling or relinking', async () => {
+    const r = await page(server, fay, `/e/${party.id}`);
+    const host = section(r.body, 'host');
+    assert.ok(host.includes('You&#39;re co-hosting'));
+    assert.ok(host.includes(`href="/e/${party.id}/invite"`) && host.includes(`href="/e/${party.id}/edit"`));
+    assert.ok(!host.includes('data-action="cancel"') && !host.includes('data-action="new-link"'));
+    assert.ok(host.includes('data-action="step-down"') && !host.includes('data-action="remove-cohost"'));
+    assert.deepEqual([...host.matchAll(/role="menuitem"[^>]*data-action="([^"]+)"/g)].map((m) => m[1]), ["step-down"], "a co-host's menu: step down, nothing creator-only");
+    assert.ok(!host.includes("delete-event"));
+    assert.equal(section(r.body, 'rsvp'), null);
+    const guests = section(r.body, 'guests');
+    assert.ok(guests.includes(`data-action="remove-guest" data-person="${P.ben.id}" data-name="Ben Okafor"`), guests);
+    assert.match(guests, /id="removedGroup"[\s\S]*Removed · 1[\s\S]*Dee Ruiz[\s\S]*data-action="undo-remove"/);
+    const wall = section(r.body, 'wall');
+    assert.equal((wall.match(/data-action="delete-entry"/g) || []).length, (wall.match(/class="wall-entry/g) || []).length, 'hosts delete anything');
+    assert.deepEqual(pageData(r.text).removed, (await fay.get(`/api/v1/events/${party.id}/guests?status=removed&limit=50`)).data);
+    assert.equal((await page(server, fay, `/e/${party.id}/edit`)).status, 200);
+    const pick = await page(server, fay, `/e/${party.id}/cohosts`);
+    assert.equal(pick.status, 403);
+    assert.ok(pick.body.includes('Only the person who made this event can add co-hosts.'));
+  });
+
+  await t.test('the creator: co-hosts, a new link, cancelling, and the removed', async () => {
+    const r = await page(server, ana, `/e/${party.id}`);
+    const host = section(r.body, 'host');
+    assert.ok(host.includes('You&#39;re hosting'));
+    assert.ok(host.includes('data-action="new-link"') && host.includes('data-action="cancel"'));
+    assert.ok(!host.includes('data-action="step-down"'));
+    // Share and Invite, then Edit with the ⋯ menu: co-hosts, new link,
+    // cancel, and delete last, in red.
+    assert.match(host, /data-action="share"[^>]*>Share link<\/button><a class="button secondary" href="\/e\/[^"]+\/invite">Invite<\/a>/);
+    assert.match(host, /<div class="edit-row"><a class="button secondary" href="[^"]+\/edit">Edit<\/a>/);
+    assert.match(host, /id="hostMenuBtn" data-action="host-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="hostMenu"/);
+    const items = [...host.matchAll(/role="menuitem"[^>]*data-action="([^"]+)">([^<]+)</g)].map((m) => [m[1], m[2]]);
+    assert.deepEqual(items, [['cohosts', 'Co-hosts…'], ['new-link', 'Make a new link…'], ['cancel', 'Cancel event'], ['delete-event', 'Delete event…']]);
+    assert.match(host, /class="menu-item danger" data-action="delete-event"/);
+    assert.ok(!host.includes('id="cohosts"'), 'the co-hosts open from the menu');
+    // Opened: Fay, with Remove, and Add co-host.
+    const opened = UI.hostSection(pageData(r.text).event, 'upcoming', { showCohosts: true });
+    assert.match(opened, /Co-hosts · 1[\s\S]*Fay Tran[\s\S]*data-action="remove-cohost" data-person="[^"]+" data-name="Fay Tran"/);
+    assert.ok(opened.includes(`href="/e/${party.id}/cohosts">Add co-host</a>`));
+    assert.ok(section(r.body, 'guests').includes('Dee Ruiz'));
+    // A new link: the page's data is the event under it, and the old one
+    // is gone.
+    const relinked = await makeEvent(ana, { title: 'Relinked' });
+    const moved = (await ana.post(`/api/v1/events/${relinked.id}/new-link`)).data.event;
+    assert.equal((await page(server, ana, `/e/${relinked.id}`)).status, 404);
+    assert.equal(pageData((await page(server, ana, `/e/${moved.id}`)).text).event.url, `${server.base}/e/${moved.id}`);
+    // The new link's box, as the page draws it after making one.
+    const drawn = UI.eventPage({ me: { id: P.ana.id }, event: moved, guests: null, wall: null, newLink: true }, {});
+    assert.ok(drawn.includes('id="newLink"') && drawn.includes(`value="${moved.url}"`) && drawn.includes('data-action="copy"'));
+  });
+
+  await t.test('adding co-hosts: the creator\'s friends, those hosting marked', async () => {
+    const r = await page(server, ana, `/e/${party.id}/cohosts`);
+    assert.equal(r.status, 200);
+    const list = section(r.body, 'addCohosts');
+    assert.match(list, /Ben Okafor[\s\S]*?data-action="add-cohost" data-person="[^"]+" data-name="Ben Okafor"/);
+    assert.match(list, /Fay Tran[\s\S]*?class="tag off">Co-hosting</);
+    assert.equal((await page(server, ben, `/e/${party.id}/cohosts`)).status, 403);
+    assert.equal((await page(server, anon, `/e/${party.id}/cohosts`)).status, 302);
+    assert.ok((await page(server, ana, `/e/${before.id}/cohosts`)).body.includes('Co-hosts can&#39;t be added'));
+  });
+
+  await t.test('stepping down leaves a co-host a guest, and their page a guest\'s', async () => {
+    const e = await makeEvent(ana, { title: 'Brief co-host' });
+    await ana.post(`/api/v1/events/${e.id}/cohosts`, { personId: P.fay.id });
+    assert.ok(section((await page(server, fay, `/e/${e.id}`)).body, 'host'));
+    await fay.del(`/api/v1/events/${e.id}/cohosts/${P.fay.id}`);
+    const html = (await page(server, fay, `/e/${e.id}`)).body;
+    assert.equal(section(html, 'host'), null);
+    assert.ok(section(html, 'rsvp').includes('You&#39;re invited. Are you going?'));
+  });
+
+  await t.test('the editor: the cover, plus-ones and capacity', async () => {
+    const edit = await page(server, ana, `/e/${party.id}/edit`);
+    const form = edit.body;
+    assert.ok(form.includes(`id="coverPreview" alt="" src="${cover}"`), 'the cover, previewed');
+    assert.ok(form.includes('>Replace<') && form.includes('id="coverFile"') && !/id="coverRemove"[^>]*hidden/.test(form));
+    assert.ok(form.includes('<option value="2" selected>2</option>'));
+    assert.ok(/id="capacity"[^>]*value="2"/.test(form));
+    const fresh = (await page(server, ana, '/new')).body;
+    assert.ok(fresh.includes('Choose photo') && /id="coverRemove"[^>]*hidden/.test(fresh));
+    assert.ok(fresh.includes('<option value="0" selected>None</option>'));
+    assert.ok(/id="capacity"[^>]*value=""/.test(fresh));
+    // A new event whose cover didn't upload comes back here to say so.
+    assert.equal(pageData((await page(server, ana, `/e/${party.id}/edit?coverError=too_large`)).text).coverError, 'too_large');
+    assert.equal(pageData((await page(server, ana, `/e/${party.id}/edit?coverError=%3Cb%3E`)).text).coverError, null);
+  });
+
+  await t.test('plus-ones over a lowered limit: kept, and said gently', async () => {
+    const e = await makeEvent(ana, { title: 'Dinner', guestsAllowed: 3 });
+    await ben.put(`/api/v1/events/${e.id}/rsvp`, { status: 'going', guests: 2 });
+    await ana.patch(`/api/v1/events/${e.id}`, { guestsAllowed: 1 });
+    const rsvp = section((await page(server, ben, `/e/${e.id}`)).body, 'rsvp');
+    assert.ok(rsvp.includes('The host now allows 1 guests each, and you&#39;re down for 2.'), rsvp);
+    assert.ok(rsvp.includes('<output id="guestCount" aria-live="polite">2</output>'));
+    assert.ok(section((await page(server, ana, `/e/${e.id}`)).body, 'guests').includes('+2 guests · more than now allowed'));
+  });
+
+  await t.test('a wall the host shows only to people who\'ve answered', async () => {
+    const quiet = await makeEvent(ana, { title: 'Quiet one', guestListVisibility: 'responded' });
+    await ana.post(`/api/v1/events/${quiet.id}/invites`, { personIds: [P.eve.id] });
+    const wall = section((await page(server, eve, `/e/${quiet.id}`)).body, 'wall');
+    assert.ok(wall.includes('The host shows the wall to people who&#39;ve answered.'), wall);
+    assert.ok(!wall.includes('wallForm'));
+  });
+
+  await t.test('inviting: lookup by phone or Instagram, with the hosts and the removed marked', async () => {
+    const r = await page(server, ana, `/e/${party.id}/invite`);
+    const lookup = section(r.body, 'lookup');
+    assert.ok(lookup.includes('Invite by phone number or Instagram') && lookup.includes('id="lookupForm"'));
+    const list = section(r.body, 'invite');
+    assert.match(list, /Dee Ruiz[\s\S]*?class="tag off">Removed</);
+    assert.match(list, /Fay Tran[\s\S]*?class="tag off">Co-hosting</);
+    const d = pageData(r.text);
+    assert.equal(d.onList[P.dee.id], 'removed');
+    assert.equal(d.links, null);
+  });
+
+  await t.test('an event\'s colour: its page (signed out too), its editor and its list card; nothing else', async () => {
+    const purple = await makeEvent(ana, { title: 'Purple party', themeHue: 300 });
+    const style = UI.themeStyle(300);
+    for (const who of [anon, ben, ana]) {
+      const html = (await page(server, who, `/e/${purple.id}`)).text;
+      assert.ok(html.includes(`<html lang="en" style="${style}">`), 'the page is turned');
+      assert.ok(!html.includes('<meta name="theme-color" content="#03120c">'), "the browser's bar too");
+    }
+    const green = (await page(server, anon, `/e/${party.id}`)).text;
+    assert.ok(green.includes('<html lang="en">') && green.includes('<meta name="theme-color" content="#03120c">'));
+    const edit = await page(server, ana, `/e/${purple.id}/edit`);
+    assert.ok(edit.text.includes(`<html lang="en" style="${style}">`));
+    assert.match(edit.body, /<input type="range" id="themeHue" min="0" max="389" step="1" value="330"/);
+    assert.match((await page(server, ana, "/new")).body, /id="themeHue"[^>]*value="191"[^>]*aria-valuetext="Canopy green"[\s\S]*id="themeMatch" data-action="theme-match" hidden/);
+    const home = await page(server, ana, '/');
+    assert.ok(home.text.includes('<html lang="en">'), 'home stays green');
+    assert.match(section(home.body, 'list-hosting'), /<a class="event-row card" href="\/e\/[^"]+" style="--card:rgba\(\d+,\d+,\d+,0\.45\)">/);
+    assert.ok((await page(server, ana, `/e/${purple.id}/invite`)).text.includes('<html lang="en">'), 'inviting stays green');
+  });
+
+  await t.test('home: a cover is the list row\'s 3:2 thumbnail; no cover, the generated one', async () => {
+    const hosting = section((await page(server, ana, '/')).body, 'list-hosting');
+    assert.ok(hosting.includes(`<span class="thumb"><img class="cover" src="${cover}" alt="" loading="lazy">`), hosting);
+    assert.match(hosting, /<span class="thumb"><span class="cover-art" style="--c0:#[0-9a-f]{6};--c1:#[0-9a-f]{6};/);
+    assert.ok(section((await page(server, fay, '/')).body, 'list-hosting').includes('Garden party'));
+  });
 });

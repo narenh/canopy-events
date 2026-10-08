@@ -24,7 +24,7 @@ test('answers, invitations and the guest list', async (t) => {
     assert.equal(r.data.event.viewer.rsvp.guests, 0);
     assert.equal(r.data.event.counts.going, 1);
     r = await rsvp(ben, e.id, 'maybe');
-    assert.deepEqual(r.data.event.counts, counts({ maybe: 1 }));
+    assert.deepEqual(r.data.event.counts, counts({ maybe: 1, invited: null }), 'how many are invited is for hosts');
     r = await rsvp(ben, e.id, 'not_going');
     assert.equal(r.data.event.counts.notGoing, 1);
     // Unverified people answer too.
@@ -149,7 +149,16 @@ test('answers, invitations and the guest list', async (t) => {
     const asEve = await eve.get(`/api/v1/events/${e.id}/guests`);
     assert.equal(asEve.data.guestsVisible, true);
     assert.deepEqual(guestIds(asEve), [P.ben.id, P.cy.id, P.dee.id], 'answers in order, no one only invited');
-    assert.deepEqual(asEve.data.counts, counts({ going: 1, maybe: 1, notGoing: 1, invited: 1 }));
+    // How many are invited (and haven't answered) is the hosts' alone, like
+    // who: null for a guest, an invitee, a stranger or someone signed out.
+    assert.deepEqual(asEve.data.counts, counts({ going: 1, maybe: 1, notGoing: 1, invited: null }));
+    assert.deepEqual((await ana.get(`/api/v1/events/${e.id}/guests`)).data.counts, counts({ going: 1, maybe: 1, notGoing: 1, invited: 1 }));
+    assert.equal((await ana.get(`/api/v1/events/${e.id}`)).data.event.counts.invited, 1);
+    for (const who of [ben, eve, fay, anon]) {
+      assert.equal((await who.get(`/api/v1/events/${e.id}`)).data.event.counts.invited, null, who.person ? who.person.name : 'signed out');
+    }
+    assert.equal((await eve.get('/api/v1/me/events/invitations')).data.events.find((x) => x.id === e.id).counts.invited, null);
+    assert.equal((await ana.get('/api/v1/me/events/hosting')).data.events.find((x) => x.id === e.id).counts.invited, 1);
     // Someone with no connection to it at all, too.
     assert.equal((await fay.get(`/api/v1/events/${e.id}/guests`)).data.guests.length, 3);
     // Hosts see who's invited as well.
@@ -173,7 +182,7 @@ test('answers, invitations and the guest list', async (t) => {
 
     const before = await fay.get(`/api/v1/events/${e.id}/guests`);
     assert.deepEqual(before.data, {
-      guestsVisible: false, guests: [], counts: counts({ going: 1, invited: 1 }), nextCursor: null
+      guestsVisible: false, guests: [], counts: counts({ going: 1, invited: null }), nextCursor: null
     });
     assert.equal((await fay.get(`/api/v1/events/${e.id}`)).data.event.viewer.canSeeGuestList, false);
     // An invitation alone isn't an answer.
