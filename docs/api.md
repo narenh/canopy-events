@@ -283,6 +283,44 @@ anyone else. The list is in the order people got their status.
 `friendsGoing` on an event follows the same rule: the count always, the
 names (up to 12) only when you can see the guest list's names.
 
+## The activity wall
+
+`GET /api/v1/events/{id}/wall` is the event's wall, newest first, a page
+at a time. It has two kinds of entry:
+
+- **posts**: `type: "post"`, with `text` and the author in `person`;
+- **the server's own entries**, when something happens. They're typed,
+  not written out, so the app words them (and can translate them):
+
+| `type` | Say something like | `person` | `details` |
+|---|---|---|---|
+| `going` | "Ana is going" | Ana | null |
+| `off_waitlist` | "Ana got a spot" | Ana | null |
+| `time_changed` | "Ana moved it to Sat 8pm" | the host | new `startsAt`, `endsAt`, `timeZone` |
+| `place_changed` | "Ana moved it to The park" | the host | new `locationName`, `locationAddress` |
+| `cancelled` | "Ana cancelled the event" | the host | null |
+| `uncancelled` | "It's back on" | the host | null |
+| `cohost_added` | "Ben is co-hosting" | the new co-host | null |
+
+Show nothing for a type you don't know: more will come. A person has at
+most one `going` (or `off_waitlist`) entry, and it disappears when they
+stop going, so the wall never says someone's coming who isn't.
+
+**Who reads it**: whoever can see the guest list's names
+(`viewer.canSeeGuestList`), because it's full of them. Anyone else signed
+in gets `wallVisible: false` and no entries, like the guest list.
+
+**Who posts** (`POST` with `{"text": "…"}`, `viewer.canPost` and the
+wall's `canPost` say in advance): hosts, and anyone whose answer is
+`going`, `maybe` or `waitlisted`. Invited-and-silent and `not_going` can
+read but not post (403 `answer_first`). Posts are plain text, 1 to 1,000
+characters; it's never HTML, so escape it. A cancelled or finished event
+still takes posts. 5 posts a minute, 100 a day per person.
+
+**Who deletes** (`DELETE /api/v1/events/{id}/wall/{entryId}`): you, your
+own posts; hosts, anything, the server's entries included. `canDelete` on
+each entry says which.
+
 ## Friends and invitations
 
 There are no friend requests. **Two people are friends once they've both
@@ -344,13 +382,15 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |
 | 403 | `creator_only` | hide the control: `viewer.role` is `creator` for the one person who can |
+| 403 | `answer_first` | posting on the wall before answering going or maybe: `viewer.canPost` |
+| 403 | `not_yours` | deleting someone else's post: `canDelete` |
 | 403 | `bad_origin` | a web page's problem; apps never see it |
-| 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `not_found` | the link is wrong, or it's gone |
+| 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_found` | the link is wrong, or it's gone |
 | 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts` | redraw from the event |
 | 413 | `too_large` | the body is over 100 KB |
 | 429 | `rate_limited` | try again later |
@@ -364,6 +404,7 @@ expect:
 | Making events | 20 a day | 60 a day | 1,000 a day |
 | Invitations (each person invited counts one) | 300 a day | 600 a day | 5,000 a day |
 | Invitations in one request | 100 | | |
+| Wall posts | 5 a minute, 100 a day | 20 a minute, 300 a day | 300 a minute, 5,000 a day |
 
 Text fields are capped: title 120 characters (longer is cut), description
 5,000, place name 200, address 500. A request body is at most 100 KB.

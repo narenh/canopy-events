@@ -194,3 +194,43 @@ waitlist, notifications, host moderation and lookup, built on branch
   is false again: there'd be nothing in a Hosting tab. Recording "ever"
   exactly would need its own table. · `hasHosted` in
   lib/store/events.js.
+
+### The activity wall (schema version 3)
+
+- **Who reads it: whoever can see the guest list's names**, by the same
+  rule (`canReadWall` is `canSeeGuestNames`). Anyone else signed in gets
+  `wallVisible: false` and no entries, the same shape as the guest list;
+  signed out is 401. · The wall is full of names ("Ana is going"), so it
+  can't be looser than the list. · lib/rules.js.
+- **Who posts: hosts, and answers of going, maybe or waitlisted.**
+  Invited-and-silent and can't-go read but don't post (403
+  `answer_first`). · Posting is for people who might be there. ·
+  `canPost` in lib/rules.js.
+- Cancelled and finished events still take posts. · "So sorry it's off"
+  and "thanks for coming" are what a wall is for. · Add an
+  `answerRefusal`-style check in routes/wall.js.
+- **Posts are 1 to 1,000 characters, and longer is refused, not cut**
+  (unlike a title). · Cutting someone's message silently loses what they
+  said. · `MAX_POST` in routes/wall.js.
+- Posting limits: 5 a minute and 100 a day per person; 20 a minute and
+  300 a day per address; 300 a minute and 5,000 a day overall. ·
+  Generous for talking, a ceiling for scripts. · routes/wall.js.
+- Authors delete their own **posts** only (not "<you> is going", which
+  goes away when you stop going); hosts, co-hosts included, delete
+  anything. Deleting is a real delete. · Nothing to keep a deleted post
+  for. · routes/wall.js.
+- **The server's entries are typed rows** (`going`, `off_waitlist`,
+  `time_changed`, `place_changed`, `cancelled`, `uncancelled`,
+  `cohost_added`) with structured `details`, written in the same
+  transaction as the change. No English is stored. The `type` column has
+  no CHECK, so a new type is a code change, not a table rebuild. · n/a
+- **One "going" entry per person, kept true**: saying going again
+  replaces it with a fresh one, and withdrawing, changing to maybe or
+  can't go, or becoming a co-host deletes it. · Otherwise the wall says
+  people are coming who aren't. · lib/store/wall.js.
+- Time and place entries carry the new values; only a real change makes
+  one (re-sending the same start time doesn't). Time is startsAt, endsAt
+  or timeZone; place is locationName or locationAddress. Title,
+  description and visibility changes make no entry. · n/a
+- Wall ids are SQLite AUTOINCREMENT integers, as strings in the API. ·
+  An id is never reused, so deleting an old id can't hit a new post. · n/a

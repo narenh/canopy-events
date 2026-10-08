@@ -89,6 +89,7 @@ const apiRouters = [
   require('./routes/events'),
   require('./routes/rsvps'),
   require('./routes/hosts'),
+  require('./routes/wall'),
   require('./routes/me')
 ].map((make) => make(ctx));
 

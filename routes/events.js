@@ -61,7 +61,7 @@ module.exports = function eventsRoutes(ctx) {
     if (fields.status !== undefined && req.role !== 'creator') {
       return fail(res, 403, 'creator_only', 'only the person who made this event can cancel it');
     }
-    const event = store.updateEvent(req.event.id, fields);
+    const { event } = store.editEvent(req.event.id, fields, req.person.id);
     res.json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });
   }));
 

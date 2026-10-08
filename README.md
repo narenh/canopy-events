@@ -121,6 +121,9 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `PATCH /api/v1/events/{id}` | edit it (hosts), cancel or un-cancel it (the creator) |
 | `POST /api/v1/events/{id}/cohosts` | make someone a co-host (the creator; verified people only) |
 | `DELETE /api/v1/events/{id}/cohosts/{personId}` | take a co-host off (the creator), or step down |
+| `GET /api/v1/events/{id}/wall` | the activity wall, newest first (whoever sees the guest list) |
+| `POST /api/v1/events/{id}/wall` | post on it (hosts, going, maybe, waitlisted) |
+| `DELETE /api/v1/events/{id}/wall/{entryId}` | delete a post (its author) or any entry (hosts) |
 | `PUT /api/v1/events/{id}/rsvp` | answer: going, maybe, not_going |
 | `DELETE /api/v1/events/{id}/rsvp` | take the answer back |
 | `GET /api/v1/events/{id}/guests` | the guest list, by the visibility rule |
@@ -179,6 +182,7 @@ restart forgives everyone. The address is Cloudflare's
 |---|---|---|---|
 | Making events | 20 a day | 60 a day | 1,000 a day |
 | Invitations (one per person invited) | 300 a day | 600 a day | 5,000 a day |
+| Wall posts | 5 a minute, 100 a day | 20 a minute, 300 a day | 300 a minute, 5,000 a day |
 
 On top of that, one invite request takes at most 100 people, and a
 request body at most 100 KB. The numbers live next to the routes they
@@ -272,7 +276,8 @@ Everything is in `DATA_DIR` (`/app/data` in the container):
 
 Its tables are `events`, `hosts` (who hosts each event: the creator and
 any co-hosts), `rsvps` (one row per person per event: invited, or their
-answer) and `verified_people` (who events has seen signed in with a
+answer), `wall` (the activity wall: posts, and the server's typed
+entries) and `verified_people` (who events has seen signed in with a
 proven email, since only they may co-host and the account service doesn't
 say so about anyone but the visitor). There are no names, emails or
 photos: only person ids.

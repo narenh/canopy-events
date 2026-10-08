@@ -81,6 +81,8 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   assert.equal(upgraded.getEvent('AAAAAAAAAAAA').title, 'Kept');
   // Version 2: who's been seen verified.
   upgraded.noteVerification('00000000-0000-4000-8000-000000000001', true);
+  // Version 3: the wall.
+  assert.equal(upgraded.addPost('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000001', 'hi').body, 'hi');
   assert.equal(upgraded.isKnownVerified('00000000-0000-4000-8000-000000000001'), true);
   upgraded.db.close();
   fresh.db.close();

@@ -35,6 +35,8 @@ tags:
     description: Answers (RSVPs), the guest list and invitations.
   - name: Hosts
     description: Co-hosts.
+  - name: Wall
+    description: The activity wall, posts and the server's own entries.
   - name: Me
     description: You, your friends and your events.
   - name: Docs
@@ -396,6 +398,104 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
+  /api/v1/events/{id}/wall:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Wall]
+      operationId: listWall
+      summary: The activity wall
+      description: |
+        Newest first. Readable by anyone who can see the guest list's
+        names (`viewer.canSeeGuestList`), since it's full of them; anyone
+        else signed in gets `wallVisible: false` and no entries. Entries
+        are posts (`type: post`, with `text`) and the server's own, which
+        are typed rather than written out, for the app to word: see
+        `WallEntry`. `canPost` says whether you may post.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of the wall.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wall' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      tags: [Wall]
+      operationId: postToWall
+      summary: Post on the wall
+      description: |
+        Hosts, and anyone whose answer is `going`, `maybe` or
+        `waitlisted` (403 `answer_first` otherwise). Plain text, 1 to
+        1,000 characters after trimming (400 `bad_text`); it's never
+        HTML, so escape it when you show it. Cancelled and finished events
+        still take posts. 5 a minute and 100 a day per person (429
+        `rate_limited`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, minLength: 1, maxLength: 1000 }
+            examples:
+              hello:
+                value: { text: "Can't wait! I'll bring the cake." }
+      responses:
+        '201':
+          description: The new post.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [entry]
+                properties:
+                  entry: { $ref: '#/components/schemas/WallEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/wall/{entryId}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - name: entryId
+        in: path
+        required: true
+        description: A wall entry's `id`.
+        schema: { type: string, pattern: '^[0-9]+$' }
+    delete:
+      tags: [Wall]
+      operationId: deleteWallEntry
+      summary: Delete a post or entry
+      description: |
+        Your own post, or anything on the wall if you're a host (403
+        `not_yours` otherwise; `canDelete` on each entry says in
+        advance). 404 `entry_not_found` for one that isn't there (already
+        deleted, say).
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
   /api/v1/me:
     get:
       tags: [Me]
@@ -565,7 +665,8 @@ components:
         `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`,
         `bad_location_name`, `bad_location_address`, `bad_status`,
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
-        `bad_person_ids`, `bad_person_id`, `bad_cursor`, `bad_limit`.
+        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_cursor`,
+        `bad_limit`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -583,6 +684,8 @@ components:
     Forbidden:
       description: |
         Not allowed: `hosts_only`, `creator_only` (co-hosts can't do this),
+        `answer_first` (posting before saying you're going or maybe),
+        `not_yours` (deleting someone else's post),
         `email_unverified` (with a `verify` link when it's about your own
         email; without one when it's about someone you tried to make a
         co-host), or `bad_origin` (a change made with the cookie from a
@@ -601,7 +704,7 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: "there's no event at that link", reason: event_not_found }
     NotFound:
-      description: '`event_not_found`, `not_invited`, `person_not_found` or `not_cohost`.'
+      description: '`event_not_found`, `not_invited`, `person_not_found`, `not_cohost` or `entry_not_found`.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -808,7 +911,7 @@ components:
       description: You and this event. Null when signed out.
       type: object
       additionalProperties: false
-      required: [role, rsvp, canEdit, canSeeGuestList]
+      required: [role, rsvp, canEdit, canSeeGuestList, canPost]
       properties:
         role:
           type: [string, 'null']
@@ -819,7 +922,8 @@ components:
             - $ref: '#/components/schemas/Rsvp'
             - type: 'null'
         canEdit: { type: boolean }
-        canSeeGuestList: { type: boolean, description: Whether the guest list's names are shown to you. }
+        canSeeGuestList: { type: boolean, description: "Whether the guest list's names are shown to you. The wall follows the same rule." }
+        canPost: { type: boolean, description: 'Whether you may post on the wall: hosts, and answers of going, maybe or waitlisted.' }
 
     FriendsGoing:
       description: |
@@ -902,6 +1006,7 @@ components:
           rsvp: { status: going, guests: 1, guestsOverLimit: false, invited: true, respondedAt: '2026-10-08T17:12:00.000Z' }
           canEdit: false
           canSeeGuestList: true
+          canPost: true
         friendsGoing:
           count: 1
           people:
@@ -1025,6 +1130,78 @@ components:
       properties:
         status: { type: string, enum: [going, maybe, not_going] }
         guests: { type: integer, minimum: 0, maximum: 10, default: 0, description: "Plus-ones, up to the event's guestsAllowed. Ignored for not_going." }
+
+    WallEntry:
+      description: |
+        One thing on the wall. `type` says what, and the app words it:
+
+        | type | means | `person` | `details` |
+        |---|---|---|---|
+        | `post` | a post, in `text` | who wrote it | null |
+        | `going` | they said they're going | who | null |
+        | `off_waitlist` | they got a spot from the waitlist | who | null |
+        | `time_changed` | a host moved it | the host | the new `startsAt`, `endsAt`, `timeZone` |
+        | `place_changed` | a host changed where | the host | the new `locationName`, `locationAddress` |
+        | `cancelled` | a host cancelled it | the host | null |
+        | `uncancelled` | a host took that back | the host | null |
+        | `cohost_added` | they were made a co-host | the new co-host | null |
+
+        Someone has at most one `going` or `off_waitlist` entry, and it's
+        gone once they aren't going. Expect new types later: show nothing
+        for one you don't know.
+      type: object
+      additionalProperties: false
+      required: [id, type, createdAt, person, text, details, canDelete]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [post, going, off_waitlist, time_changed, place_changed, cancelled, uncancelled, cohost_added]
+        createdAt: { type: string, format: date-time }
+        person:
+          oneOf:
+            - $ref: '#/components/schemas/Person'
+            - type: 'null'
+        text: { type: [string, 'null'], description: A post's text; null for every other type. }
+        details:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [startsAt, endsAt, timeZone]
+              properties:
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: [string, 'null'], format: date-time }
+                timeZone: { type: string }
+            - type: object
+              additionalProperties: false
+              required: [locationName, locationAddress]
+              properties:
+                locationName: { type: [string, 'null'] }
+                locationAddress: { type: [string, 'null'] }
+        canDelete: { type: boolean, description: Your own post, or you're a host. }
+      example:
+        id: '42'
+        type: post
+        createdAt: '2026-10-08T17:12:00.000Z'
+        person: { id: 0b7e5a1f-9c2d-4e8b-8f3a-1d2c3b4a5e6f, firstName: Ben, lastName: Okafor, shortName: Ben O, photoUrl: null }
+        text: "Can't wait! I'll bring the cake."
+        details: null
+        canDelete: false
+
+    Wall:
+      type: object
+      additionalProperties: false
+      required: [wallVisible, entries, canPost, nextCursor]
+      properties:
+        wallVisible:
+          type: boolean
+          description: False when you can't see the guest list's names yet; then `entries` is empty.
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/WallEntry' }
+        canPost: { type: boolean }
+        nextCursor: { $ref: '#/components/schemas/NextCursor' }
 
     InviteInput:
       type: object

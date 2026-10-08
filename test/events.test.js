@@ -29,7 +29,7 @@ test('events', async (t) => {
     assert.equal(event.timeZone, 'America/Los_Angeles');
     assert.match(event.startsAt, /Z$/);
     assert.deepEqual(event.hosts.map((h) => [h.person.id, h.role]), [[server.people.ana.id, 'creator']]);
-    assert.deepEqual(event.viewer, { role: 'creator', rsvp: null, canEdit: true, canSeeGuestList: true });
+    assert.deepEqual(event.viewer, { role: 'creator', rsvp: null, canEdit: true, canSeeGuestList: true, canPost: true });
     assert.deepEqual(event.counts, counts());
     assert.equal(event.guestsAllowed, 0);
   });
@@ -67,7 +67,7 @@ test('events', async (t) => {
     const e = (await ben.get(`/api/v1/events/${event.id}`)).data.event;
     assert.equal(e.locationAddress, '1 Market St, San Francisco');
     assert.equal(e.locationAddressHidden, false);
-    assert.deepEqual(e.viewer, { role: null, rsvp: null, canEdit: false, canSeeGuestList: false });
+    assert.deepEqual(e.viewer, { role: null, rsvp: null, canEdit: false, canSeeGuestList: false, canPost: false });
     assert.deepEqual(e.friendsGoing, { count: 0, people: [] });
     // Unverified people see the same.
     assert.equal((await una.get(`/api/v1/events/${event.id}`)).data.event.locationAddress, '1 Market St, San Francisco');
