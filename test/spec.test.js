@@ -30,7 +30,7 @@ test('every /api/v1 route is in openapi.yaml, and every operation in it is a rou
 
 test('every operation is documented properly', () => {
   assert.equal(spec.openapi, '3.1.0');
-  assert.deepEqual(Object.keys(spec.components.securitySchemes).sort(), ['bearerAuth', 'cookieAuth']);
+  assert.deepEqual(Object.keys(spec.components.securitySchemes).sort(), ['bearerAuth', 'canopyCalendar', 'cookieAuth']);
   const ids = new Set();
   for (const { method, path: p, op } of operations) {
     const name = `${method.toUpperCase()} ${p}`;

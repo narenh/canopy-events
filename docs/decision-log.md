@@ -1395,3 +1395,145 @@ Fixes for the security review's events findings (branch `fix/review`).
   public/ui.js (the page tests pin the current `sizes`). Picking a new
   photo in the editor drops the saved cover's `srcset`, or the browser
   would keep showing the old one.
+
+## Calendar feed
+
+Built on `feat/calendar` in both repos, not merged. The account service's
+branch is based on `feat/data-security` (unmerged), so its schema step is
+version 11 and it needs that branch merged first. Events needed no schema
+change.
+
+- **Account-to-site auth: an HMAC signature with a per-site calendar
+  secret, not a bearer token.** `Authorization: Canopy-Calendar t=<unix
+  seconds>, sig=<hex HMAC-SHA256(secret, "canopy-calendar-v1\n<personId>\n<t>")>`,
+  five minutes either way. The secret is made in the account admin's Sites
+  tab when a site is first given a Calendar URL, shown once, and set on the
+  site as `CANOPY_CALENDAR_SECRET`; `canopy.verifyCalendarRequest(req)` in
+  the client file checks it. · The account service can't present the
+  site's own key (it only keeps the hash), so it needs its own secret per
+  site either way. A plain bearer secret would be a few lines simpler, but
+  every request would carry a credential good for every person's calendar
+  forever: a logged header, a proxy, or a mistyped Calendar URL (the admin
+  types it) would leak all of it. A signature leaks one person's calendar
+  on one site for five minutes, for about a dozen more lines. No nonce or
+  replay cache: a replay inside five minutes gets the same answer the
+  account service already has. · To switch to a bearer token: send the
+  secret as `Authorization: Bearer` in lib/calendar.js `authorization`,
+  and compare it in constant time in `verifyCalendarRequest`.
+- **The site calendar secret is stored sealed (CONTACT_ENCRYPTION_KEYS),
+  not hashed.** · It has to be read back to sign with. Sealing keeps the
+  data-security branch's promise that a copy of the database holds no
+  working secret, and it rotates with the other sealed columns
+  (`SEALED_COLUMNS`). A lost key leaves the site out of feeds until the
+  admin makes a new calendar secret. · Derive it from a dedicated env key
+  instead (then no column, but rotating that key breaks every site).
+- **The person's feed secret is stored as its SHA-256 *and* sealed, not
+  only as a hash (refined from the brief).** · Hash-only makes the link
+  show-once: the next time someone opened their profile, "Copy link" would
+  have nothing to copy, and every visit would need a reset. The hash is
+  what a fetch is looked up by; the sealed copy is only for showing it
+  again; a database copy alone gives neither. A lost key replaces the link
+  the next time they open the Calendar section. · Drop the `secret` column
+  and make the profile show the link once (Reset to see a new one).
+- **`GET /api/profile/calendar` makes the link on first use.** · "Made when
+  they first open the calendar section": the page asks on load. A GET with
+  a first-time side effect is harmless here (no cross-site page can read
+  the answer, and making a link exposes nothing). The apps get
+  `GET /me/calendar` and `POST /me/calendar/reset`; the web
+  `/api/profile/calendar` and `/reset`. · Split into a POST to create.
+- **Last good answers are kept in memory, not on disk.** · They're where
+  people will be, with home addresses; on disk they'd be in every snapshot
+  and Coolify backup. The cost is a restart during a site outage. ·
+  Persist `kept` (lib/calendar.js) to a table or file.
+- **A 503 when there are sites to ask and none has ever answered for this
+  person (refined from the brief's "leave that site out").** · With one
+  site (events), "leave it out" after a restart during an events outage
+  would serve an empty calendar, and calendar apps delete what's missing.
+  A 503 with `Retry-After: 300` makes them keep what they had. With two
+  or more sites, a site that's never answered is left out as the brief
+  says, as long as another one answers. · Remove the `unavailable` branch
+  in lib/calendar.js `entriesFor`.
+- **An unverified person's feed only asks sites that allow unverified
+  accounts.** · The same line `/api/session` draws: a site that treats
+  them as signed out shouldn't be putting things in their calendar. Events
+  allows them, so quick sign-ups get their events. · Drop the filter in
+  `entriesFor`.
+- **Times in UTC with Z; no VTIMEZONE.** The site still sends `timeZone`
+  (unused for now). · The brief allows it, and it's the least that can go
+  wrong; calendar apps show the right local time. · Write TZID times and
+  VTIMEZONEs in lib/ics.js from `timeZone`.
+- **No end time → an hour long in the feed.** Events sends `end: null`
+  and the account service writes DTEND = start + 1 h. · With no DTEND the
+  RFC makes a timed event zero-length, which apps draw as an unreadable
+  sliver; an hour is what every calendar app gives a new event. Events'
+  own "over" assumption is 6 h, which would block out a whole evening that
+  the host never said. · `DEFAULT_LENGTH_MS` in lib/ics.js, or have events
+  send its own guess.
+- **DTSTAMP = LAST-MODIFIED = updatedAt; SEQUENCE = seconds since
+  2020-01-01 of updatedAt; no METHOD.** · With no METHOD, the RFC defines
+  DTSTAMP as the last revision, and it makes the text (and so the ETag)
+  identical while nothing changes, so 304s actually happen. SEQUENCE must
+  only grow and fit in 32 bits (until ~2088). · lib/ics.js.
+- **"Cancelled: " in a cancelled entry's title, and `TRANSP:TRANSPARENT`;
+  `TRANSP:OPAQUE` for tentative.** · Google ignores `STATUS:CANCELLED` in
+  subscribed calendars and shows the event as on. · lib/ics.js
+  `eventLines`.
+- **Google Calendar link on the profile** (`calendar.google.com/calendar/r?cid=<webcal>`)
+  next to Add to Calendar and Copy link. · Android has no webcal handler,
+  and Google is most Android users' calendar. · Remove the link in
+  views/profile.html.
+- **Limits: 120 fetches/hour per feed, 1,200/hour per address, 60 unknown
+  links/hour per address, no global ceiling.** · Apple can poll every 5
+  minutes from each device; Google's fetchers share addresses across many
+  users; a global ceiling tripping would freeze everyone's calendar. ·
+  `feedLimits` in the account service's server.js.
+- **Events: invited-only is left out of the calendar.** · Not in the
+  brief's list. An invitation isn't a plan, and the app's Invites tab is
+  where it's answered; showing every invitation as tentative would fill
+  calendars with things people never agreed to. · Add `rsvp === 'invited'`
+  as tentative in lib/rules.js `calendarStatus` (and to the store query).
+- **Events: the window is by start time (`starts_at >= now - 90 days`),
+  and "cancelled kept until 30 days after the start" also by start.** ·
+  The brief's wording; events' `over_at` would only differ for very long
+  events. · lib/store/calendar.js and `CALENDAR_CANCELLED_KEPT_MS`.
+- **Events: the UID is `events.id` (`<id>@events.canopysf.com`), the URL
+  `public_id`.** Checked: `events.id` is set at creation and never
+  updated anywhere (every table and the cover files point at it);
+  "new link" only changes `public_id` (lib/db.js version 6,
+  store.setEventLink). The domain comes from `CANOPY_DOMAIN`, not
+  `PUBLIC_URL`, so a local or changed public URL can't change UIDs. ·
+  routes/calendar.js `entryFor`.
+- **Events: what an entry says.** The title; the place's name and address
+  joined with ", " as LOCATION; a description of their part ("You're
+  hosting.", "You're going (plus 1 guest).", "You said maybe.", "On the
+  waitlist.", "This event was cancelled."), the host's description, and
+  the link (Google doesn't show the URL property). No host names (they'd
+  need the account service, and the brief says no guest names; hosts are
+  people too). `updatedAt` = the latest of the event's `updated_at`, when
+  they were made a host, and their answer's `status_at`/`responded_at`,
+  so maybe → going updates the entry. · routes/calendar.js.
+- **Events: `GET /api/calendar/:personId` is outside `/api/v1`, mounted
+  before the account attach.** · It isn't the apps' API; under `/api/v1`
+  the `Authorization` header would be read as a person's token. It's in
+  openapi.yaml under a "Site to site" tag with its own `canopyCalendar`
+  security scheme, and the spec test now includes it. A person id that
+  isn't a UUID is `400 bad_person_id`; an unknown one is `{entries: []}`.
+  · routes/calendar.js and server.js.
+- **Events' `lib/canopy-account.js` got only the calendar hunk, not the
+  whole data-security client.** · The README says "copy it unchanged",
+  but events' main still talks to the deployed account service, whose
+  lookup is a GET; copying the data-security client (lookup as a POST)
+  would break lookups until that branch deploys. The calendar hunk is
+  byte-for-byte the account service's (checked with a diff). · After
+  both branches merge, copy `client/canopy-account.js` over it again.
+- **Missing `CANOPY_CALENDAR_SECRET` on events is a warning, not a
+  startup failure.** · The calendar is optional; every request is then a
+  401, and the account service serves events' last good answers (or
+  leaves it out). · server.js.
+- **Test-only knobs `CALENDAR_FRESH_MS` and `CALENDAR_TIMEOUT_MS`** (read
+  only with `NODE_ENV=test`) so the account tests can exercise staleness
+  and timeouts in under a second. · server.js.
+- **`ical.js` as the strict parser (dev dependency), plus
+  `test/icsCheck.js`** for what it doesn't enforce (CRLF, 75 octets,
+  escaping, required properties once, UTC). · Swap for another parser in
+  test/icsCheck.js.

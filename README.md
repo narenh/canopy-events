@@ -25,8 +25,9 @@ the link, sign in (or quick-sign-up), and say **going**, **maybe** or
 **What this isn't.** It keeps no accounts of its own. Everyone is a
 Canopy account (`account.canopysf.com`, the `canopy-account-service`
 repo), and events stores only their ids, the same as tickets. There's no
-email or text sent from here, no `.ics`, no tickets or payments, and no
-public discovery. `docs/decisions.md` is the source of truth for what's
+email or text sent from here, no `.ics` of its own (each person's
+calendar feed is the account service's, which asks events for their part:
+see "Calendar"), no tickets or payments, and no public discovery. `docs/decisions.md` is the source of truth for what's
 in and out.
 
 **Where it's up to.** All of v1 (`docs/decisions.md`, "v1 scope") is in
@@ -47,6 +48,8 @@ cover all of it except notifications, which belong to the apps.
   handler that keeps every API error in one shape.
 - `routes/` is the API, one file per subject, each mounted at `/api/v1`:
   `events.js` (making, reading, editing and cancelling events),
+  `calendar.js` (someone's events for their Canopy calendar, asked by
+  the account service, outside `/api/v1`),
   `rsvps.js` (answers, the guest list, invitations), `hosts.js`
   (co-hosts), `wall.js` (the activity wall), `moderation.js` (removing
   guests, new links), `people.js` (finding someone by phone or
@@ -61,7 +64,8 @@ cover all of it except notifications, which belong to the apps.
     the schema, its version and upgrades, and the daily snapshots. The
     queries are in `lib/store/`, one file per subject (`events.js`,
     `rsvps.js`, `hosts.js`, `waitlist.js`, `wall.js`, `notifications.js`,
-    `friends.js`, `people.js`), and `init()` hands them back as one store.
+    `friends.js`, `people.js`, `calendar.js`), and `init()` hands them back
+    as one store.
   - `notify.js` is the one way anyone hears about anything: it writes
     the inbox entry and queues the push in one call, and never tells the
     person who did it. `push.js` sends to their phones; for now its
@@ -252,6 +256,7 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `GET /api/v1/me` | you, with your own details and `emailVerified` |
 | `GET /api/v1/me/friends` | your friends, with events in common |
 | `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/declined`, `/past` | your events |
+| `GET /api/calendar/{personId}` | someone's events for their Canopy calendar: **site to site**, signed by the account service, not for apps (see "Calendar") |
 
 Errors are `{"error": "<a sentence>", "reason": "<snake_case_code>"}` with
 the right status. Lists are cursor-paginated (`?cursor=&limit=`, and
@@ -270,6 +275,66 @@ has must be in `openapi.yaml` and the other way round, and every JSON
 answer in every test is validated against the spec's schema for that
 operation and status. The `Person` schema allows no other fields, so a
 leak fails twice.
+
+## Calendar
+
+Everyone's **Canopy calendar** is one link from the account service
+(`account.canopysf.com/cal/<secret>.ics`, on their Canopy profile and in
+the apps), which their calendar app subscribes to. The account service
+makes it by asking every Canopy site with a calendar for that person's
+entries and merging them; its README ("Calendar feed", and "`GET
+<site>/api/calendar/<personId>`" for the contract) has the whole story.
+Events is the first site. Its part is `GET /api/calendar/<personId>`
+(`routes/calendar.js`), outside `/api/v1`.
+
+**Only the account service can ask.** Its requests are signed:
+`Authorization: Canopy-Calendar t=<unix seconds>, sig=<hex>`, HMAC-SHA256
+with the calendar secret the account admin's Sites tab showed for events,
+set here as `CANOPY_CALENDAR_SECRET`, within five minutes of now.
+`lib/canopy-account.js`'s `verifyCalendarRequest` checks it. Anything else
+is a `401`: no signature, a bad one, someone else's, a stale one, and a
+signed-in person's cookie or token. Without `CANOPY_CALENDAR_SECRET` every
+request is refused, and the log says so at startup: events just isn't in
+anyone's calendar. The secret is what makes this safe, so it's never
+shown or logged; a new one is made in the Sites tab.
+
+**What's in someone's calendar** (`lib/rules.js` `calendarStatus`):
+
+| Their part | In the calendar |
+|---|---|
+| hosting or co-hosting | confirmed ("You're hosting.") |
+| going | confirmed ("You're going.", with how many guests they're bringing) |
+| maybe | tentative ("You said maybe.") |
+| waitlisted | tentative ("On the waitlist.") |
+| any of those, on a cancelled event | cancelled, until 30 days after it was to start |
+| can't go, removed, only invited, invitation taken back | not in it |
+
+From 90 days ago on (by start) and everything coming up. An invitation on
+its own isn't in it: it isn't a plan, and the invitations list is where
+it's answered. A deleted event is simply gone.
+
+**What an entry says**: the title, when (UTC, plus the event's time zone;
+no end time is `null`, which the feed shows as an hour), the place's name
+and its address (everyone in the calendar is signed in and on the event,
+so they see the address on its page too), the event's link, and a
+description: their part in it, the host's description, and the link
+again (Google doesn't show the link otherwise). **Never anyone else**: no
+guest names, not the hosts' names, nobody's contact details. The feed ends
+up on Google's and Apple's servers, and the tests (`test/calendar.test.js`,
+and the leak walker on every answer) hold it to that.
+
+**The UID is the event's own id** (`<events.id>@events.canopysf.com`),
+which never changes, not its link (`public_id`), which a host's "new
+link" replaces: a calendar app takes a new UID as a new event, and would
+show it twice. The entry's link is the current one, so after a new link
+the calendar points at the right page. `updatedAt` is when the event or
+their part in it last changed (an edit, a new link, their answer, a
+plus-one, being made a co-host), which is how a calendar app knows to
+update the entry.
+
+Someone events has never seen is `{"entries": []}`, never a 404. It isn't
+limited: only the account service can ask, and it keeps each answer for
+five minutes.
 
 ## The Origin check
 
@@ -325,7 +390,10 @@ aren't port-specific, so signing in on one signs you in on both.
    (unverified) accounts** for it. Without that switch, quick accounts
    are signed out here and get sent to verify their email instead. Switch
    on **Can find people by phone number or Instagram** too, or lookups
-   answer 403 `lookup_not_allowed`.
+   answer 403 `lookup_not_allowed`. For the calendar feed (optional, see
+   "Calendar"), put `http://localhost:3001` in its **Calendar URL** and
+   Save, and keep the calendar secret it shows for
+   `CANOPY_CALENDAR_SECRET`.
 3. Here:
 
    ```bash
@@ -378,6 +446,11 @@ runs as `NODE_ENV=production`, port 3000, `DATA_DIR=/app/data`.
      tab for a site named `events`, with **Allows quick (unverified)
      accounts** and **Can find people by phone number or Instagram**
      switched on.
+   - `CANOPY_CALENDAR_SECRET`: the calendar secret from the account
+     service's **Sites** tab: put events' address in its **Calendar URL**
+     (`https://events.canopysf.com`, or events' address on Coolify's
+     internal network) and Save, and it's shown once. Without it, events
+     isn't in anyone's Canopy calendar (see "Calendar").
    - `PUBLIC_URL` and `CANOPY_DOMAIN`: leave unset. They default to
      `https://events.canopysf.com` and `canopysf.com`.
    - Leave `PORT` and `DATA_DIR` alone. The Dockerfile sets them.

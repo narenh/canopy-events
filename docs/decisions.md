@@ -149,7 +149,9 @@ details to anyone else:
    their place).
 
 Not in v1: email/SMS notifications, .ics files, ticketing/payments,
-public discovery.
+public discovery. (Since: each person's Canopy calendar feed, which is
+the account service's, with events answering for its part. See the
+README's "Calendar" and the decision log's "Calendar feed".)
 
 ## Technical shape
 

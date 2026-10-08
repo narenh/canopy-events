@@ -47,6 +47,10 @@ tags:
     description: You, your friends and your events.
   - name: Docs
     description: This document.
+  - name: Site to site
+    description: |
+      Not for apps or pages. Asked by the Canopy account service, server
+      to server, signed with events' calendar secret.
 security:
   - bearerAuth: []
   - cookieAuth: []
@@ -1011,8 +1015,63 @@ paths:
         - $ref: '#/components/parameters/Limit'
       responses: *eventListResponses
 
+  /api/calendar/{personId}:
+    get:
+      tags: [Site to site]
+      operationId: calendarEntries
+      summary: Someone's events, for their Canopy calendar feed (site to site, not for apps)
+      description: |
+        **Not for apps.** The Canopy account service asks this, server to
+        server, for each person's calendar feed
+        (`account.canopysf.com/cal/<secret>.ics`), and merges it with
+        every other site's answer. Apps get the feed's link from the
+        account service (`GET /api/native/v1/me/calendar`), never from
+        here. It's outside `/api/v1` and takes neither the cookie nor a
+        bearer token.
+
+        The request is signed: `Authorization: Canopy-Calendar t=<unix
+        seconds>, sig=<hex>`, `sig` being HMAC-SHA256 with events'
+        calendar secret (`CANOPY_CALENDAR_SECRET`) of
+        `canopy-calendar-v1\n<personId>\n<t>`, within five minutes of
+        now. Anything else is a 401.
+
+        The entries: events the person hosts, co-hosts or said going to
+        (`confirmed`); maybe or waitlisted (`tentative`); any of those that
+        was cancelled (`cancelled`, until 30 days after it was to start).
+        Not can't go, removed or only invited. From 90 days ago on, by
+        start. Never anyone's name or contact details. Someone with nothing
+        here (or nobody at all) is `{"entries": []}`.
+      security:
+        - canopyCalendar: []
+      parameters:
+        - $ref: '#/components/parameters/PersonId'
+      responses:
+        '200':
+          description: Their entries, soonest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarEntries' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Not signed by the account service (`unauthorized`), or no calendar secret set here.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: only the account service asks this, signed
+                reason: unauthorized
+
 components:
   securitySchemes:
+    canopyCalendar:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Site to site only: the account service's signature,
+        `Canopy-Calendar t=<unix seconds>, sig=<hex HMAC-SHA256>`, with the
+        calendar secret the account admin's Sites tab showed for events.
+        See `GET /api/calendar/{personId}`.
     bearerAuth:
       type: http
       scheme: bearer
@@ -1148,6 +1207,54 @@ components:
         signIn: { type: string, format: uri, description: 'With `sign_in_required`: where to sign in and come back.' }
         quickSignUp: { type: string, format: uri, description: 'With `sign_in_required`: the quick sign-up (name, email, passkey), for someone new to Canopy.' }
         verify: { type: string, format: uri, description: 'With `email_unverified`: where to prove the email and come back.' }
+
+    CalendarEntries:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/CalendarEntry' }
+      example:
+        entries:
+          - uid: q7Lm2xR9TcWb@events.canopysf.com
+            title: Rooftop dinner
+            start: '2026-10-31T03:00:00.000Z'
+            end: '2026-10-31T06:00:00.000Z'
+            allDay: false
+            timeZone: America/Los_Angeles
+            location: "Ana's place, 1 Market St, San Francisco"
+            url: https://events.canopysf.com/e/4fQ9xKpL2mZa
+            status: tentative
+            description: "You said maybe.\n\nBring a jacket.\n\nhttps://events.canopysf.com/e/4fQ9xKpL2mZa"
+            updatedAt: '2026-10-01T12:00:00.000Z'
+
+    CalendarEntry:
+      type: object
+      additionalProperties: false
+      required: [uid, title, start, end, allDay, timeZone, location, url, status, description, updatedAt]
+      properties:
+        uid:
+          type: string
+          description: '`<the event''s own id>@events.canopysf.com`. The event''s internal id, which never changes, not its link, which "new link" replaces.'
+        title: { type: string }
+        start: { type: string, format: date-time }
+        end: { type: [string, 'null'], format: date-time, description: null when the host gave no end time. }
+        allDay: { type: boolean, const: false, description: Events always have a time. }
+        timeZone: { type: string, description: The event's IANA time zone. }
+        location:
+          type: [string, 'null']
+          description: The place's name and its address, joined with a comma; null with neither.
+        url: { type: string, format: uri, description: 'The event''s current link.' }
+        status: { type: string, enum: [confirmed, tentative, cancelled] }
+        description:
+          type: string
+          description: 'Their part in it ("You''re going.", "On the waitlist."), the host''s description, and the link, separated by blank lines.'
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the event, or their part in it, last changed.
 
     Ok:
       type: object
