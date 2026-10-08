@@ -1104,3 +1104,13 @@ Fixes for the security review's events findings (branch `fix/review`).
 - Assumed (the agent may refine it): the API is `themeHue` plus a
   `themeGrayscale` boolean, with no magic hue values. Greyscale keeps
   the same lightness as every other position, so contrast holds.
+- **(You)** The theme API (`themeHue` + `themeGrayscale`) is fine.
+- **(You)** The guest section is called "Attending". It has a large
+  heading, a "82 Going · 64 Maybe" summary, a "View all" pill, and one
+  row of large round avatars ending in a "+N" circle (from your
+  reference screenshot).
+- Assumed: the avatars don't overlap, and as many fit as the width
+  allows. Order is friends first, then going before maybe, then newest.
+  +N counts people. The grouped list and the host's tools live behind
+  "View all". When the list is hidden, the counts stay and a one-line
+  reason replaces the avatars.
