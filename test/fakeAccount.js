@@ -10,6 +10,16 @@ const express = require('express');
 
 const KEY = 'cnp_test-site-key';
 
+// How long the test servers keep an idle keep-alive connection: the fakes
+// here and in fakeTmdb.js, and the server under test (KEEP_ALIVE_TIMEOUT_MS,
+// harness.js). Longer than any test file. With Node's default, 5 s, a
+// server that's busy or starved of CPU across that deadline (a test file
+// runs this fake in its own process, among many in parallel) while a
+// request waits unread on an idle connection closes the connection under
+// it: the client's fetch fails with ECONNRESET, the server under test
+// answers 503 accounts_unreachable, and whichever test asked fails.
+const KEEP_ALIVE_MS = 10 * 60 * 1000;
+
 function token(name) {
   // A canopy_session value is 43 base64url characters.
   return (`tok_${name}_`.padEnd(43, 'x')).slice(0, 43);
@@ -159,6 +169,7 @@ async function startFakeAccount() {
   });
 
   const listener = await new Promise((resolve) => { const l = app.listen(0, () => resolve(l)); });
+  listener.keepAliveTimeout = KEEP_ALIVE_MS;
   base = `http://127.0.0.1:${listener.address().port}`;
   // The state itself, so a test that sets fake.allowsUnverified or adds to
   // fake.deleted changes what the next answer says.
@@ -169,4 +180,4 @@ async function startFakeAccount() {
   });
 }
 
-module.exports = { startFakeAccount, makePeople, token, KEY };
+module.exports = { startFakeAccount, makePeople, token, KEY, KEEP_ALIVE_MS };

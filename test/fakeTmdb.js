@@ -9,6 +9,7 @@
 
 const express = require('express');
 const sharp = require('sharp');
+const { KEEP_ALIVE_MS } = require('./fakeAccount');
 
 const TOKEN = 'tmdb_test-read-access-token_5f3a9c1e7b2d';
 const LIST_ID = '8100';
@@ -126,6 +127,8 @@ async function startFakeTmdb() {
   });
 
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  // Idle connections kept for the whole test, as fakeAccount.js explains.
+  server.keepAliveTimeout = KEEP_ALIVE_MS;
   const base = `http://127.0.0.1:${server.address().port}`;
   return Object.assign(state, {
     base,
