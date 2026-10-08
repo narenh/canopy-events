@@ -74,27 +74,30 @@ async function startServer(extraEnv = {}) {
   const fake = await startFakeAccount();
   const port = await freePort();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'canopy-events-test-'));
-  const child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: {
-      ...process.env,
-      PORT: String(port),
-      DATA_DIR: dataDir,
-      NODE_ENV: 'test',
-      CANOPY_ACCOUNT_URL: fake.base,
-      CANOPY_ACCOUNT_KEY: fake.key,
-      PUBLIC_URL: '',
-      ...extraEnv
-    },
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
+  const env = {
+    ...process.env,
+    PORT: String(port),
+    DATA_DIR: dataDir,
+    NODE_ENV: 'test',
+    CANOPY_ACCOUNT_URL: fake.base,
+    CANOPY_ACCOUNT_KEY: fake.key,
+    PUBLIC_URL: '',
+    ...extraEnv
+  };
+  let child;
   let output = '';
-  child.stdout.on('data', (c) => { output += c; });
-  child.stderr.on('data', (c) => { output += c; });
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('server did not start:\n' + output)), 10000);
-    child.stdout.on('data', () => { if (output.includes('listening on port')) { clearTimeout(timer); resolve(); } });
-    child.on('exit', (code) => { clearTimeout(timer); reject(new Error(`server exited ${code}:\n${output}`)); });
-  });
+  async function launch() {
+    child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const started = output.length;
+    child.stdout.on('data', (c) => { output += c; });
+    child.stderr.on('data', (c) => { output += c; });
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('server did not start:\n' + output)), 10000);
+      child.stdout.on('data', () => { if (output.slice(started).includes('listening on port')) { clearTimeout(timer); resolve(); } });
+      child.on('exit', (code) => { clearTimeout(timer); reject(new Error(`server exited ${code}:\n${output}`)); });
+    });
+  }
+  await launch();
   let db = null;
   const server = {
     base: `http://localhost:${port}`,
@@ -115,8 +118,19 @@ async function startServer(extraEnv = {}) {
       this.db().prepare('UPDATE events SET starts_at = ?, ends_at = NULL, over_at = ? WHERE id = ?')
         .run(now - startedAgoMs, now + overInMs, eventId);
     },
+    // Stops the server and starts it again on the same DATA_DIR and port,
+    // as a deploy does.
+    async restart() {
+      if (db) { db.close(); db = null; }
+      child.removeAllListeners('exit');
+      const exited = new Promise((resolve) => child.once('exit', resolve));
+      child.kill();
+      await exited;
+      await launch();
+    },
     async stop() {
       if (db) db.close();
+      child.removeAllListeners('exit');
       child.kill();
       await fake.close();
       fs.rmSync(dataDir, { recursive: true, force: true });

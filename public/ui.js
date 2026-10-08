@@ -288,6 +288,64 @@
     return safeUrl(e && e.coverImageUrl);
   }
 
+  // Every size of the cover (the API's coverImages, narrowest first, all
+  // JPEG) as an <img>'s srcset, so the browser downloads the one that
+  // fits: '' when there are none, as for a cover from before sizes until
+  // the server has made them (lib/coverBackfill.js), and then the <img>
+  // has coverImageUrl alone, as before.
+  function coverSrcset(e) {
+    const list = (e && Array.isArray(e.coverImages)) ? e.coverImages : [];
+    const parts = [];
+    for (const c of list) {
+      const url = safeUrl(c && c.url);
+      if (!url || !(c.width > 0)) return '';
+      parts.push(url + ' ' + Math.round(c.width) + 'w');
+    }
+    return parts.join(', ');
+  }
+
+  // How wide each place draws a cover, in CSS px, for `sizes`: [at 700px
+  // and wider (public/events.css), narrower]. Every frame is 3:2.
+  //   hero: the page's column, 680 wide; edge to edge on a phone.
+  //   thumb: the list's thumbnail (.event-row .thumb).
+  //   editor: the preview, inside the form card (20px padding) in the
+  //   column; on a phone, the screen less the page's 16px and the card's.
+  const COVER_DRAWN = {
+    hero: ['680px', '100vw'],
+    thumb: ['168px', '116px'],
+    editor: ['640px', '(100vw - 72px)']
+  };
+
+  // `sizes` for a cover drawn at `place`. The frame is filled
+  // object-fit: cover style, so a photo wider than 3:2 is drawn wider than
+  // its frame (scaled to the frame's height): the width asked for grows
+  // with it, or a panorama would come out soft.
+  function coverSizes(e, place) {
+    const list = (e && e.coverImages) || [];
+    const full = list[list.length - 1];
+    const stretch = full && full.height > 0 ? Math.max(1, (full.width / full.height) / 1.5) : 1;
+    const k = Math.round(stretch * 100) / 100;
+    const [wide, narrow] = COVER_DRAWN[place] || COVER_DRAWN.hero;
+    const scale = (v) => {
+      if (k === 1) return /^\(/.test(v) ? 'calc' + v : v;
+      return /^\(/.test(v) ? 'calc(' + v + ' * ' + k + ')' : Math.round(parseFloat(v) * k) + v.replace(/^[\d.]+/, '');
+    };
+    return '(min-width: 700px) ' + scale(wide) + ', ' + scale(narrow);
+  }
+
+  // An <img> of the cover for `place` (see COVER_DRAWN): src is the full
+  // size (what a browser without srcset, or a cover with no sizes yet,
+  // gets), srcset and sizes when there are sizes. `attrs` is more
+  // attributes, as HTML.
+  function coverImg(e, place, cls, attrs) {
+    const url = coverUrl(e);
+    if (!url) return '';
+    const srcset = coverSrcset(e);
+    return '<img class="' + cls + '"' + (attrs || '') + ' src="' + esc(url) + '"'
+      + (srcset ? ' srcset="' + esc(srcset) + '" sizes="' + esc(coverSizes(e, place)) + '"' : '')
+      + ' alt="" decoding="async">';
+  }
+
   // ---------------- An event's colour ----------------
   //
   // A host can turn an event's page to any hue: the event's `themeHue`, in
@@ -531,10 +589,10 @@
     return '<span class="cover-art' + (cls ? ' ' + cls : '') + '" style="' + esc(style) + '" aria-hidden="true"></span>';
   }
 
-  // The event's picture: its cover, or the generated one.
-  function coverMedia(e, imgAttrs) {
-    const url = coverUrl(e);
-    return url ? '<img class="cover" src="' + esc(url) + '" alt=""' + (imgAttrs || '') + '>' : coverArt(e);
+  // The event's picture at `place` (see COVER_DRAWN): its cover, or the
+  // generated one.
+  function coverMedia(e, place, imgAttrs) {
+    return coverImg(e, place, 'cover', imgAttrs) || coverArt(e);
   }
 
   function isOpen(phase) {
@@ -580,7 +638,7 @@
     let h = '<section class="event-head' + (phase === 'cancelled' ? ' is-cancelled' : '') + (coverUrl(e) ? ' has-cover' : '') + '" id="details" data-section="details">';
     // The 3:2 frame: the picture, its fade, and how soon, low on the left
     // inside the top 16:9 (events.css has the geometry).
-    h += '<div class="hero">' + coverMedia(e) + (tag ? '<div class="tags">' + tag + '</div>' : '') + '</div>';
+    h += '<div class="hero">' + coverMedia(e, 'hero') + (tag ? '<div class="tags">' + tag + '</div>' : '') + '</div>';
     // The title on the fade, then when: the two things a guest opening
     // the link needs at once. The place comes after, in the card.
     h += '<div class="head-text"><h1 class="event-title">' + esc(e.title) + '</h1>'
@@ -1002,7 +1060,7 @@
     const theme = themeColors(themeKeyOf(e));
     const tint = theme ? ' style="--card:rgba(' + theme.card.join(',') + ',0.45)"' : '';
     return '<a class="event-row' + (asCard ? ' card' : '') + (phase === 'cancelled' ? ' is-cancelled' : '') + '" href="/e/' + esc(e.id) + '"' + (asCard ? tint : '') + '>'
-      + '<span class="thumb">' + coverMedia(e, ' loading="lazy"') + '</span>'
+      + '<span class="thumb">' + coverMedia(e, 'thumb', ' loading="lazy"') + '</span>'
       + '<span class="info"><span class="row-when">' + unbroken(whenRow(e, o.viewerZone)) + '</span>'
       + '<span class="title">' + esc(e.title) + '</span>'
       + (e.locationName ? '<span class="sub">' + esc(e.locationName) + '</span>' : '')
@@ -1204,12 +1262,13 @@
   // The cover: a preview (the current one, or a photo just picked), a
   // button to pick one and one to take it off. Nothing is sent until the
   // form is saved (views/editor.html); the server re-encodes what it gets.
-  function coverField(url) {
+  function coverField(e) {
+    const url = coverUrl(e);
     return '<div class="field" id="coverField"><span class="field-label">' + tx('editor.cover') + '</span>'
       + '<div class="cover-pick' + (url ? ' has-cover' : '') + '">'
       // The page's frame: 3:2, with the band under the top 16:9 (where
       // the fade and the title go) dimmed below a guide line.
-      + '<div class="cover-frame"><img class="cover-preview" id="coverPreview" alt=""' + (url ? ' src="' + esc(url) + '"' : '') + '>'
+      + '<div class="cover-frame">' + (coverImg(e, 'editor', 'cover-preview', ' id="coverPreview"') || '<img class="cover-preview" id="coverPreview" alt="" decoding="async">')
       + '<span class="safe-guide" aria-hidden="true"></span></div>'
       + '<p class="field-hint hidden" id="coverNoPreview">' + tx('editor.coverNoPreview') + '</p>'
       + '<div class="cover-buttons">'
@@ -1258,7 +1317,7 @@
     h += '<fieldset><legend>' + tx('editor.what') + '</legend>';
     h += field('title', 'editor.title', '<input type="text" id="title" maxlength="120" required value="' + esc(e.title || '') + '">');
     h += field('description', 'editor.description', '<textarea id="description" maxlength="5000" placeholder="' + tx('editor.descriptionPlaceholder') + '">' + esc(e.description || '') + '</textarea>');
-    h += coverField(coverUrl(e));
+    h += coverField(e);
     h += themeField(e);
     h += '</fieldset>';
 
@@ -1305,7 +1364,7 @@
 
   return {
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, coverField, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
-    fullName, initials, avatar, personRow, coverUrl, coverArt, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
+    fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, friendRows, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED

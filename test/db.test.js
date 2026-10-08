@@ -123,8 +123,15 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   assert.deepEqual([upgraded.getEvent('AAAAAAAAAAAA').coverHue, upgraded.getEvent('AAAAAAAAAAAA').coverGrayscale], [null, false]);
   const hued = upgraded.setCover('AAAAAAAAAAAA', 'CoverKey5678', { hue: 200 });
   assert.deepEqual([hued.coverHue, hued.coverGrayscale], [200, false]);
+  // Version 9: a cover's sizes; one from before has none until the
+  // backfill gives it some.
+  assert.equal(hued.coverSizes, null);
+  assert.deepEqual(upgraded.coversWithoutSizes(), [{ id: 'AAAAAAAAAAAA', coverKey: 'CoverKey5678' }]);
+  assert.equal(upgraded.setCoverSizes('AAAAAAAAAAAA', 'CoverKey5678', [{ width: 400, height: 300 }, { width: 640, height: 480 }]), true);
+  assert.deepEqual(upgraded.getEvent('AAAAAAAAAAAA').coverSizes, [{ width: 400, height: 300 }, { width: 640, height: 480 }]);
+  assert.deepEqual(upgraded.coversWithoutSizes(), []);
   const cleared = upgraded.setCover('AAAAAAAAAAAA', null);
-  assert.deepEqual([cleared.coverHue, cleared.coverGrayscale], [null, false]);
+  assert.deepEqual([cleared.coverHue, cleared.coverGrayscale, cleared.coverSizes], [null, false, null]);
   // And whoever was hosting at the upgrade has hosted, from when
   // they started; nobody else has, until they host.
   assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000001'), true);

@@ -37,7 +37,7 @@ test('notifications', async (t) => {
     assert.equal(n.actor.id, P.ana.id);
     assert.equal(n.read, false);
     assert.equal(n.count, 1);
-    assert.deepEqual(n.event, { id: e.id, url: e.url, title: 'Invite test', startsAt: e.startsAt, timeZone: e.timeZone, status: 'active', coverImageUrl: null, themeHue: null, themeGrayscale: false });
+    assert.deepEqual(n.event, { id: e.id, url: e.url, title: 'Invite test', startsAt: e.startsAt, timeZone: e.timeZone, status: 'active', coverImageUrl: null, coverImages: [], themeHue: null, themeGrayscale: false });
     assert.equal((await about(una, e.id)).length, 1);
     assert.equal((await about(ana, e.id)).length, 0);
     // Inviting again (already on the list) says nothing new.

@@ -112,6 +112,100 @@ test('cover images', async (t) => {
     for (const p of ['/covers/x.jpg', `/covers/${e.id}.jpg`, '/covers/AAAAAAAAAAAA.png']) assert.equal((await fetch(server.base + p)).status, 404, p);
   });
 
+  // Each size the API lists: its URL serves a JPEG of that size, with
+  // no EXIF.
+  const checkSizes = async (event) => {
+    for (const c of event.coverImages) {
+      const r = await fetchCover(c.url);
+      assert.equal(r.status, 200, c.url);
+      assert.equal(r.headers.get('content-type'), 'image/jpeg');
+      const meta = await sharp(Buffer.from(await r.arrayBuffer())).metadata();
+      assert.deepEqual([meta.format, meta.width, meta.height, meta.exif], ['jpeg', c.width, c.height, undefined], c.url);
+    }
+  };
+  const widths = (event) => event.coverImages.map((c) => c.width);
+  const onDisk = (id) => fs.readdirSync(path.join(server.dataDir, 'covers')).filter((f) => f.startsWith(id)).sort();
+
+  await t.test('an upload is stored at 400, 800 and 1200 px wide as well, never wider than the photo', async () => {
+    const e = await makeEvent(ana);
+    // Big, on its side, with EXIF: the full size is 900x1600 upright.
+    const photo = await image('jpeg', { width: 3200, height: 1800 }).withMetadata({ orientation: 6 }).toBuffer();
+    let up = (await put(ana, e.id, photo)).data.event;
+    assert.deepEqual(up.coverImages.map((c) => [c.width, c.height]), [[400, 711], [800, 1422], [900, 1600]]);
+    // The last is the full size, at coverImageUrl; the others are
+    // <key>-<width>.jpg, with the same ?v=.
+    assert.equal(up.coverImages[2].url, up.coverImageUrl);
+    const key = /\/covers\/([0-9A-Za-z]{12})\.jpg\?v=(\d+)$/.exec(up.coverImageUrl);
+    assert.deepEqual(up.coverImages.slice(0, 2).map((c) => c.url), [400, 800].map((w) => `${server.base}/covers/${key[1]}-${w}.jpg?v=${key[2]}`));
+    await checkSizes(up);
+    assert.deepEqual(onDisk(e.id), [`${e.id}-400.jpg`, `${e.id}-800.jpg`, `${e.id}.jpg`]);
+    // Landscape and wide: all four.
+    up = (await put(ana, e.id, await image('jpeg', { width: 4032, height: 3024 }).toBuffer())).data.event;
+    assert.deepEqual(up.coverImages.map((c) => [c.width, c.height]), [[400, 300], [800, 600], [1200, 900], [1600, 1200]]);
+    await checkSizes(up);
+    // Smaller than some of the widths: only those under it, then itself.
+    up = (await put(ana, e.id, await image('png', { width: 600, height: 400 }).toBuffer())).data.event;
+    assert.deepEqual(widths(up), [400, 600]);
+    await checkSizes(up);
+    // The wider copies of the photo before went with it.
+    assert.deepEqual(onDisk(e.id), [`${e.id}-400.jpg`, `${e.id}.jpg`]);
+    // Smaller than all of them: itself alone.
+    up = (await put(ana, e.id, await image('webp', { width: 300, height: 200 }).toBuffer())).data.event;
+    assert.deepEqual(up.coverImages, [{ width: 300, height: 200, url: up.coverImageUrl }]);
+    assert.deepEqual(onDisk(e.id), [`${e.id}.jpg`]);
+    // Exactly a width: itself, once.
+    up = (await put(ana, e.id, await image('jpeg', { width: 800, height: 600 }).toBuffer())).data.event;
+    assert.deepEqual(widths(up), [400, 800]);
+    // Signed out sees the same sizes (link previews, the public page).
+    assert.deepEqual((await anon.get(`/api/v1/events/${e.id}`)).data.event.coverImages, up.coverImages);
+    // And the lists have them.
+    const listed = (await ana.get('/api/v1/me/events/hosting')).data.events.find((x) => x.id === e.id);
+    assert.deepEqual(listed.coverImages, up.coverImages);
+  });
+
+  await t.test('replacing or removing a cover, or deleting the event, takes every size with it', async () => {
+    const e = await makeEvent(ana);
+    const first = (await put(ana, e.id, await image('jpeg', { width: 2000, height: 1500 }).toBuffer())).data.event;
+    assert.deepEqual(widths(first), [400, 800, 1200, 1600]);
+    const second = (await put(ana, e.id, await image('jpeg', { width: 2000, height: 1500 }).toBuffer())).data.event;
+    for (const c of first.coverImages) assert.equal((await fetchCover(c.url)).status, 404, `the old ${c.width}`);
+    await checkSizes(second);
+    const gone = (await ana.del(`/api/v1/events/${e.id}/cover`)).data.event;
+    assert.deepEqual(gone.coverImages, []);
+    for (const c of second.coverImages) assert.equal((await fetchCover(c.url)).status, 404, `the removed ${c.width}`);
+    assert.deepEqual(onDisk(e.id), []);
+    // Deleting the event.
+    const doomed = await makeEvent(ana);
+    await put(ana, doomed.id, await image('jpeg', { width: 2000, height: 1500 }).toBuffer());
+    assert.equal(onDisk(doomed.id).length, 4);
+    assert.equal((await ana.del(`/api/v1/events/${doomed.id}`)).status, 200);
+    assert.deepEqual(onDisk(doomed.id), []);
+  });
+
+  await t.test('only a cover\'s own names answer: junk, other widths and other files are 404', async () => {
+    const e = await makeEvent(ana);
+    const up = (await put(ana, e.id, await image('jpeg', { width: 1000, height: 750 }).toBuffer())).data.event;
+    assert.deepEqual(widths(up), [400, 800, 1000]);
+    const key = /\/covers\/([0-9A-Za-z]{12})\.jpg/.exec(up.coverImageUrl)[1];
+    for (const name of [`${key}-400.jpg`, `${key}-800.jpg`, `${key}.jpg`]) assert.equal((await fetch(`${server.base}/covers/${name}`)).status, 200, name);
+    for (const name of [
+      `${key}-1200.jpg`, // a width it isn't stored at (wider than the photo)
+      `${key}-1000.jpg`, // the full size has one name: <key>.jpg
+      `${key}-1600.jpg`, `${key}-401.jpg`, `${key}-0400.jpg`, `${key}-0.jpg`, `${key}--400.jpg`, `${key}-400-800.jpg`,
+      `${key}-400.png`, `${key}-400.webp`, `${key}-400.jpg.tmp`, `${key}-400.JPG`, `${key}-4e2.jpg`, `${key}-400 .jpg`,
+      `${key}-400.jpg%00.png`, `${key}-9999999.jpg`, `${key.slice(0, 11)}-400.jpg`,
+      `${e.id}-400.jpg`, `${e.id}.jpg`, // the event's id is never a cover's name
+      '..%2Fevents.db', '..%2F..%2Fpackage.json', `${key}-400.jpg%2F..%2F..%2Fevents.db`, '%2E%2E%2Fevents.db', '.jpg', '-400.jpg'
+    ]) {
+      assert.equal((await fetch(`${server.base}/covers/${name}`)).status, 404, name);
+    }
+    // The store refuses a name it wasn't built for, whatever calls it.
+    const coverStore = require('../lib/coverStore');
+    for (const [id, width] of [['../x', null], ['AAAAAAAAAAAA/..', null], ['AAAAAAAAAAAA', 1.5], ['AAAAAAAAAAAA', '400'], ['AAAAAAAAAAAA', -400], ['AAAAAAAAAAAA', 0]]) {
+      assert.throws(() => coverStore.pathFor(id, width), /bad/, `${id} ${width}`);
+    }
+  });
+
   await t.test('an upload says the colour that matches the photo, and never changes the event\'s own', async () => {
     const e = await makeEvent(ana, { themeHue: 300 });
     const red = await sharp({ create: { width: 600, height: 400, channels: 3, background: '#d62828' } }).jpeg().toBuffer();

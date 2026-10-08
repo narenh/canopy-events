@@ -189,6 +189,9 @@ function apiRoutes() {
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`canopy-events listening on port ${PORT}`);
+    // Covers from before there were sizes get theirs, in the background
+    // (lib/coverBackfill.js).
+    require('./lib/coverBackfill').backfillCoverSizes(store).catch((err) => console.error(`[canopy-events] cover sizes: ${err.message}`));
   });
 }
 

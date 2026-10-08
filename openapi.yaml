@@ -563,8 +563,10 @@ paths:
         megapixels, which takes the 12 and 24 megapixel photos iPhones
         save by default; shrink a 48-megapixel one first). The server
         turns it the right way up, shrinks it to fit 1600 px, and stores
-        it as a JPEG **with no EXIF** (no location). The event's
-        `coverImageUrl` changes with every upload, and `coverHue` /
+        it as a JPEG **with no EXIF** (no location), along with narrower
+        copies (`coverImages`: 400, 800 and 1200 px wide, those narrower
+        than the photo). The event's `coverImageUrl` and `coverImages`
+        change with every upload, and `coverHue` /
         `coverGrayscale` say the colour that matches the photo. 30 uploads
         a day per person.
 
@@ -585,7 +587,7 @@ paths:
                 cover: { type: string, format: binary }
       responses:
         '200':
-          description: The event, with its new `coverImageUrl`.
+          description: The event, with its new `coverImageUrl` and `coverImages`.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventEnvelope' }
@@ -603,7 +605,7 @@ paths:
       description: Hosts only. Its URL stops working at once (caches may keep it up to an hour). Fine with no cover.
       responses:
         '200':
-          description: The event, with `coverImageUrl` null.
+          description: The event, with `coverImageUrl` null and `coverImages` empty.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventEnvelope' }
@@ -1355,7 +1357,7 @@ components:
       additionalProperties: false
       required: [id, url, title, description, startsAt, endsAt, timeZone, locationName, locationAddress,
                  locationAddressHidden, guestListVisibility, guestsAllowed, capacity, spotsLeft, coverImageUrl,
-                 themeHue, themeGrayscale, coverHue, coverGrayscale, status, cancelledAt, createdAt, updatedAt,
+                 coverImages, themeHue, themeGrayscale, coverHue, coverGrayscale, status, cancelledAt, createdAt, updatedAt,
                  hosts, counts, viewer]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
@@ -1382,9 +1384,23 @@ components:
           type: [string, 'null']
           format: uri
           description: |
-            The cover image, a JPEG, or null. Public (no sign-in needed),
-            so it works in link previews; it changes with every upload,
-            so cache it by URL.
+            The cover image, a JPEG, at full size (up to 1600 px on its
+            longer side), or null. Public (no sign-in needed), so it works
+            in link previews; it changes with every upload, so cache it by
+            URL. To draw it, pick from `coverImages`.
+        coverImages:
+          type: array
+          items: { $ref: '#/components/schemas/CoverImage' }
+          description: |
+            Every size the cover is stored at, all JPEG, narrowest first;
+            the last is the full size, at `coverImageUrl`. Pick the
+            narrowest whose `width` is at least the width you draw it at
+            in pixels (points × screen scale; for a frame it fills
+            `object-fit: cover` style, its width × max(1, (width ÷ height)
+            ÷ (frame width ÷ frame height))), else the last. Empty with no
+            cover, and for a little while after a deploy for a cover
+            uploaded before sizes existed, while the server makes them:
+            use `coverImageUrl` then.
         themeHue:
           type: [integer, 'null']
           minimum: 0
@@ -1441,6 +1457,11 @@ components:
         capacity: 20
         spotsLeft: 14
         coverImageUrl: https://events.canopysf.com/covers/Qm7Zc2pR9xTa.jpg?v=1759870000000
+        coverImages:
+          - { width: 400, height: 300, url: 'https://events.canopysf.com/covers/Qm7Zc2pR9xTa-400.jpg?v=1759870000000' }
+          - { width: 800, height: 600, url: 'https://events.canopysf.com/covers/Qm7Zc2pR9xTa-800.jpg?v=1759870000000' }
+          - { width: 1200, height: 900, url: 'https://events.canopysf.com/covers/Qm7Zc2pR9xTa-1200.jpg?v=1759870000000' }
+          - { width: 1600, height: 1200, url: 'https://events.canopysf.com/covers/Qm7Zc2pR9xTa.jpg?v=1759870000000' }
         themeHue: null
         themeGrayscale: false
         coverHue: 24
@@ -1749,16 +1770,28 @@ components:
           timeZone: America/Los_Angeles
           status: active
           coverImageUrl: null
+          coverImages: []
           themeHue: 300
           themeGrayscale: false
         details: { status: going }
         count: 4
 
+    CoverImage:
+      description: One size of an event's cover, a JPEG.
+      type: object
+      additionalProperties: false
+      required: [width, height, url]
+      properties:
+        width: { type: integer, minimum: 1, description: In pixels. }
+        height: { type: integer, minimum: 1, description: In pixels. }
+        url: { type: string, format: uri, description: 'Public, like `coverImageUrl`, and changes with every upload.' }
+      example: { width: 800, height: 600, url: 'https://events.canopysf.com/covers/Qm7Zc2pR9xTa-800.jpg?v=1759870000000' }
+
     EventSummary:
       description: An event as a notification mentions it. Open it by `id` for the rest.
       type: object
       additionalProperties: false
-      required: [id, url, title, startsAt, timeZone, status, coverImageUrl, themeHue, themeGrayscale]
+      required: [id, url, title, startsAt, timeZone, status, coverImageUrl, coverImages, themeHue, themeGrayscale]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
         url: { type: string, format: uri }
@@ -1767,6 +1800,10 @@ components:
         timeZone: { type: string }
         status: { type: string, enum: [active, cancelled] }
         coverImageUrl: { type: [string, 'null'], format: uri }
+        coverImages:
+          type: array
+          items: { $ref: '#/components/schemas/CoverImage' }
+          description: Every size of the cover (see Event).
         themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: The event's colour (see Event). }
         themeGrayscale: { type: boolean, description: No colour at all (see Event). }
 

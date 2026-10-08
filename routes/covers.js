@@ -6,8 +6,10 @@
 // a preview without the picture is most of the point lost. What keeps
 // that from giving anything away:
 //
-//   - the URL is /covers/<key>.jpg, where the key is random and changes
-//     with every upload; it's never the event's id (which is its link);
+//   - the URL is /covers/<key>.jpg (the full size) or
+//     /covers/<key>-<width>.jpg (a narrower copy: lib/coverStore.js),
+//     where the key is random and changes with every upload; it's never
+//     the event's id (which is its link);
 //   - what's stored is re-encoded (lib/coverImage.js), so the photo's
 //     EXIF, where it was taken included, isn't in it;
 //   - a removed or replaced cover's URL stops working at once here
@@ -31,7 +33,11 @@ const MAX_UPLOAD = 15 * 1024 * 1024;
 // How long a browser or a CDN may keep a cover. The URL changes with every
 // upload, so this only matters for one that's been removed.
 const COVER_MAX_AGE = 60 * 60;
-const COVER_FILE_RE = /^([0-9A-Za-z]{12})\.jpg$/;
+// <key>.jpg or <key>-<width>.jpg, and nothing else: no dots, slashes or
+// other characters get anywhere near a file name (the file is found by
+// the event the key belongs to, and the width has to be one it's stored
+// at).
+const COVER_FILE_RE = /^([0-9A-Za-z]{12})(?:-([1-9][0-9]{0,4}))?\.jpg$/;
 
 // Re-encoding a photo is real work, so uploads are limited: 30 a day per
 // person, 100 per address, 2,000 across everyone.
@@ -81,11 +87,11 @@ module.exports = function coverRoutes(ctx) {
     }
     let key = newEventId();
     while (store.getEventByCoverKey(key)) key = newEventId();
-    coverStore.save(req.event.id, cover.jpeg);
+    coverStore.save(req.event.id, cover.sizes);
     // The hue that matches it is only a suggestion (`coverHue`): the
     // event's own colour (themeHue) is the host's to change, and an upload
     // never does.
-    const event = store.setCover(req.event.id, key, { hue: cover.hue, grayscale: cover.grayscale });
+    const event = store.setCover(req.event.id, key, { hue: cover.hue, grayscale: cover.grayscale, sizes: cover.sizes });
     res.json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });
   }));
 
@@ -98,13 +104,26 @@ module.exports = function coverRoutes(ctx) {
   return router;
 };
 
-// GET /covers/<key>.jpg, for anyone.
+// The file for a cover's public name (<key>.jpg or <key>-<width>.jpg), or
+// null: the key has to be a cover's now, and the width one of the
+// narrower copies it has (the full size is only ever <key>.jpg, so each
+// image has one URL).
+function fileForName(store, name) {
+  const m = COVER_FILE_RE.exec(String(name));
+  const event = m ? store.getEventByCoverKey(m[1]) : null;
+  if (!event) return null;
+  if (!m[2]) return coverStore.pathFor(event.id);
+  const width = Number(m[2]);
+  const sizes = event.coverSizes || [];
+  if (!sizes.slice(0, -1).some((s) => s.width === width)) return null;
+  return coverStore.pathFor(event.id, width);
+}
+
+// GET /covers/<key>.jpg and /covers/<key>-<width>.jpg, for anyone.
 module.exports.files = function coverFiles(ctx) {
   const router = express.Router();
   router.get('/covers/:file', (req, res) => {
-    const m = COVER_FILE_RE.exec(req.params.file);
-    const event = m ? ctx.store.getEventByCoverKey(m[1]) : null;
-    const file = event ? coverStore.pathFor(event.id) : null;
+    const file = fileForName(ctx.store, req.params.file);
     if (!file) return res.status(404).end();
     res.set('Content-Type', 'image/jpeg');
     res.set('Cache-Control', `public, max-age=${COVER_MAX_AGE}`);
@@ -114,3 +133,4 @@ module.exports.files = function coverFiles(ctx) {
 };
 
 module.exports.MAX_UPLOAD = MAX_UPLOAD;
+module.exports.COVER_FILE_RE = COVER_FILE_RE;

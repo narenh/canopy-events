@@ -95,6 +95,10 @@ function coverWords(reason, d){
 function drawCover(src){
   if (previewUrl && previewUrl !== src){ URL.revokeObjectURL(previewUrl); previewUrl = null; }
   $('coverNoPreview').classList.add('hidden');
+  // The saved cover's sizes (public/ui.js coverImg) would win over a new
+  // src: once the host picks or removes a photo, they're not it.
+  coverPreview.removeAttribute('srcset');
+  coverPreview.removeAttribute('sizes');
   if (src) coverPreview.src = src;
   else coverPreview.removeAttribute('src');
   coverPreview.closest('.cover-pick').classList.toggle('has-cover', !!src);

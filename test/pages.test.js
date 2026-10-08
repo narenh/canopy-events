@@ -593,6 +593,12 @@ test('pages: the features, as everyone who might look', async (t) => {
   const up = await ana.upload('PUT', `/api/v1/events/${party.id}/cover`, jpeg, { type: 'image/jpeg', filename: 'cover.jpg' });
   assert.equal(up.status, 200, up.text);
   const cover = up.data.event.coverImageUrl;
+  // Its sizes (1200 wide: 400, 800 and itself), as every page's srcset.
+  const srcset = up.data.event.coverImages.map((c) => `${c.url} ${c.width}w`).join(', ');
+  assert.deepEqual(up.data.event.coverImages.map((c) => c.width), [400, 800, 1200]);
+  // A 16:9 photo in a 3:2 frame is drawn 16/9 / 3/2 = 1.19 times the
+  // frame's width, so that's the width each place asks for.
+  const img = (cls, sizes, attrs = '') => `<img class="${cls}"${attrs} src="${cover}" srcset="${srcset}" sizes="${sizes}" alt="" decoding="async">`;
   assert.equal((await ana.post(`/api/v1/events/${party.id}/cohosts`, { personId: P.fay.id })).status, 200);
   await ana.post(`/api/v1/events/${party.id}/invites`, { personIds: [P.dee.id] });
   await ben.put(`/api/v1/events/${party.id}/rsvp`, { status: 'going', guests: 1 });
@@ -605,7 +611,9 @@ test('pages: the features, as everyone who might look', async (t) => {
   await t.test('signed out: the cover as the hero and in the preview, the spots, no wall', async () => {
     const r = await page(server, anon, `/e/${party.id}`);
     const details = section(r.body, 'details');
-    assert.ok(details.includes(`<img class="cover" src="${cover}" alt="">`), details);
+    // The hero: the column (680px) on a desktop, the whole width on a
+    // phone; not lazy (it's the first thing on the page).
+    assert.ok(details.includes(img('cover', '(min-width: 700px) 809px, 119vw')), details);
     assert.equal(meta(r.text, 'og:image'), cover);
     assert.equal(meta(r.text, 'twitter:image'), cover);
     assert.equal(meta(r.text, 'twitter:card'), 'summary_large_image');
@@ -771,7 +779,7 @@ test('pages: the features, as everyone who might look', async (t) => {
   await t.test('the editor: the cover, plus-ones and capacity', async () => {
     const edit = await page(server, ana, `/e/${party.id}/edit`);
     const form = edit.body;
-    assert.ok(form.includes(`id="coverPreview" alt="" src="${cover}"`), 'the cover, previewed');
+    assert.ok(form.includes(img('cover-preview', '(min-width: 700px) 762px, calc((100vw - 72px) * 1.19)', ' id="coverPreview"')), 'the cover, previewed');
     assert.ok(form.includes('>Replace<') && form.includes('id="coverFile"') && !/id="coverRemove"[^>]*hidden/.test(form));
     assert.ok(form.includes('<option value="2" selected>2</option>'));
     assert.ok(/id="capacity"[^>]*value="2"/.test(form));
@@ -836,7 +844,7 @@ test('pages: the features, as everyone who might look', async (t) => {
 
   await t.test('home: a cover is the list row\'s 3:2 thumbnail; no cover, the generated one', async () => {
     const hosting = section((await page(server, ana, '/')).body, 'list-hosting');
-    assert.ok(hosting.includes(`<span class="thumb"><img class="cover" src="${cover}" alt="" loading="lazy">`), hosting);
+    assert.ok(hosting.includes(`<span class="thumb">${img('cover', '(min-width: 700px) 200px, 138px', ' loading="lazy"')}`), hosting);
     assert.match(hosting, /<span class="thumb"><span class="cover-art" style="--c0:#[0-9a-f]{6};--c1:#[0-9a-f]{6};/);
     assert.ok(section((await page(server, fay, '/')).body, 'list-hosting').includes('Garden party'));
   });
