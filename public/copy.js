@@ -492,6 +492,80 @@ const COPY = {
       friend_link_not_found: "This link doesn't work any more. It may have been reset.",
       rate_limited: "That's a lot of friends for one day. Try again tomorrow."
     }
+  },
+
+  // ---------------- Lists: yours (on /friends), and on events ----------------
+  lists: {
+    heading: 'Your lists',
+    // Under a list's name.
+    count: '{count} people',
+    countOne: '1 person',
+    countNone: 'No one yet',
+    createPlaceholder: 'Name a new list',
+    createLabel: 'New list name',
+    verifyToCreate: 'Confirm your email to make lists.',
+    renameLabel: 'List name',
+    deleteConfirm: 'Delete {name}? Its link stops working and it comes off your events. Invitations already sent stay.',
+    resetConfirm: 'Make a new link for {name}? The old link and QR code stop working. Everyone on it stays.',
+    removeConfirm: "Take {name} off {list}? They won't be told.",
+    members: 'People',
+    joined: 'Joined {date}',
+    noMembers: 'Share the link or show the QR code, and people who join show up here.',
+    copied: 'Link copied.',
+    qrLabel: 'QR code for the {name} link',
+    // The lists you're on.
+    memberHeading: "Lists you're on",
+    ownerLine: "{name}'s list",
+    leaveConfirm: "Leave {list}? {first} won't be told, and you won't be invited to its events any more.",
+    // On an event: the guest's card.
+    joinHeading: 'Get invited next time',
+    joinPrompt: "Join {first}'s {list}? {first} will be able to invite you to events.",
+    joinButton: 'Join {list}',
+    joinedLine: "You're on {first}'s {list}.",
+    // On an event: the host's "Lists…" and "Show list QR".
+    eventHeading: 'Lists',
+    yours: 'Your list',
+    theirs: "{name}'s list",
+    noLists: "You don't have any lists yet.",
+    attachConfirm: 'Put {list} on this event? Everyone on it is invited now, and anyone who joins later too.',
+    attached: 'Invited {count} from {list}.',
+    attachedOne: 'Invited 1 from {list}.',
+    attachedNone: '{list} is on this event.',
+    detachConfirm: "Take {list} off this event? Nobody's invitation changes; people who join later won't be invited to this one.",
+    qrHeading: 'Scan to join',
+    qrClose: 'Close',
+    errors: {
+      bad_name: "A list's name is 1 to 60 characters.",
+      too_many_lists: "That's as many lists as you can have.",
+      rate_limited: "That's a lot of lists for one day. Try again tomorrow.",
+      own_list: "That's your own list.",
+      list_full: 'That list is full.',
+      not_your_list: 'Only its owner or the person who made this event can take that list off.',
+      list_link_not_found: "This list's link doesn't work any more. It may have been reset."
+    }
+  },
+
+  // ---------------- Someone's list link, at /l/<code> ----------------
+  listLink: {
+    signedOutLine: "{name}'s list on Canopy",
+    signUp: 'Sign up to join',
+    signIn: 'I have a Canopy Account, sign in',
+    confirm: "Join {first}'s {list}?",
+    confirmHint: '{first} will be able to invite you to events.',
+    ownHeading: 'This is your list',
+    toLists: 'See your lists',
+    memberHeading: "You're on {first}'s {list}",
+    invitedOne: '{first} invited you to 1 event.',
+    invited: '{first} invited you to {count} events.',
+    toInvitations: 'See your invitations',
+    toEvents: 'Your events',
+    notFoundHeading: "This link doesn't work",
+    notFound: 'It may have been reset. Ask for a new one.',
+    tooMany: "That's a lot of links that didn't work. Try again later.",
+    pageTitle: 'Join {list}',
+    // Link previews: the list's name and the owner's first name, no photo.
+    previewTitle: 'Join {list} on Canopy',
+    previewText: "{first}'s list on Canopy Events."
   }
 };
 

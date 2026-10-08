@@ -998,7 +998,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.ok(host.includes(`href="/e/${party.id}/invite"`) && host.includes(`href="/e/${party.id}/edit"`));
     assert.ok(!host.includes('data-action="cancel"') && !host.includes('data-action="new-link"'));
     assert.ok(host.includes('data-action="step-down"') && !host.includes('data-action="remove-cohost"'));
-    assert.deepEqual([...host.matchAll(/role="menuitem"[^>]*data-action="([^"]+)"/g)].map((m) => m[1]), ["step-down"], "a co-host's menu: step down, nothing creator-only");
+    assert.deepEqual([...host.matchAll(/role="menuitem"[^>]*data-action="([^"]+)"/g)].map((m) => m[1]), ['lists', 'step-down'], "a co-host's menu: their lists, step down, nothing creator-only");
     assert.ok(!host.includes("delete-event"));
     assert.equal(section(r.body, 'rsvp'), null);
     const guests = section(r.body, 'guests');
@@ -1025,7 +1025,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.match(host, /<div class="edit-row"><a class="button secondary" href="[^"]+\/edit">Edit<\/a>/);
     assert.match(host, /id="hostMenuBtn" data-action="host-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="hostMenu"/);
     const items = [...host.matchAll(/role="menuitem"[^>]*data-action="([^"]+)">([^<]+)</g)].map((m) => [m[1], m[2]]);
-    assert.deepEqual(items, [['cohosts', 'Co-hosts…'], ['new-link', 'Make a new link…'], ['cancel', 'Cancel event'], ['delete-event', 'Delete event…']]);
+    assert.deepEqual(items, [['cohosts', 'Co-hosts…'], ['lists', 'Lists…'], ['new-link', 'Make a new link…'], ['cancel', 'Cancel event'], ['delete-event', 'Delete event…']]);
     assert.match(host, /class="menu-item danger" data-action="delete-event"/);
     assert.ok(!host.includes('id="cohosts"'), 'the co-hosts open from the menu');
     // Opened: Fay, with Remove, and Add co-host.

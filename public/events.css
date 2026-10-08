@@ -1085,3 +1085,52 @@ textarea.address-input{min-height:0;margin-top:8px;}
 }
 .declined-card .reply.reply-select{padding:0;}
 .answer-select{margin:0;}
+
+/* Lists, on the friends page: each of yours a block of its own (its
+   name and count, the link, Share / Copy link / QR, then Rename, Reset
+   link and Delete as quiet links, and who's on it, folded). */
+.lists{list-style:none;margin:0 0 4px;padding:0;}
+.list-item{padding:16px 0;border-top:1px solid var(--line);}
+.list-item:first-child{border-top:none;padding-top:4px;}
+.list-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+.list-head .who{flex:1;min-width:0;}
+.list-head .name{font-size:var(--fs-body);font-weight:700;overflow-wrap:anywhere;}
+.list-head .sub{font-size:var(--fs-small);color:var(--muted);}
+.list-item .link-field{margin-bottom:10px;}
+.list-item .qr{margin:4px auto 14px;}
+.qr img{display:block;width:100%;height:auto;}
+.list-tools{display:flex;flex-wrap:wrap;gap:6px 18px;margin:12px 0 0;}
+.list-tools .link-btn{min-height:var(--tap);font-size:var(--fs-small);}
+.danger-link{color:var(--danger) !important;}
+.list-members{margin-top:4px;}
+.list-members summary{cursor:pointer;min-height:var(--tap);display:flex;align-items:center;font-size:var(--fs-small);font-weight:700;color:var(--muted);}
+.list-members summary:focus-visible{outline:2px solid var(--text);outline-offset:2px;border-radius:6px;}
+.rename-form{margin-bottom:10px;}
+.rename-form button{padding:12px 14px;}
+#createList{margin-top:14px;}
+#lists .notice:not(:empty), #lists .error:not(:empty){margin:4px 0 10px;}
+
+/* On an event: the guest's "Get invited next time", and the host's lists. */
+.join-list p{margin-bottom:12px;}
+.join-list .joined{color:var(--accent-text);font-size:var(--fs-body);}
+.event-lists .lookup-row{margin-top:8px;}
+.event-lists .people{margin-bottom:6px;}
+
+/* A sheet over the page (the list QR codes; the invite sheet): solid,
+   full height on a phone, a centred panel from 700px. */
+.sheet-panel{
+  position:fixed;z-index:31;display:flex;flex-direction:column;
+  left:max(8px, env(safe-area-inset-left));right:max(8px, env(safe-area-inset-right));
+  top:max(8px, env(safe-area-inset-top));bottom:max(8px, env(safe-area-inset-bottom));
+  background:var(--theme-card-solid, #03200b);border:1px solid var(--glass-edge);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.5);
+}
+.sheet-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px 16px 16px;}
+/* The QR codes for the door: as wide as the sheet allows, up to 420px. */
+.door-qr{text-align:center;padding:8px 0 18px;}
+.door-qr + .door-qr{border-top:1px solid var(--line);padding-top:18px;}
+.door-qr h3{font-size:22px;margin:0 0 12px;color:var(--text);}
+.qr.big{width:min(420px, 100%);margin:0 auto 12px;padding:10px;}
+.door-link{margin:0;font-size:var(--fs-body);color:var(--text);overflow-wrap:anywhere;}
+@media (min-width: 700px) {
+  .sheet-panel{left:50%;right:auto;width:560px;transform:translateX(-50%);top:5vh;bottom:5vh;}
+}

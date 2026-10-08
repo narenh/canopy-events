@@ -1209,13 +1209,20 @@
     }
     // Edit, and the menu beside it.
     const items = [];
+    // Lists (any host, each with their own): put them on, take them off,
+    // and a big QR code for the door when there are any on it.
+    const lists = e.hostLists || [];
     if (creator) {
       items.push(['cohosts', 'Co-hosts…', '']);
+      items.push(['lists', 'Lists…', '']);
+      if (lists.length) items.push(['show-list-qr', 'Show list QR', '']);
       if (open) items.push(['new-link', 'Make a new link…', '']);
       if (phase === 'cancelled') items.push(['restore', 'Bring back event', '']);
       else if (open) items.push(['cancel', 'Cancel event', '']);
       items.push(['delete-event', 'Delete event…', 'danger']);
     } else {
+      items.push(['lists', 'Lists…', '']);
+      if (lists.length) items.push(['show-list-qr', 'Show list QR', '']);
       items.push(['step-down', 'Step down as co-host', '']);
     }
     h += '<div class="edit-row"><a class="button secondary" href="/e/' + esc(e.id) + '/edit">Edit</a>'
@@ -1225,6 +1232,7 @@
       + '</div></div></div>';
     h += '</div><div class="notice" id="hostNotice" role="status"></div><div class="error" id="hostError" role="alert"></div>';
     if (creator && d.showCohosts) h += cohostsBlock(e, phase);
+    if (d.showLists) h += eventListsBlock(e, phase, d);
     h += '</section>';
     return h;
   }
@@ -1467,6 +1475,7 @@
     if (!d.me) h += signedOutSection(e, d, phase);
     else if (isHost) h += hostSection(e, phase, d);
     else h += rsvpSection(e, phase, d);
+    if (!isHost) h += joinListSection(e, d);
     // Attending: counts only signed out; nothing for someone removed.
     if (!d.me) h += guestsSection(e, null, false, null, d);
     else if (!isRemovedViewer(e)) h += guestsSection(e, d.guests, isHost, d.removed, d) + wallSection(e, d.wall, o);
@@ -1669,11 +1678,14 @@
       + '</li></ul>';
   }
 
-  // The friends page: your link, adding by phone or Instagram, and your
-  // list. `d` is { me, link, friends, nextCursor, links }; `o.qr` the QR
-  // code's SVG.
+  // The friends page: your link, your lists, adding by phone or
+  // Instagram, your friends, the lists you're on, and whose invitations
+  // you've opted out of. `d` is { me, link, lists, friends, nextCursor,
+  // memberships, optouts, links }; `o.qr` the friend link's QR code (an
+  // SVG), `o.listStates` what the page has open in each list.
   function friendsPage(d, o) {
     let h = friendLinkSection(d, (o || {}).qr);
+    h += listsSection(d, (o || {}).listStates);
     h += lookupSection(d, 'friends');
     h += '<section class="card" id="friends" data-section="friends"><h2>' + tx('friends.heading') + '</h2>';
     h += '<p>' + tx('friends.hint') + '</p>';
@@ -1682,7 +1694,7 @@
     h += '<p class="empty' + (d.friends.length ? ' hidden' : '') + '" id="noFriends" style="margin:0">' + tx('friends.empty') + '</p>';
     if (d.nextCursor) h += '<button type="button" class="secondary more" data-action="more">' + tx('common.showMore') + '</button>';
     h += '</section>';
-    return h + optoutsSection(d.optouts);
+    return h + membershipsSection(d.memberships) + optoutsSection(d.optouts);
   }
 
   // Whose invitations you've opted out of (from an event's ⋯ menu), each
@@ -1724,6 +1736,218 @@
     h += '<div class="error" id="acceptError" role="alert"></div>';
     h += '<button type="button" id="acceptBtn" data-action="accept">Add friend</button>';
     return h + '</section>';
+  }
+
+  // ---------------- Lists ----------------
+  //
+  // A person's own lists of people who joined by a link or QR code
+  // (lib/store/lists.js has the rules). Yours are on the friends page,
+  // with who's on each; the ones you're on are there too, with Leave; an
+  // event shows its guests "Get invited next time" with a list to join,
+  // and its hosts put lists on it and show their QR codes at the door.
+
+  // The QR code of a list's link, as an image the server draws
+  // (/l/<code>/qr.svg, routes/pages.js), black on its own white tile.
+  function listQr(code, name, cls) {
+    return '<div class="qr' + (cls ? ' ' + cls : '') + '"><img src="/l/' + esc(code) + '/qr.svg" alt="' + tx('lists.qrLabel', { name }) + '" width="240" height="240"></div>';
+  }
+
+  function listCount(n) {
+    if (!n) return t('lists.countNone');
+    return n === 1 ? t('lists.countOne') : t('lists.count', { count: n });
+  }
+
+  // "Joined Oct 8", with the year only when it isn't this one.
+  function joinedOn(iso) {
+    const d = new Date(iso);
+    const opts = { month: 'short', day: 'numeric' };
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+    return t('lists.joined', { date: d.toLocaleDateString(LOCALE, opts) });
+  }
+
+  // A list's members, each with Remove (the page asks first).
+  function listMemberRows(l, members) {
+    return members.map((m) => {
+      const p = m.person;
+      return '<li class="person" data-id="' + esc(p.id) + '">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div>'
+        + '<div class="sub">' + esc(joinedOn(m.joinedAt)) + '</div></div>'
+        + '<button type="button" class="small-btn secondary" data-action="remove-member" data-list="' + esc(l.id) + '" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Remove</button></li>';
+    }).join('');
+  }
+
+  // One of your lists: its name and how many are on it, its link with
+  // Share, Copy link and QR, Rename, Reset link and Delete, and who's on
+  // it (folded, with Remove each). `l` is an OwnedList plus `members` and
+  // `nextCursor` (its first page of members); `state` is what the page has
+  // open: { qr, open, editing }.
+  function ownListItem(l, state) {
+    state = state || {};
+    const id = esc(l.id);
+    let h = '<li class="list-item" id="list-' + id + '" data-id="' + id + '">';
+    if (state.editing) {
+      h += '<form class="lookup-row rename-form" data-list="' + id + '" novalidate>'
+        + '<input type="text" class="rename-input" value="' + esc(l.name) + '" maxlength="60" aria-label="' + tx('lists.renameLabel') + '" autocomplete="off">'
+        + '<button type="submit">Save</button>'
+        + '<button type="button" class="secondary" data-action="cancel-rename" data-list="' + id + '">Cancel</button></form>';
+    } else {
+      h += '<div class="list-head"><div class="who"><div class="name">' + esc(l.name) + '</div><div class="sub">' + esc(listCount(l.memberCount)) + '</div></div></div>';
+    }
+    if (state.qr) h += listQr(l.code, l.name);
+    h += '<input type="text" class="link-field" readonly value="' + esc(l.url) + '" aria-label="' + esc(l.name) + '" data-action="select">';
+    h += '<div class="button-row list-buttons">'
+      + '<button type="button" data-action="share-list" data-url="' + esc(l.url) + '" data-name="' + esc(l.name) + '">Share</button>'
+      + '<button type="button" class="secondary" data-action="copy-list" data-url="' + esc(l.url) + '">Copy</button>'
+      + '<button type="button" class="secondary" data-action="toggle-qr" data-list="' + id + '" aria-pressed="' + (state.qr ? 'true' : 'false') + '">QR</button></div>';
+    h += '<div class="list-tools">'
+      + '<button type="button" class="link-btn" data-action="rename-list" data-list="' + id + '">Rename</button>'
+      + '<button type="button" class="link-btn" data-action="reset-list" data-list="' + id + '">Reset link</button>'
+      + '<button type="button" class="link-btn danger-link" data-action="delete-list" data-list="' + id + '">Delete</button></div>';
+    const members = l.members || [];
+    h += '<details class="list-members" data-list="' + id + '"' + (state.open ? ' open' : '') + '><summary>' + tx('lists.members') + (l.memberCount ? ' · ' + esc(l.memberCount) : '') + '</summary>';
+    if (members.length) {
+      h += '<ul class="people">' + listMemberRows(l, members) + '</ul>';
+      if (l.nextCursor) h += '<button type="button" class="secondary more" data-action="more-members" data-list="' + id + '">' + tx('common.showMore') + '</button>';
+    } else {
+      h += '<p class="small" style="margin:8px 0 0">' + tx('lists.noMembers') + '</p>';
+    }
+    h += '</details></li>';
+    return h;
+  }
+
+  // "Your lists" on the friends page: each of yours, and making a new one
+  // (a name, nothing else). `d` is { me, lists, links }, `states` the
+  // page's { listId: state } (ownListItem).
+  function listsSection(d, states) {
+    states = states || {};
+    const lists = d.lists || [];
+    let h = '<section class="card" id="lists" data-section="lists"><h2>' + tx('lists.heading') + '</h2>';
+    h += '<div class="notice" id="listsNotice" role="status"></div><div class="error" id="listsError" role="alert"></div>';
+    h += '<ul class="lists" id="ownLists">' + lists.map((l) => ownListItem(l, states[l.id])).join('') + '</ul>';
+    if (d.me && d.me.emailVerified) {
+      h += '<form class="lookup-row" id="createList" novalidate>'
+        + '<input type="text" id="newListName" maxlength="60" placeholder="' + tx('lists.createPlaceholder') + '" aria-label="' + tx('lists.createLabel') + '" autocomplete="off">'
+        + '<button type="submit" id="createListBtn">Create</button></form>';
+    } else {
+      const verify = d.links && safeUrl(d.links.verify);
+      h += '<p style="margin:0">' + (verify ? '<a href="' + esc(verify) + '">' + tx('lists.verifyToCreate') + '</a>' : tx('lists.verifyToCreate')) + '</p>';
+    }
+    return h + '</section>';
+  }
+
+  // "Lists you're on": each one's name and owner, with Leave. Nothing when
+  // there are none.
+  function membershipsSection(lists) {
+    if (!lists || !lists.length) return '';
+    return '<section class="card" id="memberships" data-section="memberships"><h2>' + tx('lists.memberHeading') + '</h2>'
+      + '<div class="error" id="membershipsError" role="alert"></div><ul class="people" id="membershipList">'
+      + lists.map((l) => '<li class="person" data-id="' + esc(l.id) + '">' + avatar(l.owner) + '<div class="who"><div class="name">' + esc(l.name) + '</div>'
+        + '<div class="sub">' + tx('lists.ownerLine', { name: fullName(l.owner) }) + '</div></div>'
+        + '<button type="button" class="small-btn secondary" data-action="leave-list" data-list="' + esc(l.id) + '" data-name="' + esc(l.name) + '" data-first="' + esc(l.owner.firstName || fullName(l.owner)) + '">Leave</button></li>').join('')
+      + '</ul></section>';
+  }
+
+  // Someone's list link, /l/<code>: the list and its owner, and what you
+  // can do. `d` is { me, list: { name }, owner, viewer, code, links,
+  // joined: { invitedTo } once they've said yes }.
+  function listLinkPage(d) {
+    const p = d.owner;
+    const first = p.firstName || fullName(p);
+    const list = d.list.name;
+    let h = '<section class="card center friend-card" id="listInvite">' + avatar(p, 'big');
+    if (!d.me) {
+      const links = d.links || {};
+      h += '<h1>' + esc(list) + '</h1>';
+      h += '<p class="center">' + tx('listLink.signedOutLine', { name: fullName(p) }) + '</p>';
+      h += '<a class="button" href="' + esc(links.quickSignUp) + '">' + tx('listLink.signUp') + '</a>';
+      h += '<p class="cta-sub"><a class="link-btn" href="' + esc(links.signIn) + '">' + tx('listLink.signIn') + '</a></p>';
+      return h + '</section>';
+    }
+    const v = d.viewer || {};
+    if (v.isOwner) {
+      h += '<h1>' + tx('listLink.ownHeading') + '</h1><p class="center">' + esc(list) + '</p>';
+      return h + '<a class="button secondary" href="/friends#lists">' + tx('listLink.toLists') + '</a></section>';
+    }
+    if (d.joined || v.isMember) {
+      h += '<h1>' + tx('listLink.memberHeading', { first, list }) + '</h1>';
+      const n = d.joined ? d.joined.invitedTo : 0;
+      if (n) h += '<p class="center">' + tx(n === 1 ? 'listLink.invitedOne' : 'listLink.invited', { first, count: n }) + '</p>';
+      return h + '<a class="button' + (n ? '' : ' secondary') + '" href="' + (n ? '/?tab=invited' : '/') + '">' + tx(n ? 'listLink.toInvitations' : 'listLink.toEvents') + '</a></section>';
+    }
+    h += '<h1>' + tx('listLink.confirm', { first, list }) + '</h1>';
+    h += '<p class="center">' + tx('listLink.confirmHint', { first }) + '</p>';
+    h += '<div class="error" id="joinError" role="alert"></div>';
+    h += '<button type="button" id="joinBtn" data-action="join">Join</button>';
+    return h + '</section>';
+  }
+
+  // On an event, for a guest (or someone signed out) who isn't on a list
+  // the hosts put on it: "Get invited next time", and one button. Signed
+  // in, it joins there and then (the line above it is the question);
+  // signed out, it's the list's own page. After joining, it says so.
+  function joinListSection(e, d) {
+    d = d || {};
+    if (d.joinedList) {
+      return '<section class="card join-list" id="joinList" data-section="join-list"><h3>' + tx('lists.joinHeading') + '</h3>'
+        + '<p class="joined" role="status" style="margin:0">' + tx('lists.joinedLine', { first: d.joinedList.first, list: d.joinedList.name }) + '</p></section>';
+    }
+    const j = e.joinableList;
+    if (!j) return '';
+    const first = j.owner.firstName || fullName(j.owner);
+    let h = '<section class="card join-list" id="joinList" data-section="join-list"><h3>' + tx('lists.joinHeading') + '</h3>';
+    h += '<p>' + tx('lists.joinPrompt', { first, list: j.name }) + '</p>';
+    if (d.me) {
+      h += '<button type="button" class="secondary" data-action="join-list" data-code="' + esc(j.code) + '" data-name="' + esc(j.name) + '" data-first="' + esc(first) + '">' + tx('lists.joinButton', { list: j.name }) + '</button>';
+      h += '<div class="error" id="joinListError" role="alert"></div>';
+    } else {
+      h += '<a class="button secondary" href="/l/' + esc(j.code) + '">' + tx('lists.joinButton', { list: j.name }) + '</a>';
+    }
+    return h + '</section>';
+  }
+
+  // The host's lists for this event (from the ⋯ menu's "Lists…"): the ones
+  // on it, each with Take off (its owner, or the creator), then the host's
+  // own that aren't, each with Add, and a new one by name. `d.myLists` is
+  // GET /me/lists (null while it loads).
+  function eventListsBlock(e, phase, d) {
+    const creator = e.viewer && e.viewer.role === 'creator';
+    const on = e.hostLists || [];
+    const onIds = on.map((l) => l.id);
+    const mine = (d.myLists || []).filter((l) => !onIds.includes(l.id));
+    const open = isOpen(phase);
+    let h = '<div class="cohosts event-lists" id="eventLists"><div class="group-heading">' + tx('lists.eventHeading') + '</div>';
+    h += '<div class="notice" id="listsNotice" role="status"></div><div class="error" id="listsError" role="alert"></div>';
+    const rows = on.map((l) => {
+      const sub = l.isYours ? t('lists.yours') + ' · ' + listCount(l.memberCount) : t('lists.theirs', { name: fullName(l.owner) });
+      const off = l.isYours || creator
+        ? '<button type="button" class="small-btn secondary" data-action="detach-list" data-list="' + esc(l.id) + '" data-name="' + esc(l.name) + '">Take off</button>'
+        : '';
+      return '<li class="person"><div class="who"><div class="name">' + esc(l.name) + '</div><div class="sub">' + esc(sub) + '</div></div>' + off + '</li>';
+    }).concat(open ? mine.map((l) => '<li class="person"><div class="who"><div class="name">' + esc(l.name) + '</div><div class="sub">' + esc(listCount(l.memberCount)) + '</div></div>'
+      + '<button type="button" class="small-btn" data-action="attach-list" data-list="' + esc(l.id) + '" data-name="' + esc(l.name) + '" data-count="' + esc(l.memberCount) + '">Add</button></li>') : []);
+    if (rows.length) h += '<ul class="people">' + rows.join('') + '</ul>';
+    if (d.myLists === null || d.myLists === undefined) h += '<p class="small" style="margin:6px 0 10px" aria-live="polite">…</p>';
+    else if (!rows.length) h += '<p class="small" style="margin:6px 0 10px">' + tx('lists.noLists') + '</p>';
+    if (open) {
+      h += '<form class="lookup-row" id="newEventList" novalidate>'
+        + '<input type="text" id="newEventListName" maxlength="60" placeholder="' + tx('lists.createPlaceholder') + '" aria-label="' + tx('lists.createLabel') + '" autocomplete="off">'
+        + '<button type="submit" id="newEventListBtn">Create</button></form>';
+    }
+    return h + '</div>';
+  }
+
+  // "Show list QR": a sheet over the page with each list on the event, its
+  // name, a QR code as big as the screen allows and its link, to show at
+  // the door. Drawn by the page's script when opened.
+  function listQrSheet(lists) {
+    let h = '<div class="sheet-backdrop" id="listQrBackdrop"></div>'
+      + '<div class="sheet-panel qr-panel" id="listQrPanel" role="dialog" aria-modal="true" aria-labelledby="listQrHeading">'
+      + '<div class="bg-head"><h2 id="listQrHeading">' + tx('lists.qrHeading') + '</h2>'
+      + '<button type="button" class="round-btn" data-action="close-list-qr" aria-label="' + tx('lists.qrClose') + '">' + ICON_CLOSE + '</button></div>'
+      + '<div class="sheet-scroll">';
+    lists.forEach((l) => {
+      h += '<div class="door-qr"><h3>' + esc(l.name) + '</h3>' + listQr(l.code, l.name, 'big') + '<p class="door-link">' + esc(String(l.url).replace(/^https?:\/\//, '')) + '</p></div>';
+    });
+    return h + '</div></div>';
   }
 
   // Someone's part in an event, as a badge, the same everywhere the web
@@ -2235,6 +2459,7 @@
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     backgroundGroups, backgroundSheet, tmdbCredit,
     eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
+    listQr, listCount, ownListItem, listMemberRows, listsSection, membershipsSection, listLinkPage, joinListSection, eventListsBlock, listQrSheet,
     eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, ICON_CALENDAR, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, HOME_LOADS, HOME_TABS, MAX_GUESTS_ALLOWED
   };

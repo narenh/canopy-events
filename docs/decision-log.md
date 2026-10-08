@@ -3084,6 +3084,62 @@ anyone joining later invited to what's still to come. The rest:
   60 link misses an hour); test/db.test.js (version 15, cascades);
   test/leaks.test.js walks every list answer for every caller; the spec
   check covers every new route and answer.
+- **The list pages.** `/l/<code>` is the friend link's page again: signed
+  out, the list's name, "Ana Lima's list on Canopy", "Sign up to join"
+  (quick sign-up) and sign in, both coming back; signed in, "Join Ana's
+  Drag Race? / Ana will be able to invite you to events." and one Join
+  button, after which the card says "You're on Ana's Drag Race" in place,
+  with "Ana invited you to 2 events" and a button to the Invited tab when
+  it brought any. Your own list and one you're on say so instead of
+  offering the button. Previews: "Join Drag Race on Canopy" and "Ana's
+  list on Canopy Events.", the first name only, no photo. · As asked. ·
+  views/list-link.html, `UI.listLinkPage`.
+- **A list's QR code is an image route, `/l/<code>/qr.svg`**, drawn by
+  lib/qr.js for any code shaped like one (it's the link drawn, so it tells
+  nothing the link doesn't, and it doesn't ask whether the code is real),
+  cached privately for a day. Unlike the friend link's inline SVG, list QR
+  codes appear after something the page's script does (making a list,
+  opening "Show list QR" after putting a list on), and the encoder stays
+  on the server. Checked by decoding it in test/list-pages.test.js. ·
+  Inline SVGs in the page data.
+- **Friends page: "Your lists" right after your friend link** (both are
+  links and QR codes to share), then lookup, your friends, "Lists you're
+  on" (only when you're on any, like the opt-outs card) and the opt-outs.
+  Each list: its name and count, the link, Share / Copy / QR (QR shows the
+  code above the link), then Rename (in place), Reset link and Delete as
+  quiet links (both asked first), and "People · 14" folded, newest first,
+  each with "Joined Oct 8" (the year only when it isn't this one) and
+  Remove (asked first). The first 50 people of each list come with the
+  page, then Show more. Making one is a name field and Create; a quick
+  account is told to confirm its email instead. · "Copy link" read as two
+  lines at 375 px next to Share and QR, so it's "Copy".
+- **Event page: "Get invited next time" is its own card under the
+  answer card** (or the signed-out RSVP card), with "Join Ana's Drag Race?
+  Ana will be able to invite you to events." above "Join Drag Race". One
+  tap joins (the line above is the question, so it isn't asked again);
+  the card then says "You're on Ana's Drag Race." and takes focus.
+  Signed out, the button is a link to `/l/<code>`. · A confirm step.
+- **Host ⋯ menu: "Lists…" for every host** (co-hosts too, with their own
+  lists), opening a block in the host card like Co-hosts…: the lists on
+  the event with Take off (owner or creator), the host's other lists with
+  Add (asked first when it has people on it, since it invites them), and a
+  name field to make one, which is put on at once. "Show list QR" appears
+  once a list is on: a sheet over the page (a dialog with the page made
+  inert, Escape, the × or the backdrop to close, focus back on the ⋯),
+  each list's name, a QR code up to 420 px and the link without
+  `https://`. · As asked.
+- **Tests** (test/list-pages.test.js): /l/<code> signed out (the
+  sign-up link returns here, previews without the last name or a photo),
+  signed in (one confirm card, opening joins nobody), your own, already on
+  it, after joining, wrong codes; the QR image scans to the link;
+  /friends for an owner, a member (nobody's "Joined"), and a quick
+  account; the event page's card for a guest and signed out, none for a
+  member or the host; the host menu's items; the lists block and QR sheet.
+  test/pages.test.js: the host menus now have Lists…. Checked by hand at
+  375 px against the fake account service: making, renaming, the QR
+  code, the list link (join, then "Ana invited you to 1 event"), joining
+  from an event, Lists… (Take off / Add), and Show list QR (Escape back
+  to the ⋯).
 
 ## The inviter
 

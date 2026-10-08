@@ -24,7 +24,12 @@
                        host removed, a calm line saying so
        #host           hosts instead of #rsvp: share, invite, edit; the
                        creator also cancels, makes a new link, and adds
-                       and removes co-hosts; a co-host can step down
+                       and removes co-hosts; a co-host can step down;
+                       any host puts their lists on it (Lists…) and
+                       shows their QR codes (Show list QR, a sheet)
+       #joinList       a guest (or someone signed out) not on a list
+                       that's on the event: "Get invited next time" and
+                       Join <list>
        #friends-going  friends going, when there are any
        #guests         who's coming, by the host's visibility rule; for
                        hosts, "Remove" on each, and who's been removed
@@ -311,6 +316,158 @@ document.addEventListener('submit', (e) => {
     box.value = '';
     draw();
   }).then(() => { if (words) show('wallError', words); });
+});
+
+// ---------------- Sheets over the page ----------------
+//
+// "Show list QR" and the invite sheet: drawn into one box at the end of
+// the body (outside #main, so redrawing the page leaves them alone), a
+// dialog with the page behind it shut off. Escape, the close button or a
+// tap on the backdrop closes it; Tab stays inside while it's open; focus
+// goes back to whatever opened it.
+const sheetBox = document.createElement('div');
+sheetBox.id = 'sheetBox';
+document.body.appendChild(sheetBox);
+let sheet = null; // { opener, onClose }
+
+function sheetFocusables(){
+  const panel = sheetBox.querySelector('[role=dialog]');
+  return panel ? Array.from(panel.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex="0"]'))
+    .filter((el) => el.offsetParent !== null || el === document.activeElement) : [];
+}
+function openSheet(html, { opener, onClose, focus } = {}){
+  sheetBox.innerHTML = html;
+  sheet = { opener: opener || document.activeElement, onClose };
+  document.body.classList.add('sheet-open');
+  main.setAttribute('inert', '');
+  const first = (focus && sheetBox.querySelector(focus)) || sheetFocusables()[0];
+  if (first) first.focus({ preventScroll: true });
+}
+function closeSheet(){
+  if (!sheet) return;
+  const { opener, onClose } = sheet;
+  sheet = null;
+  sheetBox.innerHTML = '';
+  document.body.classList.remove('sheet-open');
+  main.removeAttribute('inert');
+  if (onClose) onClose();
+  // The button that opened it may have been drawn again meanwhile.
+  const back = opener && document.body.contains(opener) ? opener
+    : (opener && opener.id ? document.getElementById(opener.id) : null) || document.getElementById('hostMenuBtn');
+  if (back) back.focus();
+}
+sheetBox.addEventListener('click', (e) => {
+  if (e.target.classList && e.target.classList.contains('sheet-backdrop')) closeSheet();
+});
+document.addEventListener('keydown', (e) => {
+  if (!sheet) return;
+  if (e.key === 'Escape'){ e.preventDefault(); closeSheet(); return; }
+  if (e.key !== 'Tab') return;
+  const inside = sheetFocusables();
+  if (!inside.length) return;
+  const i = inside.indexOf(document.activeElement);
+  if (e.shiftKey && i <= 0){ e.preventDefault(); inside[inside.length - 1].focus(); }
+  else if (!e.shiftKey && i === inside.length - 1){ e.preventDefault(); inside[0].focus(); }
+});
+
+// ---------------- Lists ----------------
+//
+// A guest's "Get invited next time" (joining the list there and then),
+// and a host's "Lists…" (put their lists on the event, take them off,
+// make a new one) and "Show list QR" (big, for the door).
+
+async function loadMyLists(){
+  const { res, data: d } = await api('GET', '/me/lists');
+  data.myLists = res.ok ? d.lists : [];
+}
+
+function listRefusal(d, vars){
+  return refusal('lists', d, vars);
+}
+
+// Putting a list on: everyone on it is invited (asked first, since it
+// tells them), then the guest list is fetched again.
+async function attachList(id, name, btn){
+  let words = '';
+  let said = '';
+  await busy(btn, document.getElementById('listsError'), async () => {
+    const { res, data: d } = await api('PUT', eventPath() + '/lists/' + encodeURIComponent(id));
+    if (!res.ok){ words = listRefusal(d); return; }
+    data.event = d.event;
+    const n = d.invitedCount;
+    said = n === 0 ? t('lists.attachedNone', { list: name }) : n === 1 ? t('lists.attachedOne', { list: name }) : t('lists.attached', { count: n, list: name });
+    await refresh(false);
+    draw();
+  });
+  if (words) show('listsError', words);
+  if (said) show('listsNotice', said);
+}
+
+// Making a list from the event: made, then put on it (it's empty, so
+// nobody is invited yet; people who join from its QR code will be).
+document.addEventListener('submit', (e) => {
+  if (e.target.id !== 'newEventList') return;
+  e.preventDefault();
+  const input = document.getElementById('newEventListName');
+  const name = input.value.trim();
+  if (!name){ input.focus(); return; }
+  let words = '';
+  busy(document.getElementById('newEventListBtn'), document.getElementById('listsError'), async () => {
+    const { res, data: d } = await api('POST', '/me/lists', { name });
+    if (!res.ok){ words = listRefusal(d); return; }
+    data.myLists = (data.myLists || []).concat([d.list]);
+    await attachList(d.list.id, d.list.name, null);
+  }).then(() => { if (words) show('listsError', words); });
+});
+
+onActions({
+  // Joining the list a guest was offered: on it, and invited to what it's
+  // on (this event included, if they weren't already). The card says so.
+  'join-list': (btn) => {
+    const code = btn.getAttribute('data-code');
+    const joined = { name: btn.getAttribute('data-name'), first: btn.getAttribute('data-first') };
+    let words = '';
+    busy(btn, document.getElementById('joinListError'), async () => {
+      const { res, data: d } = await api('POST', '/list-links/' + encodeURIComponent(code) + '/join');
+      if (!res.ok){ words = listRefusal(d); return; }
+      data.joinedList = joined;
+      await refresh(true);
+      draw();
+      const card = document.querySelector('#joinList .joined');
+      if (card){ card.setAttribute('tabindex', '-1'); card.focus(); }
+    }).then(() => { if (words) show('joinListError', words); });
+  },
+
+  lists: async () => {
+    data.showLists = true;
+    draw();
+    const box = document.getElementById('eventLists');
+    if (box) box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    try{ await loadMyLists(); }catch(e){ data.myLists = []; }
+    draw();
+  },
+  'attach-list': (btn) => {
+    const name = btn.getAttribute('data-name');
+    if (Number(btn.getAttribute('data-count')) > 0 && !confirm(t('lists.attachConfirm', { list: name }))) return;
+    attachList(btn.getAttribute('data-list'), name, btn);
+  },
+  'detach-list': (btn) => {
+    const name = btn.getAttribute('data-name');
+    if (!confirm(t('lists.detachConfirm', { list: name }))) return;
+    let words = '';
+    busy(btn, document.getElementById('listsError'), async () => {
+      const { res, data: d } = await api('DELETE', eventPath() + '/lists/' + encodeURIComponent(btn.getAttribute('data-list')));
+      if (!res.ok){ words = listRefusal(d); return; }
+      data.event = d.event;
+      draw();
+    }).then(() => { if (words) show('listsError', words); });
+  },
+  'show-list-qr': () => {
+    const lists = data.event.hostLists || [];
+    if (!lists.length) return;
+    openSheet(UI.listQrSheet(lists), { opener: document.getElementById('hostMenuBtn') });
+  },
+  'close-list-qr': () => closeSheet()
 });
 
 onActions({

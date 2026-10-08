@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>__PAGE_TITLE__</title>
+<meta name="theme-color" content="#03120c">
+<meta name="robots" content="noindex, nofollow">
+<!-- The link preview: the list's name and the owner's first name, no
+     photo. lib/render.js's listLinkMeta(). -->
+<!-- PAGE:META -->
+<link rel="stylesheet" href="/events.css">
+</head>
+<!-- A list's link (/l/<code>): the list and its owner (GET
+     /api/v1/list-links/<code>), and, signed in, "Join Ana's Drag Race?
+     Ana will be able to invite you to events." with one button (POST
+     .../join), which then says so here, with any invitations it brought.
+     Opening the page joins nobody. Signed out: sign in or quick-sign-up,
+     and back here. Drawn by public/ui.js (listLinkPage). -->
+<body class="mesh-bg">
+<!-- PAGE:HEADER -->
+<main class="wrap">
+  <!-- PAGE:BANNER -->
+  <div id="main" class="stack"><!-- PAGE:MAIN --></div>
+</main>
+<!-- PAGE:FOOTER -->
+<script type="application/json" id="pageData">__PAGE_DATA__</script>
+<script src="/copy.js"></script>
+<script src="/ui.js"></script>
+<script src="/events.js"></script>
+<script>
+applyCopy();
+
+const data = pageData();
+const main = document.getElementById('main');
+
+onActions({
+  // Saying yes: on the list, and invited to its events still to come.
+  // The card says so in place, with the way to those invitations.
+  join: (btn) => {
+    let refused = '';
+    busy(btn, document.getElementById('joinError'), async () => {
+      const { res, data: d } = await api('POST', '/list-links/' + encodeURIComponent(data.code) + '/join');
+      if (!res.ok){ refused = (COPY.lists.errors[d.reason] && t('lists.errors.' + d.reason)) || sentence(d.error); return; }
+      data.joined = { invitedTo: d.invitedTo };
+      main.innerHTML = UI.listLinkPage(data);
+      const heading = main.querySelector('h1');
+      if (heading){ heading.setAttribute('tabindex', '-1'); heading.focus(); }
+    }).then(() => { if (refused) document.getElementById('joinError').textContent = refused; });
+  }
+});
+</script>
+</body>
+</html>

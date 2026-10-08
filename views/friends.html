@@ -13,8 +13,12 @@
      Reset (POST .../reset); adding someone by phone or Instagram (POST
      /api/v1/people/lookup, then POST /api/v1/me/friends); and your list
      (GET /api/v1/me/friends), each with Remove (DELETE
-     /api/v1/me/friends/<id>, asked first). Drawn by public/ui.js
-     (friendsPage). -->
+     /api/v1/me/friends/<id>, asked first); your lists (GET
+     /api/v1/me/lists and each one's members), each with its link, Share,
+     Copy, its QR code (/l/<code>/qr.svg), Rename, Reset link, Delete and
+     Remove for each person on it, and making a new one; and the lists
+     you're on (GET /api/v1/me/list-memberships), with Leave. Drawn by
+     public/ui.js (friendsPage). -->
 <body class="mesh-bg">
 <!-- PAGE:HEADER -->
 <main class="wrap">
@@ -94,6 +98,167 @@ if (lookupForm){
     }).then(() => { if (after) say(after[0], after[1]); });
   });
 }
+
+// ---------------- Your lists ----------------
+//
+// Each list's link with Share, Copy and its QR code (an image the server
+// draws, /l/<code>/qr.svg), Rename, Reset link and Delete, and who's on
+// it, folded, with Remove. Drawn again from `data.lists` after a change;
+// `listStates` keeps what's open (the QR code, the people, renaming).
+const listStates = {};
+function listState(id){
+  if (!listStates[id]) listStates[id] = {};
+  return listStates[id];
+}
+function listOf(id){
+  return (data.lists || []).find((l) => l.id === id);
+}
+function drawLists(focusSelector){
+  const box = document.getElementById('ownLists');
+  if (!box) return;
+  box.innerHTML = (data.lists || []).map((l) => UI.ownListItem(l, listStates[l.id])).join('');
+  if (focusSelector){ const el = box.querySelector(focusSelector); if (el) el.focus(); }
+}
+// The people folded under a list stay open (or shut) when it's drawn again.
+document.addEventListener('toggle', (e) => {
+  const el = e.target;
+  if (el && el.classList && el.classList.contains('list-members')) listState(el.getAttribute('data-list')).open = el.open;
+}, true);
+
+function listRefusal(d){
+  return (COPY.lists.errors[d.reason] && t('lists.errors.' + d.reason)) || sentence(d.error);
+}
+
+async function copyListLink(url){
+  try{
+    await navigator.clipboard.writeText(url);
+    say('listsNotice', t('lists.copied'));
+  }catch(e){
+    window.prompt('', url);
+  }
+}
+
+// Making one: a name, nothing else. It goes at the end, open on its link.
+const createForm = document.getElementById('createList');
+if (createForm){
+  createForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('newListName');
+    const name = input.value.trim();
+    if (!name){ input.focus(); return; }
+    let refused = '';
+    busy(document.getElementById('createListBtn'), document.getElementById('listsError'), async () => {
+      const { res, data: d } = await api('POST', '/me/lists', { name });
+      if (!res.ok){ refused = listRefusal(d); return; }
+      data.lists = (data.lists || []).concat([Object.assign(d.list, { members: [], nextCursor: null })]);
+      listState(d.list.id).qr = true;
+      input.value = '';
+      drawLists();
+    }).then(() => { if (refused) say('listsError', refused); });
+  });
+}
+
+// Renaming, in place.
+document.addEventListener('submit', (e) => {
+  const form = e.target;
+  if (!form.classList || !form.classList.contains('rename-form')) return;
+  e.preventDefault();
+  const id = form.getAttribute('data-list');
+  const name = form.querySelector('input').value.trim();
+  let refused = '';
+  busy(form.querySelector('button[type=submit]'), document.getElementById('listsError'), async () => {
+    const { res, data: d } = await api('PATCH', '/me/lists/' + encodeURIComponent(id), { name });
+    if (!res.ok){ refused = listRefusal(d); return; }
+    Object.assign(listOf(id), { name: d.list.name });
+    listState(id).editing = false;
+    drawLists('#list-' + id + ' [data-action="rename-list"]');
+  }).then(() => { if (refused) say('listsError', refused); });
+});
+
+onActions({
+  'share-list': async (btn) => {
+    const url = btn.getAttribute('data-url');
+    if (navigator.share){
+      try{ await navigator.share({ title: btn.getAttribute('data-name'), url }); }catch(e){}
+      return;
+    }
+    copyListLink(url);
+  },
+  'copy-list': (btn) => copyListLink(btn.getAttribute('data-url')),
+  'toggle-qr': (btn) => {
+    const id = btn.getAttribute('data-list');
+    listState(id).qr = !listState(id).qr;
+    drawLists('#list-' + id + ' [data-action="toggle-qr"]');
+  },
+  'rename-list': (btn) => {
+    const id = btn.getAttribute('data-list');
+    listState(id).editing = true;
+    drawLists('#list-' + id + ' .rename-input');
+  },
+  'cancel-rename': (btn) => {
+    const id = btn.getAttribute('data-list');
+    listState(id).editing = false;
+    drawLists('#list-' + id + ' [data-action="rename-list"]');
+  },
+  // A new link: the old one and its QR code stop working; everyone stays.
+  'reset-list': (btn) => {
+    const l = listOf(btn.getAttribute('data-list'));
+    if (!confirm(t('lists.resetConfirm', { name: l.name }))) return;
+    let refused = '';
+    busy(btn, document.getElementById('listsError'), async () => {
+      const { res, data: d } = await api('POST', '/me/lists/' + encodeURIComponent(l.id) + '/reset-link');
+      if (!res.ok){ refused = listRefusal(d); return; }
+      Object.assign(l, { code: d.list.code, url: d.list.url });
+      drawLists();
+    }).then(() => { if (refused) say('listsError', refused); });
+  },
+  'delete-list': (btn) => {
+    const l = listOf(btn.getAttribute('data-list'));
+    if (!confirm(t('lists.deleteConfirm', { name: l.name }))) return;
+    let refused = '';
+    busy(btn, document.getElementById('listsError'), async () => {
+      const { res, data: d } = await api('DELETE', '/me/lists/' + encodeURIComponent(l.id));
+      if (!res.ok && d.reason !== 'list_not_found'){ refused = listRefusal(d); return; }
+      data.lists = data.lists.filter((x) => x.id !== l.id);
+      drawLists();
+    }).then(() => { if (refused) say('listsError', refused); });
+  },
+  'remove-member': (btn) => {
+    const l = listOf(btn.getAttribute('data-list'));
+    const id = btn.getAttribute('data-person');
+    if (!confirm(t('lists.removeConfirm', { name: btn.getAttribute('data-name'), list: l.name }))) return;
+    let refused = '';
+    busy(btn, document.getElementById('listsError'), async () => {
+      const { res, data: d } = await api('DELETE', '/me/lists/' + encodeURIComponent(l.id) + '/members/' + encodeURIComponent(id));
+      if (!res.ok && d.reason !== 'not_a_member'){ refused = listRefusal(d); return; }
+      l.members = l.members.filter((m) => m.person.id !== id);
+      l.memberCount = Math.max(0, l.memberCount - 1);
+      drawLists('#list-' + l.id + ' summary');
+    }).then(() => { if (refused) say('listsError', refused); });
+  },
+  'more-members': (btn) => {
+    const l = listOf(btn.getAttribute('data-list'));
+    busy(btn, null, async () => {
+      const { res, data: d } = await api('GET', '/me/lists/' + encodeURIComponent(l.id) + '/members?limit=50&cursor=' + encodeURIComponent(l.nextCursor));
+      if (!res.ok) return;
+      l.members = l.members.concat(d.members);
+      l.nextCursor = d.nextCursor;
+      drawLists();
+    });
+  },
+  // Leaving a list you're on: asked first; the owner isn't told.
+  'leave-list': (btn) => {
+    if (!confirm(t('lists.leaveConfirm', { list: btn.getAttribute('data-name'), first: btn.getAttribute('data-first') }))) return;
+    let refused = '';
+    busy(btn, document.getElementById('membershipsError'), async () => {
+      const { res, data: d } = await api('DELETE', '/me/list-memberships/' + encodeURIComponent(btn.getAttribute('data-list')));
+      if (!res.ok && d.reason !== 'not_a_member'){ refused = sentence(d.error); return; }
+      const list = btn.closest('ul');
+      btn.closest('li').remove();
+      if (!list.children.length) document.getElementById('memberships').remove();
+    }).then(() => { if (refused) document.getElementById('membershipsError').textContent = refused; });
+  }
+});
 
 onActions({
   'share-link': async (btn) => {

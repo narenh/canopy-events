@@ -1,8 +1,9 @@
 // The web pages: an event (/e/<id>, what a shared link opens), your
 // events (/), making and editing one (/new, /e/<id>/edit), inviting
 // friends or anyone by phone or Instagram (/e/<id>/invite), adding
-// co-hosts (/e/<id>/cohosts), your friends and your friend link
-// (/friends), and someone else's friend link (/f/<code>).
+// co-hosts (/e/<id>/cohosts), your friends, your friend link and your
+// lists (/friends), someone else's friend link (/f/<code>), and a list's
+// link (/l/<code>, with its QR code at /l/<code>/qr.svg).
 //
 // **The pages are a client of the API, the same as the apps.** Each page
 // asks this server's own /api/v1 for what it shows (over loopback, as
@@ -24,7 +25,7 @@ const http = require('http');
 const createRender = require('../lib/render');
 const UI = require('../public/ui.js');
 const { t } = require('../public/copy.js');
-const { EVENT_ID_RE, FRIEND_CODE_RE } = require('../lib/ids');
+const { EVENT_ID_RE, FRIEND_CODE_RE, LIST_CODE_RE } = require('../lib/ids');
 const { qrSvg } = require('../lib/qr');
 const { isVerified } = require('../lib/people');
 const { publicBase } = require('../lib/domain');
@@ -35,6 +36,7 @@ const { publicBase } = require('../lib/domain');
 const GUESTS_SHOWN = 50;
 const WALL_SHOWN = 20;
 const FRIENDS_SHOWN = 50;
+const MEMBERS_SHOWN = 50;
 const LIST_SHOWN = 20;
 const PAST_SHOWN = 10;
 const MAX_PAGES = 20;
@@ -329,12 +331,18 @@ module.exports = function pagesRoutes(ctx) {
   // phone or Instagram, and your list. The QR code is the one thing on a
   // page the API doesn't give: it's the link, drawn.
   router.get('/friends', attach, signedIn, pageRoute(async (req, res) => {
-    const [link, friends, optouts] = await Promise.all([
-      apiGet(req, '/me/friend-link'), apiGet(req, `/me/friends?limit=${FRIENDS_SHOWN}`), apiGet(req, '/me/invite-optouts')
+    const [link, friends, optouts, lists, memberships] = await Promise.all([
+      apiGet(req, '/me/friend-link'), apiGet(req, `/me/friends?limit=${FRIENDS_SHOWN}`), apiGet(req, '/me/invite-optouts'),
+      apiGet(req, '/me/lists'), apiGet(req, '/me/list-memberships')
     ]);
+    // Your lists, each with its first page of who's on it.
+    const own = want(lists).lists;
+    const members = await Promise.all(own.map((l) => apiGet(req, `/me/lists/${l.id}/members?limit=${MEMBERS_SHOWN}`).then((r) => want(r))));
+    own.forEach((l, i) => Object.assign(l, { members: members[i].members, nextCursor: members[i].nextCursor }));
     const me = meView(req.person);
     const data = {
       me, link: want(link), friends: want(friends).friends, nextCursor: want(friends).nextCursor,
+      lists: own, memberships: want(memberships).lists,
       // Whose invitations they've opted out of, with Undo.
       optouts: want(optouts).hosts,
       // Adding by phone or Instagram is for verified people.
@@ -369,6 +377,44 @@ module.exports = function pagesRoutes(ctx) {
       data
     });
   }));
+
+  // A list's link: the list and its owner, and (signed in) "Join Ana's
+  // Drag Race?" with one button. Opening it joins nobody. Signed out, sign
+  // in or quick-sign-up and come back here.
+  router.get('/l/:code', attach, pageRoute(async (req, res) => {
+    const r = LIST_CODE_RE.test(req.params.code) ? await apiGet(req, `/list-links/${req.params.code}`) : { status: 404 };
+    if (r.status === 404 || r.status === 429) {
+      return render.message(req, res, r.status, {
+        heading: t('listLink.notFoundHeading'),
+        text: t(r.status === 429 ? 'listLink.tooMany' : 'listLink.notFound'),
+        button: req.person ? { href: '/', label: t('common.yourEvents') } : null
+      });
+    }
+    const { list, owner, viewer } = want(r);
+    const here = `${publicBase(req)}/l/${req.params.code}`;
+    const data = {
+      me: meView(req.person), list, owner, viewer, code: req.params.code,
+      links: req.person ? null : { quickSignUp: canopy.quickSignUpUrl(req, here), signIn: canopy.signInUrl(req, here) }
+    };
+    render.page(req, res, 'list-link.html', {
+      title: t('listLink.pageTitle', { list: list.name }),
+      meta: render.listLinkMeta(list, owner, here),
+      main: UI.listLinkPage(data),
+      data
+    });
+  }));
+
+  // A list link's QR code, as an SVG image (lib/qr.js): what the friends
+  // page and an event's "Show list QR" show. It's the link, drawn, so it
+  // says nothing the link doesn't, and it's drawn for any code shaped like
+  // one without asking whether it's real.
+  router.get('/l/:code/qr.svg', (req, res) => {
+    if (!LIST_CODE_RE.test(req.params.code)) return res.status(404).type('text/plain').send('Not found.\n');
+    const { svg } = qrSvg(`${publicBase(req)}/l/${req.params.code}`);
+    res.set('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.set('Cache-Control', 'private, max-age=86400');
+    res.send(svg);
+  });
 
   // Anything else a browser asks for, that nothing above or in public/
   // answered: a page saying so, rather than Express's bare text.
