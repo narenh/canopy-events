@@ -1,0 +1,23 @@
+{
+  "name": "canopy-events",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Canopy events: make an event, share its link, and see who's going, among friends",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "express": "^4.22.3"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "yaml": "^2.9.1"
+  }
+}
