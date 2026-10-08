@@ -1010,3 +1010,12 @@ textarea.address-input{min-height:0;margin-top:8px;}
 .popover{position:absolute;right:0;top:calc(100% + 8px);z-index:30;width:min(340px, calc(100vw - 32px));}
 .popover[hidden]{display:none;}
 .popover .calendar-card{background:var(--theme-card-solid, #03200b);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 14px 40px rgba(0,0,0,.45);margin:0;}
+
+/* Every card's title is the same size and weight (Attending's), whatever
+   its element: a card's first heading, one beside a menu button, and the
+   named card headings. */
+.card > h2:first-child, .card > h3:first-child,
+.card > .card-head-row h2, .card > .card-head-row h3,
+.attend-head h2, .card-heading{
+  font-size:var(--fs-h2);font-weight:800;line-height:var(--lh-tight);
+}

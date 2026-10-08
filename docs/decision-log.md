@@ -2735,3 +2735,7 @@ with hosting blue. The rest:
   (shown to unverified people too). It's a dialog (it holds a link and a
   switch): Escape or a tap outside closes it and focus returns to the
   button.
+- **(You)** Card titles are one size everywhere: 22px, weight 800
+  (Attending's), for the event page's cards, the editor's, the friends
+  page's and the Calendar card. "You're hosting" → **Hosting** ("You're
+  co-hosting" → **Co-hosting**).
