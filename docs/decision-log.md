@@ -1634,3 +1634,8 @@ Fixes for the security review's events findings (branch `fix/review`).
 - The same background fix went to the account service (6aabda1): mesh
   layers at 100lvh pinned to the top, and the page's min-height at
   100svh. The photo-backdrop variant already did this.
+- **(You)** iOS event page, on pull-down: the hero image stays put
+  (pinned to the top of the screen, no stretch or zoom). The content,
+  with the fade and title, rubber-bands down over the bottom of the
+  photo. Scrolling up moves everything together as usual. The iOS repo's
+  ARCHITECTURE.md records the details.
