@@ -695,3 +695,18 @@ The review found no critical or high issues. Fixes are in progress
 - Plus: JSON errors for malformed requests, limits on making new
   sessions, web photo uploads that can't be cleaned are refused, and
   the invited count goes to hosts only.
+
+## Events web: friendlier design
+
+- **(You)** Larger fonts everywhere and a friendlier feel. Event covers
+  are first class: a 3:2 hero with a fade at the bottom.
+- Assumed: the type scale is roughly iOS sized (17px body, 15px minimum
+  for secondary text, 28–34px event titles). Events without a cover get
+  a generated green mesh at the same 3:2, so every event page has the
+  same hero. The 3:2 crop is display-only (the stored cover keeps its
+  full frame). Lists show the cover at 3:2 too. · CSS custom properties
+  in events.css.
+- This applies to the events pages only. The account service's pages
+  (sign-in, quick sign-up, profile) keep their smaller type for now. ·
+  To be decided by you: quick sign-up is the first page a guest sees
+  after events.
