@@ -1309,3 +1309,8 @@ Fixes for the security review's events findings (branch `fix/review`).
   event's date (DST-correct), one entry per friendly zone, then "Other
   time zones…" with search. The event page uses the same friendly names.
   The API still stores IANA ids.
+- **(You)** The cover is part of the top card. The card's outline
+  fades out going up and is fully visible from about the place row down,
+  so the photo and title have no hard border. The editor mirrors it.
+  Phone treatment is the agent's call (edge to edge, or inset), to be
+  recorded.
