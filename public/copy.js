@@ -124,7 +124,7 @@ const COPY = {
     invitedGroup: "Invited, hasn't answered",
     waitlistGroup: 'Waitlist',
     removedGroup: 'Removed',
-    removedGroupHint: "Only hosts see this. They can't answer, or see the address, the guest list or the wall.",
+    removedGroupHint: "Only hosts see this. They can't answer, or see the address, the guest list or the updates.",
     // Plus-ones, in counts and on the guest list.
     plusGuests: '+{count} guests',
     plusGuest: '+1 guest',
@@ -178,7 +178,7 @@ const COPY = {
     deleteConfirmComing: 'Delete “{title}”? {count} people have said they’re coming. Deleting doesn’t tell them, but cancelling does, and keeps the event for them to see it’s off. Delete anyway? This can’t be undone.',
     deleteConfirmOne: 'Delete “{title}”? 1 person has said they’re coming. Deleting doesn’t tell them, but cancelling does, and keeps the event for them to see it’s off. Delete anyway? This can’t be undone.',
     // Removing a guest, and undoing it.
-    removeGuestConfirm: "Remove {name} from this event? They won't be able to answer, or see the address, the guest list or the wall. You can undo this.",
+    removeGuestConfirm: "Remove {name} from this event? They won't be able to answer, or see the address, the guest list or the updates. You can undo this.",
     // A new link.
     newLinkConfirm: 'Make a new link? The link you have now stops working straight away, for everyone. Everyone on the list keeps their place, but anyone you sent the old link to will need the new one.',
     newLinkMade: "New link made. The old one doesn't work anymore. Share this one:",
@@ -200,13 +200,13 @@ const COPY = {
 
   // ---------------- The activity wall, on an event ----------------
   wall: {
-    heading: 'Wall',
-    hidden: "The host shows the wall to people who've answered. Answer to see it.",
+    heading: 'Updates',
+    hidden: "The host shows updates to people who've answered. Answer to see them.",
     empty: 'Nothing here yet.',
     emptyCanPost: 'Nothing here yet. Say hello to everyone coming.',
     placeholder: 'Write something for everyone coming',
     deleteConfirm: 'Delete this post?',
-    deleteEntryConfirm: 'Take this off the wall?',
+    deleteEntryConfirm: 'Delete this update?',
     justNow: 'just now',
     minutesAgo: '{count}m',
     hoursAgo: '{count}h',

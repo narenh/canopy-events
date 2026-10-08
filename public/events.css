@@ -1055,3 +1055,7 @@ textarea.address-input{min-height:0;margin-top:8px;}
 .attend-head h2, .card-heading{
   font-size:var(--fs-h2);font-weight:800;line-height:var(--lh-tight);
 }
+/* The header's two buttons are one size: the calendar button is as tall
+   as "+ New event" (a square), in the same glass and plain white. */
+.home-actions .nav-btn, .home-actions .icon-btn{height:var(--tap);min-height:var(--tap);box-sizing:border-box;border-radius:12px;}
+.home-actions .icon-btn{width:var(--tap);color:var(--text);}

@@ -204,7 +204,7 @@ module.exports = function pagesRoutes(ctx) {
       + ' aria-label="' + UI.tx('home.calendarHeading') + '" title="' + UI.tx('home.calendarHeading') + '">' + UI.ICON_CALENDAR + '</button>'
       + '<div class="popover" id="calendarPopover" role="dialog" aria-labelledby="calendarHeading" hidden>' + UI.calendarCard(calendar) + '</div></div>';
     let main = '<div class="section-heading home-top"><h1 style="color:var(--on-bg);margin:0">' + UI.tx('home.heading') + '</h1>'
-      + '<div class="home-actions">' + cal + make + '</div></div>';
+      + '<div class="home-actions">' + make + cal + '</div></div>';
     if (!me.emailVerified) {
       main += '<p class="small" id="verifyToHost" style="color:var(--on-bg);margin:0 2px"><a href="'
         + UI.esc(canopy.verifyUrl(req, render.hereUrl(req))) + '">' + UI.tx('home.verifyToHost') + '</a></p>';

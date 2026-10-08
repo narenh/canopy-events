@@ -2860,3 +2860,8 @@ settings), this is what was built. The rest:
   the 23 picks: opening, scrolling, Escape, picking (hero, slider to
   the server's hue), Create event saving it as a local cover, and the
   credit on Your Events.
+- **(You)** The home header reads "+ New event" then the calendar button,
+  both 44px tall; the calendar icon is plain white, not green.
+- **(You)** "Wall" is now **Updates** in everything people read (the
+  heading, the hidden note, the delete confirm, the remove-guest copy).
+  The API keeps its names (`/wall`, `wall_post`) so apps don't break.

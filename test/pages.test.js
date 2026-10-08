@@ -1096,7 +1096,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     const quiet = await makeEvent(ana, { title: 'Quiet one', guestListVisibility: 'responded' });
     await ana.post(`/api/v1/events/${quiet.id}/invites`, { personIds: [P.eve.id] });
     const wall = section((await page(server, eve, `/e/${quiet.id}`)).body, 'wall');
-    assert.ok(wall.includes('The host shows the wall to people who&#39;ve answered.'), wall);
+    assert.ok(wall.includes('The host shows updates to people who&#39;ve answered.'), wall);
     assert.ok(!wall.includes('wallForm'));
   });
 
