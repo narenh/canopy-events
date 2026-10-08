@@ -8,10 +8,10 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/events.css">
 </head>
-<!-- Your events (/). Signed in: invitations (answer them right there),
-     what you're hosting, what's coming up, and what's past, each from
-     GET /api/v1/me/events/<list>, drawn by public/ui.js (homeLists) into
-     #lists. Signed out: what this is, and sign in. -->
+<!-- Your events (/). Signed in: four tabs (?tab=), All (everything
+     coming up), Invited (answer them right there), Hosting and Past, each
+     from GET /api/v1/me/events/<list>, drawn by public/ui.js (homeLists)
+     into #lists. Signed out: what this is, and sign in. -->
 <body class="mesh-bg">
 <!-- PAGE:HEADER -->
 <main class="wrap">
@@ -30,10 +30,48 @@ const data = pageData();
 const zone = viewerZone();
 const lists = document.getElementById('lists');
 
+// The selected tab's panel, drawn again (the tabs stay, so focus does).
 function draw(){
-  if (lists) lists.innerHTML = UI.homeLists(data, { viewerZone: zone });
+  const panel = document.getElementById('homePanel');
+  if (panel) panel.outerHTML = UI.homePanel(data, { viewerZone: zone });
 }
 if (lists && data.drawnZone !== zone) draw();
+
+// The tabs: every tab's first page came with the page, so choosing one
+// just draws it. The address says which (?tab=), replaced rather than
+// pushed, so a reload or coming back to the page keeps it without the
+// back button stepping through tabs.
+function selectTab(name, focus){
+  data.tab = UI.homeTabOf(name);
+  lists.querySelectorAll('[role="tab"]').forEach((el) => {
+    const on = el.getAttribute('data-tab') === data.tab;
+    el.setAttribute('aria-selected', on ? 'true' : 'false');
+    el.tabIndex = on ? 0 : -1;
+    if (on && focus) el.focus();
+  });
+  draw();
+  history.replaceState(history.state, '', UI.homeTabHref(data.tab));
+}
+if (lists){
+  const tabs = () => Array.from(lists.querySelectorAll('[role="tab"]'));
+  lists.addEventListener('click', (e) => {
+    const tab = e.target.closest('[role="tab"]');
+    // A new tab or window (a modifier, or the middle button) is the link's.
+    if (!tab || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    selectTab(tab.getAttribute('data-tab'), true);
+  });
+  lists.addEventListener('keydown', (e) => {
+    const tab = e.target.closest('[role="tab"]');
+    if (!tab) return;
+    const all = tabs();
+    const at = all.indexOf(tab);
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: all.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    selectTab(all[(to + all.length) % all.length].getAttribute('data-tab'), true);
+  });
+}
 
 // One list from its first page again.
 async function reload(name){
@@ -62,8 +100,8 @@ if (invitesSwitch){
 }
 
 onActions({
-  // Going or can't go, straight from the invitation. It then moves to
-  // "coming up", or off the page.
+  // Going or can't go, straight from the invitation (on All or Invited).
+  // It then shows as going on All and leaves Invited, or leaves both.
   reply: (btn) => {
     const card = btn.closest('[data-event]');
     const errorEl = card.querySelector('.error');
@@ -71,7 +109,7 @@ onActions({
     busy(btn, errorEl, async () => {
       const { res, data: d } = await api('PUT', '/events/' + encodeURIComponent(card.getAttribute('data-event')) + '/rsvp', { status: btn.getAttribute('data-status') });
       if (!res.ok) refusal = sentence(d.error);
-      await Promise.all([reload('invitations'), reload('upcoming')]);
+      await Promise.all([reload('invitations'), reload('all')]);
       draw();
     }).then(() => {
       if (refusal){

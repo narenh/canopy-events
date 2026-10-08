@@ -1367,18 +1367,28 @@
 
   // ---------------- Lists of events (home) ----------------
 
-  // An event in a list: a date tile, the title, when and where, and your
-  // part in it.
-  function eventRow(e, o, asCard, list) {
-    const phase = phaseOf(e);
+  // Your part in an event, as a status word: 'hosting' (co-hosting too),
+  // or your answer ('going', 'maybe', 'waitlisted', 'invited',
+  // 'not_going'); null if you're neither (or a host removed you).
+  function viewerStatus(e) {
     const viewer = e.viewer || {};
-    let tag = '';
-    if (phase === 'cancelled') tag = '<span class="tag danger">' + tx('status.cancelled') + '</span>';
-    else if (viewer.canEdit && list !== 'hosting') tag = '<span class="tag off">' + tx(viewer.role === 'cohost' ? 'status.cohosting' : 'status.hosting') + '</span>';
-    else if (viewer.rsvp && !['invited', 'removed'].includes(viewer.rsvp.status)) tag = '<span class="tag' + (viewer.rsvp.status === 'going' ? '' : ' off') + '">' + tx('status.' + viewer.rsvp.status) + '</span>';
+    if (viewer.canEdit) return 'hosting';
+    const status = viewer.rsvp && viewer.rsvp.status;
+    return status && status !== 'removed' ? status : null;
+  }
+
+  // An event in a list: a 3:2 picture, when, the title, where, and your
+  // part in it as a status badge (statusTag), with "Cancelled" after it
+  // if it's off.
+  function eventRow(e, o, asCard) {
+    const phase = phaseOf(e);
+    const status = viewerStatus(e);
+    let tags = status ? statusTag(status) : '';
+    if (phase === 'cancelled') tags += '<span class="tag danger">' + tx('status.cancelled') + '</span>';
     // The cover (or the generated picture) as a 3:2 thumbnail; then when,
     // in a bold line above the title, as calendars do; the title; where.
-    // An event with its own colour tints its card's glass with it.
+    // An event with its own color tints its card's glass with it (the
+    // badges keep their own fixed colors).
     const theme = themeColors(themeKeyOf(e));
     const tint = theme ? ' style="--card:rgba(' + theme.card.join(',') + ',0.45)"' : '';
     return '<a class="event-row' + (asCard ? ' card' : '') + (phase === 'cancelled' ? ' is-cancelled' : '') + '" href="/e/' + esc(e.id) + '"' + (asCard ? tint : '') + '>'
@@ -1386,39 +1396,71 @@
       + '<span class="info"><span class="row-when">' + unbroken(whenRow(e, o.viewerZone)) + '</span>'
       + '<span class="title">' + esc(e.title) + '</span>'
       + (e.locationName ? '<span class="sub">' + esc(e.locationName) + '</span>' : '')
-      + (tag ? '<span class="tags">' + tag + '</span>' : '') + '</span></a>';
+      + (tags ? '<span class="tags">' + tags + '</span>' : '') + '</span></a>';
   }
 
-  // An invitation: the event, and going / can't go right there.
+  // An invitation: the event, and Going / Can't Go right there.
   function invitationCard(e, o) {
     return '<div class="card invite-card" data-event="' + esc(e.id) + '">' + eventRow(e, o, false)
-      + '<div class="reply"><button type="button" data-action="reply" data-status="going">Going</button>'
-      + '<button type="button" class="secondary" data-action="reply" data-status="not_going">Can\'t go</button></div>'
+      + '<div class="reply"><button type="button" data-action="reply" data-status="going">' + tx('status.going') + '</button>'
+      + '<button type="button" class="secondary" data-action="reply" data-status="not_going">' + tx('status.not_going') + '</button></div>'
       + '<div class="error" role="alert"></div></div>';
   }
 
-  const HOME_LISTS = ['invitations', 'hosting', 'upcoming', 'past'];
+  // The tabs on your events page, and the list each shows (GET
+  // /api/v1/me/events/<list>). All is everything coming up: hosting,
+  // going, maybe, waitlisted and invited, in one list.
+  const HOME_TABS = ['all', 'invited', 'hosting', 'past'];
+  const TAB_LIST = { all: 'all', invited: 'invitations', hosting: 'hosting', past: 'past' };
+  const HOME_LISTS = HOME_TABS.map((tab) => TAB_LIST[tab]);
 
-  // One of your lists, with its heading, or nothing when it's empty.
+  // ?tab=<tab> as a tab: anything else is All.
+  function homeTabOf(value) {
+    return HOME_TABS.includes(value) ? value : 'all';
+  }
+  function homeTabHref(tab) {
+    return tab === 'all' ? '/' : '/?tab=' + tab;
+  }
+
+  // The tab list. Each tab is a link (so it works before the script
+  // runs, and opens in a new tab), with roving focus; views/home.html
+  // adds the arrow keys.
+  function homeTabBar(tab) {
+    let h = '<div class="home-tabs"><div class="segmented" role="tablist" aria-label="' + tx('home.tabsLabel') + '">';
+    h += HOME_TABS.map((name) => {
+      const on = name === tab;
+      return '<a role="tab" id="tab-' + name + '" href="' + homeTabHref(name) + '" data-tab="' + name + '" aria-controls="homePanel" aria-selected="'
+        + on + '" tabindex="' + (on ? '0' : '-1') + '">' + tx('home.tabs.' + name) + '</a>';
+    }).join('');
+    return h + '</div></div>';
+  }
+
+  // One list: its events (an invitation with its answer buttons, anything
+  // else a card), and Show more if there are more.
   function homeList(name, list, o) {
-    if (!list || !list.events.length) return '';
     let h = '<section class="home-list" id="list-' + name + '" data-section="' + name + '">';
-    h += '<div class="section-heading"><h2>' + tx('home.' + name) + '</h2></div>';
     h += '<div class="event-list">';
-    h += list.events.map((e) => (name === 'invitations' ? invitationCard(e, o) : eventRow(e, o, true, name))).join('');
+    h += list.events.map((e) => (viewerStatus(e) === 'invited' ? invitationCard(e, o) : eventRow(e, o, true))).join('');
     h += '</div>';
     if (list.nextCursor) h += '<button type="button" class="secondary more" data-action="more" data-list="' + name + '">' + tx('common.showMore') + '</button>';
     return h + '</section>';
   }
 
-  // Your events, signed in: invitations first (they want an answer), then
-  // what you're hosting, what's coming up, and what's past.
-  function homeLists(d, o) {
+  // The selected tab's panel: its list, or a line saying it's empty.
+  function homePanel(d, o) {
     o = o || {};
-    const lists = d.lists || {};
-    const h = HOME_LISTS.map((name) => homeList(name, lists[name], o)).join('');
-    if (h) return h;
-    return '<div class="card"><p class="empty">' + tx(d.me && d.me.emailVerified ? 'home.emptyHost' : 'home.empty') + '</p></div>';
+    const tab = homeTabOf(d.tab);
+    const name = TAB_LIST[tab];
+    const list = (d.lists || {})[name];
+    let h = '<div class="home-panel" id="homePanel" role="tabpanel" aria-labelledby="tab-' + tab + '" tabindex="0">';
+    h += list && list.events.length ? homeList(name, list, o) : '<div class="card"><p class="empty">' + tx('home.empty.' + tab) + '</p></div>';
+    return h + '</div>';
+  }
+
+  // Your events, signed in: the tabs, and the selected one's list. `d` is
+  // { tab, lists: { <list>: { events, nextCursor } } }.
+  function homeLists(d, o) {
+    return homeTabBar(homeTabOf(d.tab)) + homePanel(d, o);
   }
 
   // ---------------- Your Canopy calendar ----------------
@@ -1539,9 +1581,16 @@
     return h + '</section>';
   }
 
-  // What someone already on the list said, as a tag.
+  // Someone's part in an event, as a badge, the same everywhere the web
+  // shows one (lists of events, inviting, co-hosts). Hosting (co-hosting
+  // too, in the same words), going, maybe, the waitlist and invited each
+  // have their own fixed color (events.css, --status-*), whatever the
+  // event's color; can't go and removed are plain glass.
+  const STATUS_BADGE = { hosting: 'hosting', cohosting: 'hosting', going: 'going', maybe: 'maybe', waitlisted: 'waitlisted', invited: 'invited' };
   function statusTag(status) {
-    return '<span class="tag' + (status === 'going' ? '' : ' off') + '">' + tx('status.' + status) + '</span>';
+    const badge = STATUS_BADGE[status];
+    if (badge) return '<span class="tag status-' + badge + '">' + tx('status.' + badge) + '</span>';
+    return '<span class="tag off">' + tx('status.' + status) + '</span>';
   }
 
   // A friend to invite: a checkbox, or what they've already said (or that
@@ -1621,7 +1670,7 @@
     const p = f.person;
     const role = ((e.hosts || []).find((x) => x.person.id === p.id) || {}).role;
     const right = role
-      ? '<span class="tag off">' + tx(role === 'creator' ? 'status.hosting' : 'status.cohosting') + '</span>'
+      ? statusTag('hosting')
       : '<button type="button" class="small-btn" data-action="add-cohost" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Add</button>';
     return '<li class="person" data-id="' + esc(p.id) + '" data-name="' + esc(fullName(p).toLowerCase()) + '">' + avatar(p)
       + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div><div class="sub">' + esc(friendSub(f, 'invite')) + '</div></div>' + right + '</li>';
@@ -1958,7 +2007,7 @@
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     eventPage, details, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
-    eventRow, homeLists, homeList, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
-    ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED
+    eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
+    ASSUMED_LENGTH_MS, HOME_LISTS, HOME_TABS, MAX_GUESTS_ALLOWED
   };
 });

@@ -171,13 +171,17 @@ module.exports = function pagesRoutes(ctx) {
         + '<p class="center small" style="margin:14px 0 0">' + UI.tx('home.signedOutLink') + '</p></section>';
       return render.page(req, res, 'home.html', { current: 'home', main, data: { me: null } });
     }
-    const sizes = { invitations: LIST_SHOWN, hosting: LIST_SHOWN, upcoming: LIST_SHOWN, past: PAST_SHOWN };
+    // The tabs (All, Invited, Hosting, Past): ?tab= picks one, anything
+    // else is All. Every tab's first page comes with the page, so
+    // switching tabs in the browser needs no request.
+    const tab = UI.homeTabOf(req.query.tab);
+    const sizes = { all: LIST_SHOWN, invitations: LIST_SHOWN, hosting: LIST_SHOWN, past: PAST_SHOWN };
     const [settings, ...answers] = await Promise.all([apiGet(req, '/me/settings')]
       .concat(UI.HOME_LISTS.map((name) => apiGet(req, `/me/events/${name}?limit=${sizes[name]}`))));
     const lists = {};
     UI.HOME_LISTS.forEach((name, i) => { lists[name] = want(answers[i]); });
     const me = meView(req.person);
-    const data = { me, lists, sizes };
+    const data = { me, tab, lists, sizes };
     // The Calendar card: the feed's link lives on the Canopy profile.
     const calendar = { settings: want(settings), calendarUrl: ACCOUNT_BASE ? `${ACCOUNT_BASE}/profile#calendarCard` : null };
     const make = me.emailVerified
@@ -188,7 +192,7 @@ module.exports = function pagesRoutes(ctx) {
       main += '<p class="small" id="verifyToHost" style="color:var(--on-bg);margin:0 2px"><a href="'
         + UI.esc(canopy.verifyUrl(req, render.hereUrl(req))) + '">' + UI.tx('home.verifyToHost') + '</a></p>';
     }
-    main += '<div id="lists" class="stack">' + UI.homeLists(data, { viewerZone: render.viewerZone(req) }) + '</div>';
+    main += '<div id="lists" class="home-lists">' + UI.homeLists(data, { viewerZone: render.viewerZone(req) }) + '</div>';
     main += UI.calendarCard(calendar);
     render.page(req, res, 'home.html', { current: 'home', main, data });
   }));

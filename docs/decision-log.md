@@ -2490,3 +2490,88 @@ viewers like the address. The rest:
   person stays on as `not_going`; the concurrency test has everyone
   going say can't go at once; the store-level rollback test uses
   `setAnswer(..., 'not_going')`; the event page has no withdraw button.
+
+## Home tabs and status badges
+
+On `feat/home-tabs`. **(You)** asked for tabs on the home page (All ·
+Invited · Hosting · Past) and a fixed-color status badge on every card,
+with hosting blue. The rest:
+
+- **A new list, `GET /api/v1/me/events/all`, not the browser merging
+  three.** One more entry in `LISTS` (lib/store/events.js): hosting,
+  upcoming (going, maybe, waitlisted) and invitations OR'd in one query,
+  so each event comes once, soonest first, with one cursor; same rules
+  for cancelled as the lists it joins (a host's or attendee's cancelled
+  event stays, a cancelled invitation doesn't). No schema change. ·
+  Merging three paginated lists with "Show more" means three cursors and
+  holding back rows that might sort after another list's unseen ones;
+  one SQL list pages exactly. The app can use it too. · Merge client-side.
+- **The page loads every tab's first page** (all, invitations, hosting,
+  past: 20, 20, 20, 10) and draws the one `?tab=` picks; switching tabs in
+  the browser is instant, with no request. Four list requests, as
+  before (upcoming is no longer fetched). · As cheap as today's page. ·
+  Fetch each tab on first open.
+- **`?tab=invited|hosting|past`; All is plain `/`.** Anything else
+  (unknown, empty, repeated, wrong case) is All. The browser *replaces*
+  the address on a tab change rather than pushing one, so a reload and
+  coming back to the page keep the tab, but Back leaves the page rather
+  than stepping through tabs. · Tabs read as a filter, not as pages. ·
+  pushState with a popstate handler.
+- **Tabs are links** (`<a role="tab" href="/?tab=…">`) in a
+  `role="tablist"`, with `aria-selected`, roving `tabindex`,
+  `aria-controls` to one `role="tabpanel"` (`#homePanel`, labelled by
+  the selected tab). Arrow keys (wrapping), Home and End move and select
+  (automatic activation: everything's already loaded). A modified or
+  middle click is left to the link, so a tab opens in a new tab. ·
+  Works before the script runs. · Buttons.
+- **Look: a segmented control on dark blurred glass, the selected
+  segment white with the page's near-black on it (19:1), the rest white.
+  Sticky at the top on every width**, inside the lists' box, so it lets
+  go before the Calendar card. Checked at 375 px and in the desktop pane.
+  · Green for the selected segment would read as "Going". · n/a
+- **No section headings in a panel**; the tab names it. **Empty states:**
+  All "Nothing coming up yet.", Invited "No invitations right now.",
+  Hosting "You're not hosting anything yet.", Past "No past events
+  yet." The old empty lines (`home.empty`, `home.emptyHost`) and the
+  list headings (`home.invitations` etc.) are gone. · No help text.
+- **Unverified:** the "Confirm your email to make your own events." line
+  stays where it was, under the heading in the place of "+ New event",
+  on every tab; their Hosting tab shows the plain empty line under it
+  rather than a second copy. · One line, not two. · n/a
+- **An invitation is the same card on All as on Invited**: the Invited
+  badge and the Going / Can't Go buttons. Answering reloads All and
+  Invited: Going turns it into a Going card on All, Can't Go takes it
+  off both. The button says "Can't Go" (`status.not_going`), matching
+  the event page. Two buttons, so 1:1; the event page's 2:1:1 is
+  unchanged. · The default tab keeps one-tap answering. · Buttons only
+  on Invited.
+- **Badge colors, fixed (never the event's theme or accent), dark text
+  on a light pill:** hosting `#6cb4ff`/`#03122a` 8.55:1, going
+  `#2ec44f`/`#03190a` 7.95:1 (Canopy green as a literal, since an
+  event's `--accent` can change), maybe `#f2c94c`/`#1f1600` 11.28:1
+  (amber), waitlisted `#ff8a3d`/`#2a1100` 7.60:1 (orange), invited
+  `#c4ccc7`/`#121815` 10.97:1 (gray). CSS custom properties
+  `--status-<status>` and `--status-on-<status>` in public/events.css;
+  the table is in docs/api.md, "Status colors". Maybe and the waitlist
+  had no colors of their own before (both plain glass), so they're new.
+  · Light pills match the existing green one. · Light text on dark pills.
+- **Co-hosting shows "Hosting" everywhere**, on cards and on the invite
+  and co-host pages (it said "Co-hosting" there). Can't go and removed
+  stay plain glass. **A cancelled event keeps its badge and adds
+  "Cancelled"** (before, Cancelled replaced it). **The Hosting badge
+  shows on the Hosting tab too** ("every card"). One function,
+  `statusTag`, draws them all. · As asked; consistent. · n/a
+- **Tests:** each tab's events (a host's event in All and Hosting, an
+  invitation in All and Invited with its buttons, a past one only in
+  Past, going only in All), `?tab=` honored and bad values falling back
+  to All, the tab ARIA and roving tabindex, the Calendar card below, the
+  unverified line on Hosting; badges' class and text for every status,
+  on themed and gray-with-accent events, cancelled, and on the invite
+  and co-host pages; the CSS hexes, their ≥4.5:1 contrast and that
+  docs/api.md lists the same values; `/me/events/all`'s contents, order,
+  paging and 401 (test/me.test.js); the leak walker and the inbox test
+  read `/all` (and `/declined`); the boundary test is unchanged and
+  passes. Checked by hand at 375 px and in the desktop pane: clicking,
+  arrows, Home/End and wrap, the address changing, answering Going on
+  Invited moving it to a Going card on All, the sticky bar over the
+  list.

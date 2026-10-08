@@ -18,7 +18,7 @@ test('a new link stays out of the inbox of people taken off the event', async (t
   // Everything `who` can get from the API without knowing the link.
   async function everythingSeenBy(who) {
     const urls = ['/api/v1/me', '/api/v1/me/notifications?limit=100', '/api/v1/me/notifications/unread',
-      ...['hosting', 'upcoming', 'invitations', 'declined', 'past'].map((l) => `/api/v1/me/events/${l}?limit=100`)];
+      ...['hosting', 'upcoming', 'invitations', 'declined', 'all', 'past'].map((l) => `/api/v1/me/events/${l}?limit=100`)];
     let all = '';
     for (const url of urls) {
       const r = await who.get(url);

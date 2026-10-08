@@ -1,4 +1,4 @@
-// You: /me (your own details and emailVerified), and your four lists of
+// You: /me (your own details and emailVerified), and your lists of
 // events, with what goes in each and paging through them.
 
 const test = require('node:test');
@@ -53,7 +53,7 @@ test('me', async (t) => {
     assert.equal((await anon.get('/api/v1/me')).status, 401);
   });
 
-  await t.test('the four lists', async () => {
+  await t.test('the lists', async () => {
     const soon = await makeEvent(ana, { title: 'Soon', startsAt: inDays(1) });
     const later = await makeEvent(ana, { title: 'Later', startsAt: inDays(5) });
     const cancelled = await makeEvent(ana, { title: 'Off', startsAt: inDays(3) });
@@ -87,6 +87,24 @@ test('me', async (t) => {
     const declinedToo = await makeEvent(ana, { title: 'Nope', startsAt: inDays(7) });
     await rsvp(ben, declinedToo.id, 'not_going');
     assert.deepEqual(ids(await list(ben, 'declined')), [declinedToo.id], "can't go only; the done one is over");
+    // All: hosting, upcoming and invitations, each once, soonest first;
+    // not can't go, nothing over, no cancelled invitation.
+    assert.deepEqual(ids(await list(ben, 'all')), [soon.id, cancelled.id, bensInvite.id, later.id, bensOwn.id]);
+    assert.deepEqual(ids(await list(ana, 'all')), ids(await list(ana, 'hosting')));
+    assert.deepEqual(ids(await list(una, 'all')), [], "a cancelled event's invitation isn't one");
+    const allViewers = (await list(ben, 'all')).events.map((e) => (e.viewer.canEdit ? 'host' : e.viewer.rsvp.status));
+    assert.deepEqual(allViewers, ['going', 'going', 'invited', 'maybe', 'host']);
+    // A page at a time, with one cursor.
+    const paged = [];
+    let next = '';
+    do {
+      const d = await list(ben, 'all', `?limit=2&cursor=${encodeURIComponent(next)}`);
+      assert.ok(d.events.length <= 2);
+      paged.push(...ids(d));
+      next = d.nextCursor;
+    } while (next);
+    assert.deepEqual(paged, [soon.id, cancelled.id, bensInvite.id, later.id, bensOwn.id]);
+    assert.equal((await anon.get('/api/v1/me/events/all')).status, 401);
     // Past: hosted, or going/maybe; most recent first.
     assert.deepEqual(ids(await list(ana, 'past')), [done.id, longAgo.id]);
     assert.deepEqual(ids(await list(ben, 'past')), [done.id], "can't go isn't having been");

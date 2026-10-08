@@ -785,7 +785,7 @@ invitations per host a day.
 
 ## Your events
 
-Five lists, each a page at a time:
+Six lists, each a page at a time:
 
 | | What's in it | Order |
 |---|---|---|
@@ -793,10 +793,31 @@ Five lists, each a page at a time:
 | `GET /api/v1/me/events/upcoming` | not over, and you said `going` or `maybe` (or are waitlisted); cancelled stay, so they show as off | soonest first |
 | `GET /api/v1/me/events/invitations` | invited, no answer yet, not over, not cancelled | soonest first |
 | `GET /api/v1/me/events/declined` | you said `not_going`, not over, not cancelled (so you can change your mind) | soonest first |
+| `GET /api/v1/me/events/all` | `hosting`, `upcoming` and `invitations` together, each event once (the web's All tab); cancelled stay if you host them or said you'd come | soonest first |
 | `GET /api/v1/me/events/past` | over, and you hosted or said `going` or `maybe` | most recent first |
 
 Each item is a whole `Event` as you see it (with `viewer`), minus
 `friendsGoing`, which is only on a single event.
+
+### Status colors
+
+The web shows your part in an event (from `viewer`: `canEdit` is
+hosting, otherwise `viewer.rsvp.status`) as a colored badge on every
+card, and the same badge wherever it shows someone's status (inviting,
+co-hosts). The colors are fixed: they never follow the event's theme or
+accent, so blue means hosting on every card. Apps should use the same
+ones. Text is dark on the light pill (public/events.css, `--status-*`):
+
+| Status | Badge text | Pill | Text | Contrast |
+|---|---|---|---|---|
+| hosting (co-hosting too) | Hosting | `#6CB4FF` | `#03122A` | 8.55:1 |
+| `going` | Going | `#2EC44F` | `#03190A` | 7.95:1 |
+| `maybe` | Maybe | `#F2C94C` | `#1F1600` | 11.28:1 |
+| `waitlisted` | On the waitlist | `#FF8A3D` | `#2A1100` | 7.60:1 |
+| `invited` | Invited | `#C4CCC7` | `#121815` | 10.97:1 |
+
+`not_going` and `removed` are plain glass, not colored. A cancelled
+event keeps its status badge and adds "Cancelled".
 
 ### In their phone's calendar
 

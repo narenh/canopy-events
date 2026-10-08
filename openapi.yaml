@@ -1245,6 +1245,23 @@ paths:
         - $ref: '#/components/parameters/Limit'
       responses: *eventListResponses
 
+  /api/v1/me/events/all:
+    get:
+      tags: [Me]
+      operationId: listAllUpcoming
+      summary: Everything coming up you're part of
+      description: |
+        `hosting`, `upcoming` and `invitations` in one list, each event
+        once: events that aren't over that you host or co-host, answered
+        `going` or `maybe` (or are waitlisted for), or are invited to and
+        haven't answered. Cancelled ones stay if you host them or said
+        you'd come; a cancelled invitation isn't listed. Soonest first,
+        with one cursor. Each event's `viewer` says your part in it.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses: *eventListResponses
+
   /api/v1/me/events/past:
     get:
       tags: [Me]

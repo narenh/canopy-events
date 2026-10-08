@@ -49,8 +49,8 @@ module.exports = function meRoutes(ctx) {
     res.json(store.updateSettings(req.person.id, body));
   });
 
-  // Your events, in five lists (lib/store/events.js says what's in each):
-  // /me/events/hosting, /upcoming, /invitations, /declined and /past.
+  // Your events, in six lists (lib/store/events.js says what's in each):
+  // /me/events/hosting, /upcoming, /invitations, /declined, /all and /past.
   MY_EVENT_LISTS.forEach((name) => {
     router.get(`/me/events/${name}`, auth.requirePerson, handle(async (req, res) => {
       const page = pageParams(req, res);

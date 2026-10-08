@@ -240,12 +240,20 @@ const COPY = {
     newEvent: 'New event',
     // Unverified people can't host.
     verifyToHost: 'Confirm your email to make your own events.',
-    hosting: 'Hosting',
-    invitations: 'Invitations',
-    upcoming: 'Coming up',
-    past: 'Past',
-    empty: "Nothing here yet. When someone sends you an event link, open it and answer, and it'll show up here.",
-    emptyHost: 'Make an event, share its link, and see who answers.',
+    // The tabs, and each one's line when it has nothing in it.
+    tabsLabel: 'Your Events',
+    tabs: {
+      all: 'All',
+      invited: 'Invited',
+      hosting: 'Hosting',
+      past: 'Past'
+    },
+    empty: {
+      all: 'Nothing coming up yet.',
+      invited: 'No invitations right now.',
+      hosting: "You're not hosting anything yet.",
+      past: 'No past events yet.'
+    },
     answered: 'Answered.',
     // The Calendar card: your Canopy calendar feed, and invitations in it.
     calendarHeading: 'Calendar',
