@@ -695,3 +695,39 @@ The review found no critical or high issues. Fixes are in progress
 - Plus: JSON errors for malformed requests, limits on making new
   sessions, web photo uploads that can't be cleaned are refused, and
   the invited count goes to hosts only.
+
+## Events review fixes
+
+Fixes for the security review's events findings (branch `fix/review`).
+
+- **The whole cover conversion runs in one worker thread**
+  (`lib/coverWorker.js`), not just the HEIC decode, one upload at a time
+  in a queue. · The WebAssembly decoder is synchronous (100 ms to most of
+  a second per photo), and sharp's raw-pixel copies are big; a single
+  worker keeps peak memory to one decode. Covers are rare, so a queue
+  costs little. · Make `toCoverJpeg` call `convert` directly.
+- The worker is **stopped after 30 s idle, after any failed job, and
+  after a job that runs past 30 s** (refused as 400 `bad_image`, "took
+  too long to read"). · A WebAssembly heap only grows while its worker
+  lives, and heic-decode doesn't free its decoder when a file won't
+  parse (that's inside the library); replacing the worker after a
+  failure means a stream of broken files can't build up a leak. The
+  cost is starting a worker (about half a second) on the next upload. ·
+  `IDLE_MS`, `JOB_TIMEOUT_MS` and `finish()` in lib/coverImage.js.
+- **HEIC is capped at 25 megapixels** (other formats stay at 50). ·
+  HEIC is decoded whole into memory, about 10 bytes a pixel twice over,
+  so a 48 MP "HEIF Max" photo needed several hundred MB at once. 25 MP
+  takes the 12 and 24 MP photos iPhones save by default; Safari sends
+  the web page a JPEG anyway, and the app can shrink first. ·
+  `MAX_HEIC_PIXELS` in lib/coverImage.js.
+- The HEIC fixtures were made with macOS `sips`: `cover-2mp.heic`
+  (657 KB of noise, so it's slow to decode like a real photo and a leak
+  shows) and `cover-26mp.heic` (14 KB, plain, just over the cap). · The
+  489-byte `cover.heic` leaks too little to measure. · n/a
+- The leak test checks the **libheif WebAssembly heap size**
+  (`HEAPU8.length`) to within 2 MB, and RSS through the worker only
+  loosely (under 80 MB growth over 20). · RSS moves a lot with GC and
+  allocator timing; the heap size is exact (17 MB steady after the fix,
+  +12 MB over 12 conversions without it). The /healthz test calibrates
+  itself: no /healthz may take half as long as the upload (4 ms vs a
+  133 ms upload after the fix; 100 ms of 126 ms before). · n/a

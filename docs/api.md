@@ -233,9 +233,12 @@ no cap).
 
 `PUT /api/v1/events/{id}/cover` (hosts) uploads one, as
 `multipart/form-data` with the image in a field named `cover`: JPEG, PNG,
-WebP or HEIC, up to 15 MB. Send the photo as it is: the server turns it
-upright, shrinks it to fit 1600 px, and stores a JPEG with **no EXIF**,
-so where it was taken never leaves the phone. `DELETE` removes it.
+WebP or HEIC, up to 15 MB and 50 megapixels (**HEIC up to 25
+megapixels**: the 12 and 24 megapixel photos iPhones take by default are
+fine, but shrink a 48-megapixel "HEIF Max" one, or send it as a JPEG).
+Send the photo as it is: the server turns it upright, shrinks it to fit
+1600 px, and stores a JPEG with **no EXIF**, so where it was taken never
+leaves the phone. `DELETE` removes it.
 
 ```bash
 curl -s "${auth[@]}" -X PUT -F cover=@IMG_0001.HEIC $API/events/4fQ9xKpL2mZa/cover

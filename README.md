@@ -67,8 +67,10 @@ the rest come next.
     person who did it. `push.js` sends to their phones; for now its
     sender only logs (the APNs and FCM senders need the apps' keys).
   - `coverImage.js` turns an uploaded photo into the stored JPEG (with
-    `sharp`, and `heic-decode` for iPhone photos), and `coverStore.js`
-    keeps them in `DATA_DIR/covers`.
+    `sharp`, and `heic-decode` for iPhone photos), in a worker thread
+    (`coverWorker.js`, one upload at a time) so the HEIC decoder, which
+    is synchronous, never holds up other requests. `coverStore.js` keeps
+    them in `DATA_DIR/covers`.
   - `people.js` is **the only place a person is turned into JSON**:
     `publicPerson` (the five public fields, copied by name), the former
     member, and `ownPerson` for `/me`.

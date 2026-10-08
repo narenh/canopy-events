@@ -533,10 +533,13 @@ paths:
         Hosts only. `multipart/form-data` with the image in a field named
         `cover`: JPEG, PNG, WebP or HEIC, up to 15 MB (413 `too_large`).
         It's told by its bytes, not its name or type; anything else is
-        400 `bad_image`. The server turns it the right way up, shrinks it
-        to fit 1600 px, and stores it as a JPEG **with no EXIF** (no
-        location). The event's `coverImageUrl` changes with every upload.
-        30 uploads a day per person.
+        400 `bad_image`, and so is a photo over 50 megapixels (HEIC: 25
+        megapixels, which takes the 12 and 24 megapixel photos iPhones
+        save by default; shrink a 48-megapixel one first). The server
+        turns it the right way up, shrinks it to fit 1600 px, and stores
+        it as a JPEG **with no EXIF** (no location). The event's
+        `coverImageUrl` changes with every upload. 30 uploads a day per
+        person.
 
         **Covers are public**: anyone with the URL can load it, signed in
         or not, so link previews can show it. The URL is random, never the
