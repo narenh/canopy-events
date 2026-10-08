@@ -1300,3 +1300,12 @@ Fixes for the security review's events findings (branch `fix/review`).
   at the band's top (75% of the frame), and solid at the foot. The title
   overlaps by the band's height (width × 1/6). docs/api.md has the exact
   stops for the iOS app.
+- **(You)** The editor looks like the event: the cover hero on top, an
+  upload button and a × remove in its top right, and no help text. Time
+  zones get friendly names in small text under the time, with a
+  "Change" menu listing the nearby zones first (from Pacific: Hawaii,
+  Alaska, Pacific, Mountain, Central, Eastern).
+- Assumed: "nearby" means within about ±3 h of the viewer's zone at the
+  event's date (DST-correct), one entry per friendly zone, then "Other
+  time zones…" with search. The event page uses the same friendly names.
+  The API still stores IANA ids.
