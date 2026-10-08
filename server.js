@@ -166,7 +166,9 @@ app.use((err, req, res, next) => {
     // plain text for anything else.
     return pages.notFound(req, res, () => res.status(status).type('text/plain').send("That request couldn't be read.\n"));
   }
-  console.error(err);
+  // The stack, not the error object: an error can carry what it was about
+  // (an answer from the account service, say), and that stays out of logs.
+  console.error((err && err.stack) || String(err));
   if (res.headersSent) return next(err);
   fail(res, 500, 'server_error', 'something went wrong on our side');
 });

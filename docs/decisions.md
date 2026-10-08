@@ -64,8 +64,10 @@ uses it):
 **Later, not tonight unless there's time:** hosts find people to invite
 by **phone number or Instagram username**, which people already fill in
 on their Canopy profile. The account service gets an exact-match lookup
-for sites (`GET /api/people/lookup?phone=…` / `?instagram=…`, never
-prefix or fuzzy search, so it can't list people), rate-limited. Events
+for sites (`POST /api/people/lookup` with `{phone}` or `{instagram}` in
+the body, so numbers never sit in a URL or a log; it was a GET with a
+query string until feat/data-security), never prefix or fuzzy search, so
+it can't list people, rate-limited. Events
 only lets verified hosts use it. Invites are therefore keyed by **person
 id** from day one.
 
@@ -78,7 +80,10 @@ details to anyone else:
   one person another person's email, phone, Instagram, Venmo or Cash
   App. Other people are only ever `{id, firstName, lastName, shortName,
   photoUrl}` (what `/api/people` gives). Hosts get no more about their
-  guests than that. Only your own details come back, from `/api/v1/me`.
+  guests than that. Since feat/data-security, events doesn't hold even
+  the visitor's own: the account service tells it none of them (per-site
+  grants), and `/api/v1/me` is you without them. The apps read and
+  change their own at the account service's `/api/native/v1/me`.
 - A lookup answers with that same public shape and nothing else. A
   phone lookup doesn't return their Instagram, and the reverse holds
   too. A miss says "no one found", with no hints.

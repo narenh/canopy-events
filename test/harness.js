@@ -5,9 +5,10 @@
 //
 // Every JSON answer from /api/v1 that any test gets goes through the
 // checks in CHECKS before the test sees it. The first is the leak walker:
-// nobody's email, phone, Instagram, Venmo or Cash App but the caller's
-// own, anywhere in it. A test doesn't have to remember to ask; a leak in
-// any response fails whichever test made the request.
+// nobody's email, phone, Instagram, Venmo or Cash App, anywhere in it, not
+// even the caller's own (events shows none, so it answers with none). A
+// test doesn't have to remember to ask; a leak in any response fails
+// whichever test made the request.
 
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -20,18 +21,18 @@ const { checkResponse } = require('./openapi');
 
 const CONTACT_FIELDS = ['email', 'phone', 'instagram', 'venmo', 'cashapp'];
 
-// Every place in `data` that shows someone's contact details who isn't
-// `callerId`: a contact field on any object that isn't the caller, or any
-// other person's actual email, number or handle anywhere in any string.
+// Every place in `data` that shows anyone's contact details, the caller's
+// included: a contact field on any object, or anyone's actual email,
+// number or handle anywhere in any string. (`callerId` is kept for the
+// checks' signature; nobody is exempt any more.)
 function findLeaks(data, callerId, people) {
-  const others = Object.values(people).filter((p) => p.id !== callerId);
+  const others = Object.values(people);
   const found = [];
   const walk = (v, where) => {
     if (Array.isArray(v)) return v.forEach((x, i) => walk(x, `${where}[${i}]`));
     if (v && typeof v === 'object') {
-      const isCaller = callerId && v.id === callerId;
       for (const [k, x] of Object.entries(v)) {
-        if (CONTACT_FIELDS.includes(k.toLowerCase()) && x != null && !isCaller) found.push(`${where}.${k}`);
+        if (CONTACT_FIELDS.includes(k.toLowerCase()) && x != null) found.push(`${where}.${k}`);
         walk(x, `${where}.${k}`);
       }
       return;

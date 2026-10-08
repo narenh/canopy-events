@@ -19,7 +19,8 @@ info:
 
     **Other people** are only ever `Person`: id, first and last name, short
     name and photo. Nobody's email, phone, Instagram, Venmo or Cash App is
-    ever in an answer, except your own, from `GET /api/v1/me`.
+    ever in an answer, not even your own: those come from Canopy accounts
+    (`GET /api/native/v1/me`).
   license:
     name: Private
     identifier: LicenseRef-Proprietary
@@ -695,7 +696,7 @@ paths:
         '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/people/lookup:
-    get:
+    post:
       tags: [People]
       operationId: lookupPerson
       summary: Find someone by phone or Instagram
@@ -703,9 +704,15 @@ paths:
         For inviting someone you know the number or handle of: feed the
         `person.id` you get to `POST /api/v1/events/{id}/invites`.
         Verified people only (403 `email_unverified`, with `verify`).
-        Exactly one of `phone` or `instagram` (400 `one_of`), as typed
-        (`(415) 555-1234`, `@ana.lima`); they're cleaned the way the
-        Canopy profile cleans them, and matched exactly, never by prefix.
+        Exactly one of `phone` or `instagram`, as a string (400 `one_of`),
+        as typed (`(415) 555-1234`, `@ana.lima`); they're cleaned the way
+        the Canopy profile cleans them, and matched exactly, never by
+        prefix.
+
+        A POST, though it changes nothing: what you're looking for goes in
+        the body, never the URL, so it doesn't end up in a log anywhere
+        along the way. (It used to be a GET with a query string; that's
+        gone.) Don't log the body in the app either.
 
         The answer is the public `Person` and nothing else: never the
         number or handle you asked about, nor anything else about them. A
@@ -716,15 +723,20 @@ paths:
         address and overall (429 `rate_limited`): don't look up as
         someone types. 403 `lookup_not_allowed` means it isn't switched on
         for this site.
-      parameters:
-        - name: phone
-          in: query
-          schema: { type: string }
-          example: (415) 555-1234
-        - name: instagram
-          in: query
-          schema: { type: string }
-          example: '@ana.lima'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string, description: 'As typed, e.g. (415) 555-1234.' }
+                instagram: { type: string, description: 'As typed, with or without the @, or a link to the profile.' }
+            examples:
+              phone:
+                value: { phone: (415) 555-1234 }
+              instagram:
+                value: { instagram: '@ana.lima' }
       responses:
         '200':
           description: Who it is, or null.
@@ -751,8 +763,11 @@ paths:
       operationId: getMe
       summary: You
       description: |
-        Your own details: the only answer anywhere with an email, phone,
-        Instagram, Venmo or Cash App in it, and they're yours. When
+        You: your id, name, photo, whether your email is proven and whether
+        people can find you. No answer here has an email, phone,
+        Instagram, Venmo or Cash App in it, yours included; the app gets
+        and changes your own at Canopy accounts (`GET /api/native/v1/me`).
+        When
         `person.emailVerified` is false (a quick account), show the
         verify-your-email banner, which can't be dismissed, linking to
         `verifyUrl`. `hasHosted` says whether to show a Hosting tab.
@@ -1183,21 +1198,20 @@ components:
         photoUrl: https://account.canopysf.com/photo/6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44?v=1759870000000
 
     Me:
-      description: You, with your own details. Only ever from `GET /api/v1/me`.
+      description: |
+        You. Only ever from `GET /api/v1/me`. No email, phone, Instagram,
+        Venmo or Cash App, not even your own: events never shows them, so
+        it doesn't have them. Your own contact details come from Canopy
+        accounts, `GET /api/native/v1/me` (and are changed there).
       type: object
       additionalProperties: false
-      required: [id, email, firstName, lastName, shortName, photoUrl, phone, instagram, venmo, cashapp, emailVerified, findable]
+      required: [id, firstName, lastName, shortName, photoUrl, emailVerified, findable]
       properties:
         id: { type: string }
-        email: { type: [string, 'null'] }
         firstName: { type: string }
         lastName: { type: string }
         shortName: { type: string }
         photoUrl: { type: [string, 'null'], format: uri }
-        phone: { type: [string, 'null'], description: 'E.164, e.g. +14155551234.' }
-        instagram: { type: [string, 'null'] }
-        venmo: { type: [string, 'null'] }
-        cashapp: { type: [string, 'null'] }
         emailVerified:
           type: boolean
           description: False for a quick account whose email isn't proven yet. Show the verify banner.
@@ -1225,15 +1239,10 @@ components:
       example:
         person:
           id: 6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44
-          email: ana@example.com
           firstName: Ana
           lastName: Lima
           shortName: Ana L
           photoUrl: null
-          phone: '+14155551234'
-          instagram: ana.lima
-          venmo: ana-l
-          cashapp: AnaL
           emailVerified: false
           findable: true
         verifyUrl: https://account.canopysf.com/profile?verify=1&return=https%3A%2F%2Fevents.canopysf.com%2F

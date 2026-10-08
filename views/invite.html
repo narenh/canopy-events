@@ -9,8 +9,8 @@
 <link rel="stylesheet" href="/events.css">
 </head>
 <!-- Inviting people to an event (/e/<id>/invite, hosts only): finding
-     someone by phone number or Instagram (GET /api/v1/people/lookup, an
-     exact match), then your friends (GET /api/v1/me/friends), the ones
+     someone by phone number or Instagram (POST /api/v1/people/lookup, an
+     exact match, with what's typed in the body), then your friends (GET /api/v1/me/friends), the ones
      already on the list (or removed) marked with what they said, a search
      box, and POST .../invites. Drawn by public/ui.js (invitePage). -->
 <body class="mesh-bg">
@@ -86,7 +86,8 @@ if (list){
 
 // ---------------- Finding someone by phone or Instagram ----------------
 //
-// One exact match from GET /api/v1/people/lookup: a name and a photo,
+// One exact match from POST /api/v1/people/lookup (what's typed goes in
+// the body, never the URL): a name and a photo,
 // offered with "Invite". What's typed decides which to ask: anything
 // with a letter or starting with @ is an Instagram username, otherwise
 // it's a phone number (the account service cleans either).
@@ -112,7 +113,7 @@ if (lookupForm){
     const kind = /^@|[a-z]/i.test(q) ? 'instagram' : 'phone';
     let after = null;
     busy(document.getElementById('lookupBtn'), document.getElementById('lookupError'), async () => {
-      const { res, data: d } = await api('GET', '/people/lookup?' + kind + '=' + encodeURIComponent(q), undefined, { stay: true });
+      const { res, data: d } = await api('POST', '/people/lookup', { [kind]: q }, { stay: true });
       if (res.ok){
         found = d.person;
         drawFound();

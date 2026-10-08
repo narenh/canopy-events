@@ -1,4 +1,4 @@
-// You: your own details, your friends, and your events. Mounted at
+// You: yourself (no contact details), your friends, and your events. Mounted at
 // /api/v1. Everything here needs you signed in.
 
 const express = require('express');
@@ -11,8 +11,9 @@ module.exports = function meRoutes(ctx) {
   const { store, auth, canopy } = ctx;
   const router = express.Router();
 
-  // The only place anyone's email, phone, Instagram, Venmo or Cash App
-  // comes back, and it's your own. `verifyUrl` is where an unverified
+  // You: your id, name, photo, emailVerified and findable. No contact
+  // details, not even your own (lib/people.js says why; the apps get them
+  // from the account service's /api/native/v1/me). `verifyUrl` is where an unverified
   // account proves its email (apps show the same banner the pages do);
   // null once it's verified. `hasHosted`: whether they've ever hosted or
   // co-hosted an event (the app shows its Hosting tab only then). Once a

@@ -17,7 +17,9 @@ the link, sign in (or quick-sign-up), and say **going**, **maybe** or
   sees counts). Hosts always see everything.
 - **Contact details never leak.** Nobody is ever shown anyone else's
   email, phone, Instagram, Venmo or Cash App, not even a host looking at
-  their own guests. Other people are a name and a photo.
+  their own guests. Other people are a name and a photo. Events doesn't
+  even hold the visitor's own: the account service is set up to tell it
+  none of them.
 - It has a **fully documented JSON API** (`/api/v1`, OpenAPI 3.1, rendered
   at `/docs`), so the iOS and Android apps can be built on it without
   touching the server. The web pages use the same API.
@@ -212,12 +214,17 @@ minute). Apps send the same token as `Authorization: Bearer <token>`.
 - **Deleted accounts.** When the account service no longer has someone,
   their answers stay here, and they show as a "Former member" with no
   photo.
-- **Contact details.** The account service hands this site the visitor's
-  own email, phone, Instagram, Venmo and Cash App, for `/api/v1/me`. It
-  never hands over anyone else's, and nothing here would pass them on if
-  it did: `lib/people.js` copies the five public fields by name. The
-  tests walk every JSON answer in the whole suite and fail on anyone
-  else's details turning up anywhere in it.
+- **Contact details.** Events shows nobody's email, phone, Instagram,
+  Venmo or Cash App, not even your own, so it's granted none of them: in
+  the account service's Sites tab, every contact-detail box for `events`
+  stays unticked, and its `/api/session` answer leaves them out. What
+  events never holds can't leak from its database, logs or caches.
+  `/api/v1/me` is you without them; the apps read and change their own
+  contact details at the account service (`/api/native/v1/me`). Even if
+  they were sent, nothing here would pass them on: `lib/people.js` copies
+  fields by name, and the tests (whose fake account service sends all
+  five) walk every JSON answer in the whole suite and fail on anyone's
+  details, yours included, turning up anywhere in it.
 
 ## The API
 
@@ -244,13 +251,13 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `POST`, `DELETE /api/v1/me/devices` | register a phone for push, or stop |
 | `PUT`, `DELETE /api/v1/events/{id}/removed/{personId}` | remove a guest, or undo it (hosts) |
 | `POST /api/v1/events/{id}/new-link` | give the event a new link; the old one stops working (the creator) |
-| `GET /api/v1/people/lookup` | find someone to invite by exact phone or Instagram (verified people) |
+| `POST /api/v1/people/lookup` | find someone to invite by exact phone or Instagram, in the body, never the URL (verified people) |
 | `PUT /api/v1/events/{id}/rsvp` | answer: going, maybe, not_going |
 | `DELETE /api/v1/events/{id}/rsvp` | take the answer back |
 | `GET /api/v1/events/{id}/guests` | the guest list, by the visibility rule |
 | `POST /api/v1/events/{id}/invites` | invite people by id (hosts) |
 | `DELETE /api/v1/events/{id}/invites/{personId}` | take back an unanswered invitation (hosts) |
-| `GET /api/v1/me` | you, with your own details and `emailVerified` |
+| `GET /api/v1/me` | you (name, photo, `emailVerified`; no contact details) |
 | `GET /api/v1/me/friends` | your friends, with events in common |
 | `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/declined`, `/past` | your events |
 
@@ -326,7 +333,9 @@ aren't port-specific, so signing in on one signs you in on both.
    (unverified) accounts** for it. Without that switch, quick accounts
    are signed out here and get sent to verify their email instead. Switch
    on **Can find people by phone number or Instagram** too, or lookups
-   answer 403 `lookup_not_allowed`.
+   answer 403 `lookup_not_allowed`. Leave every **Tell it the visitor's
+   own** box (email, phone, Instagram, Venmo, Cash App) unticked: events
+   uses none of them.
 3. Here:
 
    ```bash
@@ -378,7 +387,9 @@ runs as `NODE_ENV=production`, port 3000, `DATA_DIR=/app/data`.
    - `CANOPY_ACCOUNT_KEY`: the key from the account service's **Sites**
      tab for a site named `events`, with **Allows quick (unverified)
      accounts** and **Can find people by phone number or Instagram**
-     switched on.
+     switched on, and **none** of the **Tell it the visitor's own** boxes
+     ticked (events never shows anyone's email, phone, Instagram, Venmo or
+     Cash App, its own visitor's included, so it shouldn't be sent them).
    - `PUBLIC_URL` and `CANOPY_DOMAIN`: leave unset. They default to
      `https://events.canopysf.com` and `canopysf.com`.
    - Leave `PORT` and `DATA_DIR` alone. The Dockerfile sets them.

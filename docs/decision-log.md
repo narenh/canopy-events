@@ -1675,3 +1675,202 @@ Fixes for the security review's events findings (branch `fix/review`).
   lib/ids.js). Pages get data only from /api/v1 over HTTP. · A later
   split is moving folders, not untangling code. · Split when there's a
   second web client, a need to deploy separately, or more people.
+
+
+## Contact data security (feat/data-security)
+
+On `feat/data-security` in both repos, not merged. Newest at the bottom.
+
+### 1. Lookup by POST
+
+- The lookup is `POST` in both services (`/api/people/lookup` in the
+  account service, `/api/v1/people/lookup` here), with `{phone}` or
+  `{instagram}` in a JSON body. The GET forms are gone, with no
+  compatibility period. · Numbers and handles in a URL end up in access
+  and error logs along the way; neither service is public yet, so nobody
+  depends on the GET. · Put the GET routes back next to the POSTs.
+- A site's key (`Authorization: Bearer cnp_…`) lets `POST
+  /api/people/lookup` skip the account service's Origin check. · The
+  same reasoning as the apps' bearer exemption: a header no browser
+  attaches by itself, on a route that never reads the cookie. Only that
+  one path is exempt. · `SITE_POSTS` in server.js.
+- Body values must be strings; a number, an array or an object is `400
+  one_of`. · No type guessing on what's typed into a phone field. ·
+  Accept numbers in both routes.
+- Error log lines carry the path without its query string (account
+  service), and events logs an error's stack rather than the whole error
+  object (an `ApiFailed` carries the API's whole answer). · Nothing that
+  could hold contact details goes in a log. · Revert the log lines.
+- Left as they are: the account service's three development-only mail
+  lines that print an address ("code for ana@…: 123456"). They never run
+  in production (no SMTP there means the request fails instead), and the
+  tests read codes from them. · Mask the address there if that's ever
+  wanted; the test harness matches on it.
+
+### 2. Per-site scopes on `/api/session`
+
+- Each site in the account service is granted a subset of the visitor's
+  `email`, `phone`, `instagram`, `venmo`, `cashapp`
+  (`apps.contact_fields`, schema version 8). A new site gets none. ·
+  A site can only leak what it's sent. · Tick the boxes in the Sites tab.
+- Upgrading to version 8 grants every existing site all five. · That's
+  what `/api/session` gave before, so tickets keeps working. · Untick
+  per site afterwards.
+- Fields not granted are **left out** of `person`, not sent as `null`. ·
+  `null` already means "not filled in"; a site shouldn't be able to read
+  "not told" as "blank". · `siteView` in the account service's server.js.
+- `id`, names, photo, `emailVerified` and `findable` are always sent. ·
+  Every site needs them to show who's signed in; `findable` is a
+  setting, not a contact detail. · Add `findable` to the scopes.
+- Events is granted nothing, and `GET /api/v1/me` no longer has `email`,
+  `phone`, `instagram`, `venmo` or `cashapp` (removed from the `Me`
+  schema, not kept as nulls). The leak walker now flags anyone's contact
+  details, the caller's own included, and the fake account service sends
+  all five by default so the tests prove events drops them even if it's
+  granted them by mistake. · Events never showed them; the apps read and
+  edit the profile through the account service's `/api/native/v1/me`.
+  · Put the fields back in `ownPerson` and the schema.
+- **Follow-up for the iOS app (not done here):** `Me.swift` documents
+  `/api/v1/me` as its source for `email`, `phone` and so on. They're
+  optional there, so decoding still works, but the profile header, the
+  profile form and the verify sheet's "we sent a code to …" will show
+  blanks until the app reads its own contact details from the account
+  service's `GET /api/native/v1/me` (it already decodes into `Me`).
+
+### 3. Contact details encrypted at rest (account service, schema version 9)
+
+- **Email is encrypted too**, with a keyed-hash column (`email_hash`,
+  unique) that sign-in, "is this address taken" and uniqueness use. ·
+  Names plus emails are the most useful thing in a leaked copy; the hash
+  keeps every exact-match use working, and lets an email come back after
+  a lost encryption key (its owner signs in by code). · Drop the email
+  from `SEALED_COLUMNS`/`sealedContact` and look up by `email` again
+  (a schema step to decrypt it).
+- Venmo and Cash App are encrypted but have no hash. · Nothing looks them
+  up. · n/a
+- Format `v1:<keyId>:<nonce>:<ciphertext+tag>`, AES-256-GCM, random
+  12-byte nonce, the value's **kind** (`email`, `phone`, ...) as GCM's
+  additional data; not bound to the row id. · Stops a value being moved
+  to another column and still opening; row binding would also break when
+  a session's id changes at sign-in, and only matters to someone who can
+  write to the database, which isn't the threat here. · `seal`/`open` in
+  lib/contactCrypto.js.
+- HMAC input is `<kind>:<cleaned value>`. · Phone and Instagram hashes of
+  the same string can't collide. · n/a
+- The session columns that hold an email for a few minutes
+  (`code_email`, `verified_email`) and a waiting sign-up's details
+  (`pending_profile`) are sealed too. · Otherwise a snapshot taken during
+  a sign-up carries the address in plain text. · n/a
+- `secure_delete` is always on, and the upgrade to 9 runs `VACUUM`
+  afterwards (outside its transaction). · Without them the old plain text
+  stays in free pages and is copied into every snapshot; the test that
+  checks the raw file fails without them. · Remove the pragma and the
+  VACUUM.
+- Keys: `CONTACT_ENCRYPTION_KEYS` (`id:base64key`, comma-separated, first
+  is current) and `LOOKUP_HMAC_KEY`. Unset in development: throwaway keys
+  made and printed. Unset in production on an empty database: also
+  throwaway keys, printed with a loud `!!!` warning, so the admin can
+  still set up a fresh install; once anyone exists, production refuses to
+  start without keys. Setting only one of the two always refuses. ·
+  Mirrors `ADMIN_PASSWORD`, and stops a restart from silently losing
+  everything. · `checkKeys` in lib/db.js.
+- A value under a key id that isn't in the list makes production refuse
+  to start, unless `CONTACT_KEYS_LOST=1` (a third env var, added for
+  this). Then those values read as empty; nothing is deleted, so a found
+  key brings them back. · Taking an old key out too soon should be loud,
+  and a truly lost key shouldn't brick the service. · Drop the flag to
+  make it always refuse, or always warn.
+- Rotation runs at every startup when anything isn't under the first key,
+  in one transaction; there's also `store.reseal()`. A changed
+  `LOOKUP_HMAC_KEY` is noticed through a check value in `meta`
+  (`lookup_key_check`) and every hash is rebuilt from decrypted values. ·
+  No manual step to forget. · n/a
+- An email that reads as empty (lost key) is re-sealed when its owner
+  proves it by code (`addPasskeyProvingEmail` now takes the proven
+  address); confirming from the profile answers `409 email_unreadable`
+  and asks them to sign in by code instead. The phone's lookup hash is
+  left as it was when the encryption key is lost, so people stay findable
+  by the number they had even though their profile shows it empty. ·
+  Recovering what can be recovered without destroying anything. · Clear
+  the hashes in `checkKeys` when `CONTACT_KEYS_LOST=1`.
+- Snapshots and Coolify backups from before version 9 are not touched;
+  the startup log and README tell the admin to delete them. · Deleting
+  backups automatically is the owner's call. · n/a
+
+### 4. Self-serve account deletion (account service)
+
+- "Delete my account" sits at the bottom of the web profile, behind the
+  passkey check already used for changing an email (`/api/auth/reauth/*`,
+  15 minutes) and typing **DELETE** (case doesn't matter), not the email.
+  · DELETE is the same for everyone and quick to type on a phone; typing
+  your email adds nothing the passkey hasn't already proven, and fails if
+  the email can't be read after a lost key. · `deleteWordTyped` in
+  views/profile.html.
+- The server only requires the passkey check, not the typed word. · The
+  passkey is the security boundary; the word only stops a slip, and
+  anything that could send the request could send the word too. · Add a
+  `confirm` body field in `deleteMe`.
+- `DELETE /api/profile` (web) and `DELETE /api/native/v1/me` (apps) are
+  one handler, and do exactly what the admin's delete does: passkeys,
+  every session, setup links, photo; then the browser's cookie is
+  cleared. · One code path, as with the rest of the native API. · n/a
+- The admin is refused (`409 is_admin`) before the passkey check, and the
+  profile shows them why instead of the button. · Deleting the admin
+  would reopen first-run setup to whoever has the setup password. · n/a
+- The deleted email is free straight away; signing up with it makes a
+  new, unrelated account. · Nothing else is left to tie it to. · n/a
+- **Open question for you: should events purge a deleted person's wall
+  text?** Today events keeps everything under the id (RSVPs, wall posts,
+  hosting) and shows the person as "Former member" with no photo, and the
+  account README now says so. Their name and photo disappear everywhere,
+  but what they *wrote* on a wall stays word for word, and it can name
+  them ("it's Ana's birthday, I'm bringing cake"). Options: (a) keep it,
+  as now: a deleted account isn't a request to rewrite other people's
+  event history, and hosts can already delete any post; (b) blank the
+  text of their posts the first time `/api/people` stops returning them
+  (events would need to notice deletions, e.g. a periodic sweep of ids
+  with posts, since nobody tells sites); (c) offer "delete my posts on
+  events" as its own step before deleting the account. Not built. My
+  lean is (c) if anyone asks, since only the person knows what they want
+  gone, and (b) is the only one that works after the fact.
+
+### 5. The lookup log (account service, schema version 10)
+
+- Every lookup a site makes is logged in `lookup_log`, found or not and
+  refused or not: asker id, site id, kind, a keyed hash of the cleaned
+  target (the same HMAC as `phone_hash`/`instagram_hash`), matched,
+  refusal reason, a keyed hash of the visitor's address, and the time. A
+  request with no valid site key isn't logged. · Anyone on the internet
+  could otherwise write rows; only our sites' lookups are lookups. ·
+  Log it in `requireSite`'s 401 too.
+- The visitor's address is stored as an HMAC (same key, kind `address`),
+  not the IP. · Patterns only need "same address or not"; an IP is
+  personal data that would sit in every backup. · Store
+  `address` instead of `store.lookupHash('address', …)`.
+- Kept **90 days**, pruned on the snapshots' daily timer (before each
+  snapshot) and at startup. · Long enough to see a slow, weeks-long
+  enumeration under the 100-a-day limit and to answer "how did they find
+  me?" later; short enough that it isn't a long-term record of who looked
+  for whom. · `LOOKUP_LOG_TTL_MS` in lib/db.js.
+- Flags: **10 misses in a row**, or **20+ lookups in a day with 80%+
+  missed**, or **any rate-limited lookup in a day**, per asker and per
+  address. A flag is a `lookup alert` warning line (once a day per asker
+  or address, in memory, so a restart can repeat one) and a "Look into
+  this" tag in the admin's new **Lookups** tab (the last 7 days, askers
+  with counts and miss rates, and only flagged addresses, by the first 12
+  characters of their hash). Flags block nothing. · Hosts inviting people
+  who aren't on Canopy will miss sometimes; ten in a row or a day of
+  nothing but misses is someone guessing. · `LOOKUP_ALERT` in server.js.
+- Refusals that come before the lookup limits (not allowed, signed out,
+  unverified, one_of, rate_limited) are logged at most 30 an hour per
+  asker (or per address when there's no asker) and 600 an hour overall;
+  `bad_phone`/`bad_instagram` are already behind the lookup limits. ·
+  Otherwise a signed-in user could fill the disk through a site. ·
+  `lookupRefusalLog` in server.js.
+- A deleted account's log entries stay under its id until they age out
+  (shown as "Former member" in the tab). · It's security data, and it
+  holds no contact details. · Delete them in `deleteMe`.
+- The README says plainly that the hashes protect copies, not the live
+  server: with `LOOKUP_HMAC_KEY`, phone numbers (and IPv4 addresses) are
+  few enough to brute-force back. · Honest about what a keyed hash buys. ·
+  n/a

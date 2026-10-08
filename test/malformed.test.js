@@ -65,7 +65,7 @@ test('malformed requests get a 4xx, not a 500', async (t) => {
       '{"capacity":"5"}', '{"title":"' + 'a'.repeat(200) + '","timeZone":{"toString":1}}', '{"token":{"length":20}}',
       '{"__proto__":{"admin":true},"status":"going"}', '{"broken'];
     const routes = [['PUT', `${E}/rsvp`], ['PATCH', E], ['POST', '/api/v1/events'], ['POST', `${E}/invites`],
-      ['POST', `${E}/cohosts`], ['POST', `${E}/wall`], ['POST', '/api/v1/me/notifications/read'], ['POST', '/api/v1/me/devices'],
+      ['POST', `${E}/cohosts`], ['POST', `${E}/wall`], ['POST', '/api/v1/me/notifications/read'], ['POST', '/api/v1/me/devices'], ['POST', '/api/v1/people/lookup'],
       ['DELETE', '/api/v1/me/devices'], ['PUT', `${E}/cover`]];
     const fiveHundreds = [];
     for (const [method, url] of routes) {
@@ -77,7 +77,7 @@ test('malformed requests get a 4xx, not a 500', async (t) => {
     const b64 = (v) => Buffer.from(v).toString('base64url');
     const gets = [`${E}/guests?limit=1e1`, `${E}/guests?limit[]=1`, `${E}/guests?cursor[a]=1`, `${E}/guests?status[]=going`,
       `${E}/guests?cursor=${b64('[1e300,"x"]')}`, `${E}/wall?cursor=${b64('["a","b"]')}`, `/api/v1/me/events/past?cursor=${b64('[1,{}]')}`,
-      '/api/v1/people/lookup?phone[a]=1', '/api/v1/people/lookup?phone=1&phone=2', '/api/v1/events/%', '/e/%E0%A4%A',
+      '/api/v1/events/%', '/e/%E0%A4%A',
       `${E}/wall/99999999999999999`, '/covers/..%2f..%2fevents.db', '/covers/%2e%2e', '/covers/%'];
     for (const url of gets) {
       const r = await raw('GET', url);

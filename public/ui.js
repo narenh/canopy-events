@@ -1330,7 +1330,7 @@
   }
 
   // Finding someone by their phone number or Instagram username: one
-  // field, an exact match (the account service's lookup, through GET
+  // field, an exact match (the account service's lookup, through POST
   // /api/v1/people/lookup), and the person it finds, a name and a photo,
   // offered with "Invite". Only for verified people (the API's rule);
   // anyone else is told how to get it.

@@ -19,18 +19,31 @@ test('me', async (t) => {
   const ids = (d) => d.events.map((e) => e.id);
   const inDays = (n) => new Date(Date.now() + n * DAY).toISOString();
 
-  await t.test('/me: your own details, all of them', async () => {
+  const meOfAna = {
+    person: {
+      id: P.ana.id, firstName: 'Ana', lastName: 'Lima', shortName: 'Ana L',
+      photoUrl: `${server.fake.base}/photo/${P.ana.id}?v=1`, emailVerified: true, findable: true
+    },
+    verifyUrl: null,
+    hasHosted: false
+  };
+
+  await t.test('/me: you, without contact details, even when the account service sends them', async () => {
+    // The fake sends all five (fakeAccount.js), as if the admin had ticked
+    // them for events by mistake.
     const r = await ana.get('/api/v1/me');
     assert.equal(r.status, 200);
-    assert.deepEqual(r.data, {
-      person: {
-        id: P.ana.id, email: P.ana.email, firstName: 'Ana', lastName: 'Lima', shortName: 'Ana L',
-        photoUrl: `${server.fake.base}/photo/${P.ana.id}?v=1`,
-        phone: P.ana.phone, instagram: P.ana.instagram, venmo: P.ana.venmo, cashapp: P.ana.cashapp, emailVerified: true, findable: true
-      },
-      verifyUrl: null,
-      hasHosted: false
-    });
+    assert.deepEqual(r.data, meOfAna);
+  });
+
+  await t.test('/me: the same with events granted nothing, as it should be set up', async () => {
+    server.fake.contactFields = [];
+    try {
+      const r = await client(server, 'ana', { mode: 'bearer' }).get('/api/v1/me');
+      assert.deepEqual(r.data, meOfAna);
+    } finally {
+      server.fake.contactFields = ['email', 'phone', 'instagram', 'venmo', 'cashapp'];
+    }
   });
 
   await t.test('/me: an unverified account says so, with where to verify', async () => {
