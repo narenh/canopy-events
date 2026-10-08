@@ -909,3 +909,44 @@ On `feat/data-security` in both repos, not merged. Newest at the bottom.
   events" as its own step before deleting the account. Not built. My
   lean is (c) if anyone asks, since only the person knows what they want
   gone, and (b) is the only one that works after the fact.
+
+### 5. The lookup log (account service, schema version 10)
+
+- Every lookup a site makes is logged in `lookup_log`, found or not and
+  refused or not: asker id, site id, kind, a keyed hash of the cleaned
+  target (the same HMAC as `phone_hash`/`instagram_hash`), matched,
+  refusal reason, a keyed hash of the visitor's address, and the time. A
+  request with no valid site key isn't logged. · Anyone on the internet
+  could otherwise write rows; only our sites' lookups are lookups. ·
+  Log it in `requireSite`'s 401 too.
+- The visitor's address is stored as an HMAC (same key, kind `address`),
+  not the IP. · Patterns only need "same address or not"; an IP is
+  personal data that would sit in every backup. · Store
+  `address` instead of `store.lookupHash('address', …)`.
+- Kept **90 days**, pruned on the snapshots' daily timer (before each
+  snapshot) and at startup. · Long enough to see a slow, weeks-long
+  enumeration under the 100-a-day limit and to answer "how did they find
+  me?" later; short enough that it isn't a long-term record of who looked
+  for whom. · `LOOKUP_LOG_TTL_MS` in lib/db.js.
+- Flags: **10 misses in a row**, or **20+ lookups in a day with 80%+
+  missed**, or **any rate-limited lookup in a day**, per asker and per
+  address. A flag is a `lookup alert` warning line (once a day per asker
+  or address, in memory, so a restart can repeat one) and a "Look into
+  this" tag in the admin's new **Lookups** tab (the last 7 days, askers
+  with counts and miss rates, and only flagged addresses, by the first 12
+  characters of their hash). Flags block nothing. · Hosts inviting people
+  who aren't on Canopy will miss sometimes; ten in a row or a day of
+  nothing but misses is someone guessing. · `LOOKUP_ALERT` in server.js.
+- Refusals that come before the lookup limits (not allowed, signed out,
+  unverified, one_of, rate_limited) are logged at most 30 an hour per
+  asker (or per address when there's no asker) and 600 an hour overall;
+  `bad_phone`/`bad_instagram` are already behind the lookup limits. ·
+  Otherwise a signed-in user could fill the disk through a site. ·
+  `lookupRefusalLog` in server.js.
+- A deleted account's log entries stay under its id until they age out
+  (shown as "Former member" in the tab). · It's security data, and it
+  holds no contact details. · Delete them in `deleteMe`.
+- The README says plainly that the hashes protect copies, not the live
+  server: with `LOOKUP_HMAC_KEY`, phone numbers (and IPv4 addresses) are
+  few enough to brute-force back. · Honest about what a keyed hash buys. ·
+  n/a
