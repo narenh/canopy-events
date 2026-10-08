@@ -710,3 +710,13 @@ The review found no critical or high issues. Fixes are in progress
   (sign-in, quick sign-up, profile) keep their smaller type for now. ·
   To be decided by you: quick sign-up is the first page a guest sees
   after events.
+- **(You)** Hosts pick each event's background colour with a slider
+  across the whole rainbow, at the same relative darkness.
+- Assumed: `themeHue` on the event, 0–359, or null for the default
+  Canopy green. The mesh is defined in OKLCH with lightness and chroma
+  fixed and only the hue varying, so every hue has the same perceived
+  darkness and text contrast holds. The slider lives in the editor with
+  a live preview and a "Canopy green" reset, and the hue themes the
+  event page (including the signed-out page and the no-cover hero).
+  Other pages stay green. The iOS app will read the same field. ·
+  docs/api.md says how the colours are derived, so the app can match.
