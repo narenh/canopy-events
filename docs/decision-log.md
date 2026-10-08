@@ -872,3 +872,40 @@ On `feat/data-security` in both repos, not merged. Newest at the bottom.
 - Snapshots and Coolify backups from before version 9 are not touched;
   the startup log and README tell the admin to delete them. · Deleting
   backups automatically is the owner's call. · n/a
+
+### 4. Self-serve account deletion (account service)
+
+- "Delete my account" sits at the bottom of the web profile, behind the
+  passkey check already used for changing an email (`/api/auth/reauth/*`,
+  15 minutes) and typing **DELETE** (case doesn't matter), not the email.
+  · DELETE is the same for everyone and quick to type on a phone; typing
+  your email adds nothing the passkey hasn't already proven, and fails if
+  the email can't be read after a lost key. · `deleteWordTyped` in
+  views/profile.html.
+- The server only requires the passkey check, not the typed word. · The
+  passkey is the security boundary; the word only stops a slip, and
+  anything that could send the request could send the word too. · Add a
+  `confirm` body field in `deleteMe`.
+- `DELETE /api/profile` (web) and `DELETE /api/native/v1/me` (apps) are
+  one handler, and do exactly what the admin's delete does: passkeys,
+  every session, setup links, photo; then the browser's cookie is
+  cleared. · One code path, as with the rest of the native API. · n/a
+- The admin is refused (`409 is_admin`) before the passkey check, and the
+  profile shows them why instead of the button. · Deleting the admin
+  would reopen first-run setup to whoever has the setup password. · n/a
+- The deleted email is free straight away; signing up with it makes a
+  new, unrelated account. · Nothing else is left to tie it to. · n/a
+- **Open question for you: should events purge a deleted person's wall
+  text?** Today events keeps everything under the id (RSVPs, wall posts,
+  hosting) and shows the person as "Former member" with no photo, and the
+  account README now says so. Their name and photo disappear everywhere,
+  but what they *wrote* on a wall stays word for word, and it can name
+  them ("it's Ana's birthday, I'm bringing cake"). Options: (a) keep it,
+  as now: a deleted account isn't a request to rewrite other people's
+  event history, and hosts can already delete any post; (b) blank the
+  text of their posts the first time `/api/people` stops returning them
+  (events would need to notice deletions, e.g. a periodic sweep of ids
+  with posts, since nobody tells sites); (c) offer "delete my posts on
+  events" as its own step before deleting the account. Not built. My
+  lean is (c) if anyone asks, since only the person knows what they want
+  gone, and (b) is the only one that works after the fact.
