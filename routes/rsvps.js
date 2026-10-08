@@ -115,7 +115,7 @@ module.exports = function rsvpsRoutes(ctx) {
   }));
 
   // A host invites people by id: { personIds: [...] }. The web page offers
-  // friends; the API takes anyone with a Canopy account, so the phone and
+  // friends; the API takes anyone with a Canopy Account, so the phone and
   // Instagram lookup (later) can feed it. Each id comes back either in
   // `invited` or in `skipped` with why.
   router.post('/events/:id/invites', auth.requirePerson, withEvent, handle(async (req, res) => {

@@ -1648,7 +1648,7 @@ Fixes for the security review's events findings (branch `fix/review`).
   change. · Cost: slightly less glow at the top and bottom. · The first
   gradient layer of `.mesh-bg::before` in events.css and account.css.
 - **(You)** The header photo opens an account menu: your name first
-  (with "Canopy account" under it, linking to your Canopy profile), then
+  (with "Canopy Account" under it, linking to your Canopy profile), then
   Sign out. Sign out is removed everywhere else (the page footer is
   gone). · The menu uses the same keyboard and Escape behaviour as the
   host ⋯ menu. · lib/render.js `header()`, public/events.js

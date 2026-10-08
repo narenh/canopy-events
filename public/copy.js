@@ -21,14 +21,14 @@ const COPY = {
     friends: 'Friends',
     signIn: 'Sign in',
     signOut: 'Sign out',
-    yourAccount: 'Your Canopy account',
-    canopyAccount: 'Canopy account',
+    yourAccount: 'Your Canopy Account',
+    canopyAccount: 'Canopy Account',
     // Can't be closed. Unverified people (a quick sign-up) can answer
     // and be invited, but can't make events.
     verifyBanner: "Confirm your email. Until you do, you can answer invitations but you can't make your own events.",
     verifyButton: 'Confirm email',
     unreachable: "Couldn't reach the server. Try again.",
-    accountsDown: "Canopy accounts can't be reached right now. Try again in a minute.",
+    accountsDown: "Canopy Accounts can't be reached right now. Try again in a minute.",
     failed: 'Something went wrong. Try again.',
     showMore: 'Show more',
     pageNotFound: "There's nothing at this address.",
@@ -81,7 +81,7 @@ const COPY = {
     over: 'This event has ended.',
     // Signed out, the big button goes to the quick sign-up.
     rsvpHint: "New to Canopy? It's just your name, your email and a passkey.",
-    haveAccount: 'I have a Canopy account, sign in',
+    haveAccount: 'I have a Canopy Account, sign in',
     // Signed in, not hosting.
     question: 'Are you going?',
     invitedQuestion: "You're invited. Are you going?",
@@ -400,7 +400,7 @@ const COPY = {
     signedOutHeading: '{name} on Canopy',
     signedOutHint: "Sign in or make a quick account to add {first} as a friend. You'll be in each other's friends.",
     signUp: 'Sign up to add {first}',
-    signIn: 'I have a Canopy account, sign in',
+    signIn: 'I have a Canopy Account, sign in',
     confirm: 'Add {name} as a friend?',
     confirmHint: "You'll be in each other's friends, for inviting and seeing who's going.",
     yoursHeading: 'This is your friend link',

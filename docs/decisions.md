@@ -13,9 +13,9 @@ link, sign in (or quick-sign-up, below), and say **going**, **maybe** or
 (`/api/v1`, OpenAPI 3.1) so iOS and Android apps can be built on it
 later without touching the server.
 
-## Accounts: Canopy accounts, plus "quick" ones
+## Accounts: Canopy Accounts, plus "quick" ones
 
-Everyone is a Canopy account (`account.canopysf.com`, repo
+Everyone is a Canopy Account (`account.canopysf.com`, repo
 `canopy-account-service`). Events keeps no names, emails or photos of
 its own, only person ids, the same as tickets.
 

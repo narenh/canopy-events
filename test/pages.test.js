@@ -143,7 +143,7 @@ test('pages', async (t) => {
     const here = encodeURIComponent(`${server.base}/e/${party.id}`);
     const rsvp = section(html, 'rsvp');
     assert.ok(rsvp.includes(`href="${server.fake.base}/?quick=1&amp;return=${here}">RSVP</a>`), rsvp);
-    assert.ok(rsvp.includes(`href="${server.fake.base}/?return=${here}">I have a Canopy account, sign in</a>`));
+    assert.ok(rsvp.includes(`href="${server.fake.base}/?return=${here}">I have a Canopy Account, sign in</a>`));
     // Attending, signed out: the heading and counts, no faces, no list.
     const attend = section(html, 'guests');
     assert.ok(attend.includes('>Attending</h2>'));
@@ -474,7 +474,7 @@ test('pages', async (t) => {
   });
 });
 
-test('pages when Canopy accounts can\'t be reached: a page that says so', async (t) => {
+test('pages when Canopy Accounts can\'t be reached: a page that says so', async (t) => {
   const server = await startServer();
   t.after(() => server.stop());
   const ana = client(server, 'ana');
@@ -483,11 +483,11 @@ test('pages when Canopy accounts can\'t be reached: a page that says so', async 
   // Signed out needs no session check, but the hosts' names do.
   const out = await page(server, null, `/e/${e.id}`);
   assert.equal(out.status, 503);
-  assert.ok(out.body.includes("Canopy accounts can&#39;t be reached right now."));
+  assert.ok(out.body.includes("Canopy Accounts can&#39;t be reached right now."));
   // Signed in with a session the server hasn't seen: the session check.
   const r = await page(server, 'ben', '/');
   assert.equal(r.status, 503);
-  assert.ok(r.body.includes("Canopy accounts can&#39;t be reached right now."));
+  assert.ok(r.body.includes("Canopy Accounts can&#39;t be reached right now."));
 });
 
 // ---------------- The features: covers, capacity and plus-ones, co-hosts,

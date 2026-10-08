@@ -922,7 +922,7 @@
   }
 
   // Signed out: a big "RSVP" to the quick sign-up, and a smaller way in
-  // for people who already have a Canopy account. Both come back here.
+  // for people who already have a Canopy Account. Both come back here.
   function signedOutSection(e, d, phase) {
     const links = d.links || {};
     let h = '<section class="card" id="rsvp" data-section="rsvp">';

@@ -29,7 +29,7 @@ The web pages use exactly this API. Anything a page can do, an app can.
 
 ## Signing in
 
-Everyone is a Canopy account (`account.canopysf.com`). Events keeps no
+Everyone is a Canopy Account (`account.canopysf.com`). Events keeps no
 names, emails or photos of its own.
 
 **Apps send a bearer token**: `Authorization: Bearer <token>`. The token is
@@ -116,7 +116,7 @@ A 403 `email_unverified` always comes with a `verify` link too, so a
 
 No email, phone, Instagram, Venmo or Cash App, for anyone, ever, not even
 for a host looking at their own guests, and not even your own: events
-doesn't have them. The app reads and changes your own at Canopy accounts,
+doesn't have them. The app reads and changes your own at Canopy Accounts,
 `GET`/`PATCH /api/native/v1/me`. Don't build features that need someone
 else's.
 
@@ -801,7 +801,7 @@ expect:
 | 409 | `is_you`, `own_link` | adding yourself, or saying yes to your own friend link |
 | 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |
-| 503 | `accounts_unreachable` | Canopy accounts is down; retry in a minute |
+| 503 | `accounts_unreachable` | Canopy Accounts is down; retry in a minute |
 | 500 | `server_error` | our bug; retry once, then tell us |
 
 ## Limits
