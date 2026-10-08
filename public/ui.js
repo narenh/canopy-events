@@ -1546,12 +1546,17 @@
       + tx('editor.zoneChangeLabel') + '">' + tx('editor.zoneChange') + '</button>'
       + '<div class="menu zone-menu" id="zoneMenu" role="menu" aria-label="' + tx('editor.timeZone') + '" hidden>' + zoneMenuItems(viewer || zone, at, zone) + '</div></div></div>'
       + '<input type="hidden" id="timeZone" value="' + esc(zone) + '"><div class="error" id="timeZoneError" role="alert"></div>';
-    // Every zone, searched: filled in by the page's script.
-    h += '<div class="zone-backdrop" id="zoneBackdrop" hidden></div><div class="zone-panel" id="zonePanel" role="dialog" aria-modal="true" aria-label="' + tx('editor.timeZone') + '" hidden>'
+    return h + '</div>';
+  }
+
+  // "Other time zones…": every zone, searched, in a sheet over the page
+  // (filled in by the page's script). At the form's level, outside the
+  // event card, so it covers the whole screen.
+  function zoneSheet() {
+    return '<div class="zone-backdrop" id="zoneBackdrop" hidden></div><div class="zone-panel" id="zonePanel" role="dialog" aria-modal="true" aria-label="' + tx('editor.timeZone') + '" hidden>'
       + '<div class="zone-search-row"><input type="search" id="zoneSearch" placeholder="' + tx('editor.zoneSearch') + '" aria-label="' + tx('editor.zoneSearch') + '" aria-controls="zoneList" autocomplete="off" autocapitalize="off" spellcheck="false">'
       + '<button type="button" class="round-btn" data-action="zone-close" aria-label="' + tx('editor.zoneClose') + '">' + ICON_CLOSE + '</button></div>'
       + '<ul class="zone-list" id="zoneList"></ul><p class="zone-none hidden" id="zoneNoMatch">' + tx('editor.zoneNoMatch') + '</p></div>';
-    return h + '</div>';
   }
 
   // Plus-ones a host may allow: the same as lib/eventInput.js's
@@ -1639,6 +1644,7 @@
     h += '<div class="save-bar"><div class="error" id="formError" role="alert"></div><div class="form-buttons">'
       + (d.event ? '<a class="button secondary" href="/e/' + esc(e.id) + '">Back</a>' : '')
       + '<button type="submit" id="saveBtn">' + (d.event ? 'Save' : 'Create event') + '</button></div></div>';
+    h += zoneSheet();
     h += '</form>';
     return h;
   }
