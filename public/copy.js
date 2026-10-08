@@ -279,7 +279,7 @@ const COPY = {
     guestList: 'Who sees the guest list',
     everyone: 'Everyone with the link',
     responded: "Only people who've answered",
-    guestsAllowed: 'Plus-ones per guest',
+    guestsAllowed: '+1s',
     noGuests: 'None',
     capacity: 'Capacity',
     capacityPlaceholder: 'No limit',
