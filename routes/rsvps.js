@@ -10,14 +10,15 @@
 //                                     otherwise off the list
 //   invited  --the host takes it back-->  off the list
 //
-// 'waitlisted' is kept for capacity (v1 scope item 4) and nothing makes
-// it yet. Hosts don't answer their own events: hosting is being there.
+// 'waitlisted' is a "going" past the event's capacity, made by the server
+// (lib/store/waitlist.js); a freed spot makes the earliest that fits
+// going. Hosts don't answer their own events: hosting is being there.
 
 const express = require('express');
 const { handle, fail, loadEvent, pageParams, paginate } = require('../lib/api');
 const { guessLimits } = require('../lib/limits');
 const { PERSON_ID_RE } = require('../lib/ids');
-const { ANSWERS, ALL_STATUSES, isHost, canSeeGuestNames, visibleStatuses, answerRefusal, inviteRefusal } = require('../lib/rules');
+const { ANSWERS, ALL_STATUSES, isHost, canSeeGuestNames, visibleStatuses, filterableStatuses, answerRefusal, inviteRefusal } = require('../lib/rules');
 const { loadPeople, personFrom } = require('../lib/people');
 const { eventView, guestView } = require('../lib/views');
 
@@ -32,16 +33,22 @@ const inviteLimits = guessLimits({ perWho: [300, DAY], perIp: [600, DAY], overal
 const MAX_INVITES_PER_REQUEST = 100;
 
 module.exports = function rsvpsRoutes(ctx) {
-  const { store, auth } = ctx;
+  const { store, auth, notify } = ctx;
   const router = express.Router();
   const withEvent = loadEvent(store);
+
+  // People who got a spot off the waitlist hear about it.
+  function promotedAll(eventId, promoted) {
+    if (promoted.length) notify('waitlist_promoted', { to: promoted, eventId });
+  }
 
   function refuse(res, [status, reason, error]) {
     return fail(res, status, reason, error);
   }
 
   // Your answer, made or changed. { status, guests }: guests (plus-ones)
-  // is 0 unless the host allows more.
+  // is 0 unless the host allows more. `waitlisted` in the answer says a
+  // "going" didn't fit and is on the waitlist instead.
   router.put('/events/:id/rsvp', auth.requirePerson, withEvent, handle(async (req, res) => {
     const body = req.body || {};
     if (!ANSWERS.includes(body.status)) return fail(res, 400, 'bad_status', "status is 'going', 'maybe' or 'not_going'");
@@ -52,19 +59,30 @@ module.exports = function rsvpsRoutes(ctx) {
         ? `you can bring at most ${req.event.guestsAllowed} ${req.event.guestsAllowed === 1 ? 'guest' : 'guests'}`
         : "this event isn't taking plus-ones");
     }
-    const refusal = answerRefusal(req.event, req.role);
+    const refusal = answerRefusal(req.event, req.role, store.getRsvp(req.event.id, req.person.id));
     if (refusal) return refuse(res, refusal);
     // Not going brings nobody.
-    store.setAnswer(req.event.id, req.person.id, body.status, body.status === 'not_going' ? 0 : guests);
-    res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }) });
+    const result = store.setAnswer(req.event.id, req.person.id, body.status, body.status === 'not_going' ? 0 : guests);
+    if (result.outcome === 'no_room') {
+      return fail(res, 409, 'no_room', `there isn't room for that many guests -- you're still going with ${result.before.guests}`);
+    }
+    // The hosts hear about a new answer, or a changed one (not a change of
+    // plus-ones alone). Repeats fold together while unread.
+    if (!result.before || result.before.status !== result.rsvp.status) {
+      notify('rsvp', { to: store.hostIdsOf(req.event.id), actorId: req.person.id, eventId: req.event.id,
+        details: { status: result.rsvp.status } });
+    }
+    promotedAll(req.event.id, result.promoted);
+    res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }), waitlisted: result.outcome === 'waitlisted' });
   }));
 
   // Takes your answer back: invited again if a host invited you,
   // otherwise off the list. Nothing to take back is fine too.
   router.delete('/events/:id/rsvp', auth.requirePerson, withEvent, handle(async (req, res) => {
-    const refusal = answerRefusal(req.event, req.role);
+    const refusal = answerRefusal(req.event, req.role, store.getRsvp(req.event.id, req.person.id));
     if (refusal) return refuse(res, refusal);
-    store.withdrawAnswer(req.event.id, req.person.id);
+    const { promoted } = store.withdrawAnswer(req.event.id, req.person.id);
+    promotedAll(req.event.id, promoted);
     res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }) });
   }));
 
@@ -81,7 +99,9 @@ module.exports = function rsvpsRoutes(ctx) {
       if (!ALL_STATUSES.includes(req.query.status)) {
         return fail(res, 400, 'bad_status', `status is one of ${ALL_STATUSES.join(', ')}`);
       }
-      if (!statuses.includes(req.query.status)) return fail(res, 403, 'hosts_only', 'only hosts see who has been invited');
+      if (!filterableStatuses(req.role).includes(req.query.status)) {
+        return fail(res, 403, 'hosts_only', 'only hosts see who has been invited or removed');
+      }
       statuses = [req.query.status];
     }
     const rsvp = store.getRsvp(event.id, req.person.id);
@@ -91,7 +111,7 @@ module.exports = function rsvpsRoutes(ctx) {
     const rows = store.listGuests(event.id, statuses, { after: page.after, limit: page.limit + 1 });
     const { items, nextCursor } = paginate(rows, page.limit, (r) => [r.statusAt, r.personId]);
     const people = await loadPeople(ctx.canopy, items.map((r) => r.personId));
-    res.json({ guestsVisible: true, guests: items.map((r) => guestView(r, people)), counts, nextCursor });
+    res.json({ guestsVisible: true, guests: items.map((r) => guestView(r, people, event)), counts, nextCursor });
   }));
 
   // A host invites people by id: { personIds: [...] }. The web page offers
@@ -122,6 +142,7 @@ module.exports = function rsvpsRoutes(ctx) {
       else skipped.push({ personId, reason: outcome });
     });
     if (invited.length) inviteLimits.hit(req, req.person.id, invited.length);
+    notify('invited', { to: invited.map((p) => p.id), actorId: req.person.id, eventId: req.event.id });
     res.json({ invited, skipped });
   }));
 

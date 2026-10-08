@@ -29,12 +29,14 @@ email or text sent from here, no `.ics`, no tickets or payments, and no
 public discovery. `docs/decisions.md` is the source of truth for what's
 in and out.
 
-**Where it's up to.** This is the core: the database, the API (events,
-answers, the guest list, invitations, friends, your events), its spec
-and docs, the web pages (below), and the tests. Co-hosts and plus-ones,
-the activity wall, cover images and capacity with a waitlist come next,
-in that order (`docs/decisions.md`, "v1 scope"). The schema already has
-room for all of them, and the pages have a place for each.
+**Where it's up to.** All of v1 (`docs/decisions.md`, "v1 scope") is in
+the API: events, answers, the guest list, invitations, friends and your
+events; co-hosts and plus-ones; the activity wall; cover images and
+capacity with a waitlist; notifications (the inbox and phone
+registration; push itself only logs until the APNs and FCM keys come
+with the apps); removing guests and making a new link; and finding people
+by phone or Instagram. The web pages (below) cover the core; pages for
+the rest come next.
 
 ## How it works
 
@@ -45,15 +47,28 @@ room for all of them, and the pages have a place for each.
   handler that keeps every API error in one shape.
 - `routes/` is the API, one file per subject, each mounted at `/api/v1`:
   `events.js` (making, reading, editing and cancelling events),
-  `rsvps.js` (answers, the guest list, invitations), `me.js` (you, your
-  friends, your events) and `docs.js` (the spec and `/docs`). A new
+  `rsvps.js` (answers, the guest list, invitations), `hosts.js`
+  (co-hosts), `wall.js` (the activity wall), `moderation.js` (removing
+  guests, new links), `people.js` (finding someone by phone or
+  Instagram), `covers.js` (cover images,
+  and serving them at `/covers/`), `notifications.js` (your inbox and
+  your phones), `me.js` (you, your friends, your events) and `docs.js`
+  (the spec and `/docs`). A new
   subject is a new file here, so work on different subjects doesn't
   collide. `pages.js` is the web pages (see "The pages").
 - `lib/` is what the routes share:
   - `db.js` is persistence: one SQLite file, `DATA_DIR/events.db`, with
     the schema, its version and upgrades, and the daily snapshots. The
     queries are in `lib/store/`, one file per subject (`events.js`,
-    `rsvps.js`, `friends.js`), and `init()` hands them back as one store.
+    `rsvps.js`, `hosts.js`, `waitlist.js`, `wall.js`, `notifications.js`,
+    `friends.js`, `people.js`), and `init()` hands them back as one store.
+  - `notify.js` is the one way anyone hears about anything: it writes
+    the inbox entry and queues the push in one call, and never tells the
+    person who did it. `push.js` sends to their phones; for now its
+    sender only logs (the APNs and FCM senders need the apps' keys).
+  - `coverImage.js` turns an uploaded photo into the stored JPEG (with
+    `sharp`, and `heic-decode` for iPhone photos), and `coverStore.js`
+    keeps them in `DATA_DIR/covers`.
   - `people.js` is **the only place a person is turned into JSON**:
     `publicPerson` (the five public fields, copied by name), the former
     member, and `ownPerson` for `/me`.
@@ -173,7 +188,7 @@ minute). Apps send the same token as `Authorization: Bearer <token>`.
   emailed code. It's **unverified** until they prove the email. Events is
   a site that allows them (see "Running locally"), so they're signed in
   here with `emailVerified: false`. They can answer, be invited and see
-  guest lists. They can't make events (or, later, co-host). Every page
+  guest lists. They can't make events or co-host. Every page
   shows them a banner to verify that can't be dismissed, and the API
   says `emailVerified: false` so the apps show it too.
 - **Deleted accounts.** When the account service no longer has someone,
@@ -197,7 +212,20 @@ visibility rules, pagination, errors and limits, with curl examples.
 |---|---|
 | `POST /api/v1/events` | make an event (verified people) |
 | `GET /api/v1/events/{id}` | one event (anyone with the link) |
-| `PATCH /api/v1/events/{id}` | edit, cancel or un-cancel it (hosts) |
+| `PATCH /api/v1/events/{id}` | edit it (hosts), cancel or un-cancel it (the creator) |
+| `POST /api/v1/events/{id}/cohosts` | make someone a co-host (the creator; verified people only) |
+| `DELETE /api/v1/events/{id}/cohosts/{personId}` | take a co-host off (the creator), or step down |
+| `GET /api/v1/events/{id}/wall` | the activity wall, newest first (whoever sees the guest list) |
+| `POST /api/v1/events/{id}/wall` | post on it (hosts, going, maybe, waitlisted) |
+| `DELETE /api/v1/events/{id}/wall/{entryId}` | delete a post (its author) or any entry (hosts) |
+| `PUT`, `DELETE /api/v1/events/{id}/cover` | upload or remove the cover image (hosts) |
+| `GET /covers/<key>.jpg` | a cover image, public (for link previews) |
+| `GET /api/v1/me/notifications`, `/unread` | your inbox, and its unread count |
+| `POST /api/v1/me/notifications/read`, `/read-all` | mark some, or all, read |
+| `POST`, `DELETE /api/v1/me/devices` | register a phone for push, or stop |
+| `PUT`, `DELETE /api/v1/events/{id}/removed/{personId}` | remove a guest, or undo it (hosts) |
+| `POST /api/v1/events/{id}/new-link` | give the event a new link; the old one stops working (the creator) |
+| `GET /api/v1/people/lookup` | find someone to invite by exact phone or Instagram (verified people) |
 | `PUT /api/v1/events/{id}/rsvp` | answer: going, maybe, not_going |
 | `DELETE /api/v1/events/{id}/rsvp` | take the answer back |
 | `GET /api/v1/events/{id}/guests` | the guest list, by the visibility rule |
@@ -205,7 +233,7 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `DELETE /api/v1/events/{id}/invites/{personId}` | take back an unanswered invitation (hosts) |
 | `GET /api/v1/me` | you, with your own details and `emailVerified` |
 | `GET /api/v1/me/friends` | your friends, with events in common |
-| `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/past` | your events |
+| `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/declined`, `/past` | your events |
 
 Errors are `{"error": "<a sentence>", "reason": "<snake_case_code>"}` with
 the right status. Lists are cursor-paginated (`?cursor=&limit=`, and
@@ -256,6 +284,8 @@ restart forgives everyone. The address is Cloudflare's
 |---|---|---|---|
 | Making events | 20 a day | 60 a day | 1,000 a day |
 | Invitations (one per person invited) | 300 a day | 600 a day | 5,000 a day |
+| Wall posts | 5 a minute, 100 a day | 20 a minute, 300 a day | 300 a minute, 5,000 a day |
+| Cover uploads | 30 a day | 100 a day | 2,000 a day |
 
 On top of that, one invite request takes at most 100 people, and a
 request body at most 100 KB. The numbers live next to the routes they
@@ -275,7 +305,9 @@ aren't port-specific, so signing in on one signs you in on both.
 2. In its **Account Manager → Sites**, add a site named `events`. Copy
    the key it shows (it's only shown once), and switch on **Allows quick
    (unverified) accounts** for it. Without that switch, quick accounts
-   are signed out here and get sent to verify their email instead.
+   are signed out here and get sent to verify their email instead. Switch
+   on **Can find people by phone number or Instagram** too, or lookups
+   answer 403 `lookup_not_allowed`.
 3. Here:
 
    ```bash
@@ -302,7 +334,11 @@ starts its own server and fake account service.
 
 The repo has a `Dockerfile`, the same as the account service's. It builds
 `better-sqlite3` in a throwaway stage and checks the build actually
-works, so a broken install fails the build rather than the deploy. It
+works, so a broken install fails the build rather than the deploy. The
+same stage makes a JPEG with `sharp` (cover images): sharp ships prebuilt
+libvips for Alpine on x64 and arm64, so nothing compiles, but a missing
+binary would otherwise only show at the first upload. HEIC photos are
+decoded by `heic-decode`, which is WebAssembly, not native. It
 runs as `NODE_ENV=production`, port 3000, `DATA_DIR=/app/data`.
 
 1. New resource from this repository, branch **`main`**, build pack
@@ -322,7 +358,8 @@ runs as `NODE_ENV=production`, port 3000, `DATA_DIR=/app/data`.
      service's address on Coolify's internal network).
    - `CANOPY_ACCOUNT_KEY`: the key from the account service's **Sites**
      tab for a site named `events`, with **Allows quick (unverified)
-     accounts** switched on.
+     accounts** and **Can find people by phone number or Instagram**
+     switched on.
    - `PUBLIC_URL` and `CANOPY_DOMAIN`: leave unset. They default to
      `https://events.canopysf.com` and `canopysf.com`.
    - Leave `PORT` and `DATA_DIR` alone. The Dockerfile sets them.
@@ -346,11 +383,18 @@ Everything is in `DATA_DIR` (`/app/data` in the container):
 
 - `events.db` is the database (SQLite, WAL mode, so `events.db-wal` and
   `events.db-shm` sit beside it while it's open);
-- `backups/sqlite/events-YYYY-MM-DD.db` holds the snapshots.
+- `backups/sqlite/events-YYYY-MM-DD.db` holds the snapshots;
+- `covers/<event id>.jpg` holds the cover images (`lib/coverStore.js`).
+  They're not in the snapshots: copy the folder too, or covers are lost.
 
-Its tables are `events`, `hosts` (who hosts each event: the creator, and
-co-hosts later) and `rsvps` (one row per person per event: invited, or
-their answer). There are no names, emails or photos: only person ids.
+Its tables are `events`, `hosts` (who hosts each event: the creator and
+any co-hosts), `rsvps` (one row per person per event: invited, or their
+answer), `wall` (the activity wall: posts, and the server's typed
+entries), `notifications` (each person's inbox), `devices` (push tokens,
+one phone each) and `verified_people` (who events has seen signed in with a
+proven email, since only they may co-host and the account service doesn't
+say so about anyone but the visitor). There are no names, emails or
+photos: only person ids.
 Friends aren't stored at all; they're worked out from `hosts` and `rsvps`
 each time.
 
@@ -382,6 +426,12 @@ one. Changing the schema means a new step in `UPGRADES`, the new shape in
 SQLite replays the newer write log on top of the older snapshot). Start
 the service and check the events count in the log.
 
-Nothing in the database signs anyone in. It does hold every event's id,
-and an id is the link: anyone with a copy can open every event in it and
-see who answered what. Treat a copy like the guest lists it is.
+**An event's link isn't its `id`.** Every table points at `events.id`,
+which never changes; the link is `events.public_id`, which "make a new
+link" replaces. They start out the same. Anything that takes an id from
+outside looks it up by `public_id` (`store.getEventByLink`), so an old
+link finds nothing.
+
+Nothing in the database signs anyone in. It does hold every event's
+link, and the link is the key: anyone with a copy can open every event in
+it and see who answered what. Treat a copy like the guest lists it is.

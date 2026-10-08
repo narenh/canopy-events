@@ -14,10 +14,16 @@ module.exports = function meRoutes(ctx) {
   // The only place anyone's email, phone, Instagram, Venmo or Cash App
   // comes back, and it's your own. `verifyUrl` is where an unverified
   // account proves its email (apps show the same banner the pages do);
-  // null once it's verified.
+  // null once it's verified. `hasHosted`: whether they host or co-host any
+  // event, cancelled and past ones included (the app shows its Hosting tab
+  // only then).
   router.get('/me', auth.requirePerson, (req, res) => {
     const person = ownPerson(req.person);
-    res.json({ person, verifyUrl: person.emailVerified ? null : canopy.verifyUrl(req, auth.returnTo(req)) });
+    res.json({
+      person,
+      verifyUrl: person.emailVerified ? null : canopy.verifyUrl(req, auth.returnTo(req)),
+      hasHosted: store.hasHosted(person.id)
+    });
   });
 
   // Your friends (lib/store/friends.js says who counts), most events in
@@ -34,8 +40,8 @@ module.exports = function meRoutes(ctx) {
     res.json({ friends, nextCursor });
   }));
 
-  // Your events, in four lists (lib/store/events.js says what's in each):
-  // /me/events/hosting, /upcoming, /invitations and /past.
+  // Your events, in five lists (lib/store/events.js says what's in each):
+  // /me/events/hosting, /upcoming, /invitations, /declined and /past.
   MY_EVENT_LISTS.forEach((name) => {
     router.get(`/me/events/${name}`, auth.requirePerson, handle(async (req, res) => {
       const page = pageParams(req, res);

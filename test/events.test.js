@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { startServer, client, eventBody, makeEvent } = require('./harness');
+const { startServer, client, eventBody, makeEvent, counts } = require('./harness');
 
 test('events', async (t) => {
   const server = await startServer();
@@ -29,8 +29,9 @@ test('events', async (t) => {
     assert.equal(event.timeZone, 'America/Los_Angeles');
     assert.match(event.startsAt, /Z$/);
     assert.deepEqual(event.hosts.map((h) => [h.person.id, h.role]), [[server.people.ana.id, 'creator']]);
-    assert.deepEqual(event.viewer, { role: 'creator', rsvp: null, canEdit: true, canSeeGuestList: true });
-    assert.deepEqual(event.counts, { going: 0, maybe: 0, notGoing: 0, invited: 0, waitlisted: 0 });
+    assert.deepEqual(event.viewer, { role: 'creator', rsvp: null, canEdit: true, canSeeGuestList: true, canPost: true });
+    assert.deepEqual(event.counts, counts());
+    assert.equal(event.guestsAllowed, 0);
   });
 
   await t.test('an unverified person can not make one, and is told where to verify', async () => {
@@ -66,7 +67,7 @@ test('events', async (t) => {
     const e = (await ben.get(`/api/v1/events/${event.id}`)).data.event;
     assert.equal(e.locationAddress, '1 Market St, San Francisco');
     assert.equal(e.locationAddressHidden, false);
-    assert.deepEqual(e.viewer, { role: null, rsvp: null, canEdit: false, canSeeGuestList: false });
+    assert.deepEqual(e.viewer, { role: null, rsvp: null, canEdit: false, canSeeGuestList: false, canPost: false });
     assert.deepEqual(e.friendsGoing, { count: 0, people: [] });
     // Unverified people see the same.
     assert.equal((await una.get(`/api/v1/events/${event.id}`)).data.event.locationAddress, '1 Market St, San Francisco');

@@ -11,7 +11,7 @@ const os = require('os');
 const path = require('path');
 const YAML = require('yaml');
 const { spec, ajv, operations, checkResponse, escape } = require('./openapi');
-const { startServer, client, makeEvent } = require('./harness');
+const { startServer, client, makeEvent, counts } = require('./harness');
 
 // server.js in this process, only to ask Express what routes it has.
 function expressRoutes() {
@@ -62,7 +62,7 @@ test('the examples in the spec are valid against their own schemas', () => {
 
 test('the response checker catches drift', () => {
   const person = { id: 'p', firstName: 'A', lastName: 'B', shortName: 'A B', photoUrl: null };
-  const ok = { guestsVisible: true, guests: [{ person, status: 'going', guests: 0, respondedAt: null }], counts: { going: 1, maybe: 0, notGoing: 0, invited: 0, waitlisted: 0 }, nextCursor: null };
+  const ok = { guestsVisible: true, guests: [{ person, status: 'going', guests: 0, guestsOverLimit: false, respondedAt: null }], counts: counts({ going: 1 }), nextCursor: null };
   const url = '/api/v1/events/AAAAAAAAAAAA/guests';
   checkResponse({ method: 'GET', url, status: 200, data: ok });
   // A person with one field too many: exactly what a leak would look like.

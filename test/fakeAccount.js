@@ -1,6 +1,7 @@
-// A stand-in for the account service: just the two calls a site makes
-// (/api/session and /api/people), answered from fixtures, in the test's
-// own process so a test can change who exists while the server runs.
+// A stand-in for the account service: just the calls a site makes
+// (/api/session, /api/people and /api/people/lookup), answered from
+// fixtures, in the test's own process so a test can change who exists
+// while the server runs.
 //
 // The people have every contact detail filled in, each one distinctive,
 // so the leak walker (harness.js) can spot any of them in a response.
@@ -61,7 +62,21 @@ async function startFakeAccount() {
     // Tokens whose next session answer carries a renewed cookie.
     renew: new Set(),
     sessionCalls: 0,
-    peopleCalls: 0
+    peopleCalls: 0,
+    // Lookups: every one asked ({ query, visitorIp }); whether this site
+    // may look people up; and an answer to give instead of looking (a
+    // test of how events passes on the account service's refusals).
+    lookups: [],
+    allowsLookup: true,
+    lookupAnswer: null,
+    // One more person, made like the fixtures (n unique, from 100 up),
+    // for a test that needs a crowd.
+    addPerson(n, name, first, last, extra) {
+      const p = fixture(n, name, first, last, extra);
+      people[name] = p;
+      byToken.set(p.token, p);
+      return p;
+    }
   };
   const app = express();
   let base = '';
@@ -102,6 +117,36 @@ async function startFakeAccount() {
     res.json({
       people: found.map((p) => ({ id: p.id, firstName: p.firstName, lastName: p.lastName, shortName: `${p.firstName} ${p.lastName[0]}`, photoUrl: photoUrl(p) }))
     });
+  });
+
+  // Like the real one: exact matches only, cleaned the way the profile
+  // cleans them, only for a signed-in asker with a proven email, and
+  // nobody who turned "find me" off. The answer is the public shape.
+  app.get('/api/people/lookup', (req, res) => {
+    state.lookups.push({ query: { ...req.query }, visitorIp: req.get('x-canopy-visitor-ip') || null });
+    if (state.lookupAnswer) return res.status(state.lookupAnswer.status).json(state.lookupAnswer.body);
+    if (!state.allowsLookup) return res.status(403).json({ error: 'this site may not look people up', reason: 'lookup_not_allowed' });
+    const asker = byToken.get(req.get('x-canopy-session'));
+    if (!asker || state.deleted.has(asker.id)) return res.status(401).json({ error: 'not signed in', reason: 'signed_out' });
+    if (!asker.emailVerified) return res.status(403).json({ error: 'confirm your email first', reason: 'email_unverified' });
+    const { phone, instagram } = req.query;
+    if ((phone === undefined) === (instagram === undefined) || Array.isArray(phone) || Array.isArray(instagram)) {
+      return res.status(400).json({ error: 'give one of phone or instagram', reason: 'one_of' });
+    }
+    let match;
+    if (phone !== undefined) {
+      const digits = String(phone).replace(/\D/g, '');
+      if (digits.length < 10 || digits.length > 15) return res.status(400).json({ error: "that doesn't look like a phone number", reason: 'bad_phone' });
+      const e164 = `+${digits.length === 10 ? '1' + digits : digits}`;
+      match = (p) => p.phone === e164;
+    } else {
+      const handle = String(instagram).trim().replace(/^@/, '').toLowerCase();
+      if (!/^[a-z0-9._]{1,30}$/.test(handle)) return res.status(400).json({ error: 'an Instagram username is letters, numbers, . and _ only', reason: 'bad_instagram' });
+      match = (p) => p.instagram.toLowerCase() === handle;
+    }
+    const found = Object.values(people).filter((p) => !state.deleted.has(p.id) && p.findable && match(p));
+    const p = found.length === 1 ? found[0] : null;
+    res.json({ person: p ? { id: p.id, firstName: p.firstName, lastName: p.lastName, shortName: `${p.firstName} ${p.lastName[0]}`, photoUrl: photoUrl(p) } : null });
   });
 
   const listener = await new Promise((resolve) => { const l = app.listen(0, () => resolve(l)); });

@@ -15,6 +15,11 @@ RUN npm ci --omit=dev
 # builds an image that can't start. Opening a database here makes a
 # broken install fail the build instead of the deploy.
 RUN node -e "new (require('better-sqlite3'))(':memory:').prepare('select 1').get()"
+# The same for sharp (cover images), which doesn't compile anything: npm
+# picks its prebuilt libvips for this platform (linuxmusl-x64 or -arm64)
+# from package-lock.json. A missing one would only show at the first
+# upload, so this makes a JPEG here instead.
+RUN node -e "require('sharp')({create:{width:2,height:2,channels:3,background:'#0A3800'}}).jpeg().toBuffer().then(b=>{if(b[0]!==0xff)process.exit(1)})"
 
 # ---- runtime ----
 FROM node:22-alpine

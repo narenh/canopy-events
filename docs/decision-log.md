@@ -361,3 +361,308 @@ Format: decision · why · how to reverse.
 - **The app targets iOS 26.6, so it won't install on the iOS 26.5
   simulator** installed on this Mac (or any device on 26.0–26.5). Is
   26.6 intended, or 26.0?
+## Events features
+
+Co-hosts, plus-ones, the activity wall, cover images, capacity and the
+waitlist, notifications, host moderation and lookup, built on branch
+`feat/features`.
+
+### Co-hosts and plus-ones (schema version 2)
+
+- **Who's verified is learned from their own sessions.** Every API
+  request records whether the caller's email is proven, in a
+  `verified_people` table; only someone seen there may be made a
+  co-host. · The account service's `/api/people` doesn't say who's
+  verified, and the contract for it isn't ours to change tonight. ·
+  Cost: a verified person who has never opened events (signed in) is
+  refused until they have. The fix is a `verified` field on
+  `/api/people`; then drop the table and ask that instead.
+- Refusing an unverified target is 403 `email_unverified` **without** a
+  `verify` link (the error says it's about them). · The link is only
+  ever for the caller's own email. · routes/hosts.js.
+- Only the creator adds and removes co-hosts, cancels and un-cancels,
+  and (later) makes a new link. Co-hosts edit everything else, invite,
+  see the whole guest list and (later) moderate. A co-host can step
+  down by themselves. · Cancelling and the link are the whole event;
+  everything else is running it. · `creator_only` checks in
+  routes/events.js and routes/hosts.js.
+- At most 10 co-hosts. · Plenty for a party; a ceiling on nonsense. ·
+  `MAX_COHOSTS` in lib/store/hosts.js.
+- **Becoming a co-host deletes the person's RSVP** (and its plus-ones).
+  Stepping down, or being taken off, leaves them `invited` by whoever
+  added them. · Hosts don't answer their own events, and keeping a
+  hidden answer would mean every count had to skip it. Invited keeps
+  the event in their lists, ready to answer. · lib/store/hosts.js.
+- Co-hosts can't be added to a cancelled event or one that's over (the
+  same 409s as inviting). Taking one off always works. · n/a
+- **Plus-ones: lowering `guestsAllowed` keeps existing answers** and
+  flags them (`guestsOverLimit` on the viewer's RSVP and on guest-list
+  entries). The next change to that answer has to fit, even re-sending
+  the same one. · Clamping would drop someone's plus-one without
+  telling them. · lib/views.js; to clamp instead, update rsvps in the
+  PATCH route.
+- `guestsAllowed` is 0 to 10. A `maybe` may bring guests; `not_going`
+  never does; leaving `guests` out of an answer means 0. · n/a
+- Counts keep the people per status at the top level (so nothing that
+  read them changes meaning), and add `guests` (plus-ones) and `total`
+  (people + plus-ones) for going, maybe and waitlisted. · Additive. ·
+  lib/store/rsvps.js countsFor.
+
+### Two small additions for the app
+
+- `GET /api/v1/me/events/declined`: events you answered `not_going`
+  that **aren't over and aren't cancelled**, soonest first, invited or
+  not. · It sits beside invitations in the app's Invites tab, so it
+  follows the same rule; a declined event that's over or off has
+  nothing left to change your mind about. · `LISTS.declined` in
+  lib/store/events.js.
+- `GET /api/v1/me` gains `hasHosted` at the top level (beside `person`
+  and `verifyUrl`, not inside `person`, which is the account's own
+  details). It's "hosts or co-hosts any event now on record", cancelled
+  and past included. · A co-host who stepped down from their only event
+  is false again: there'd be nothing in a Hosting tab. Recording "ever"
+  exactly would need its own table. · `hasHosted` in
+  lib/store/events.js.
+
+### The activity wall (schema version 3)
+
+- **Who reads it: whoever can see the guest list's names**, by the same
+  rule (`canReadWall` is `canSeeGuestNames`). Anyone else signed in gets
+  `wallVisible: false` and no entries, the same shape as the guest list;
+  signed out is 401. · The wall is full of names ("Ana is going"), so it
+  can't be looser than the list. · lib/rules.js.
+- **Who posts: hosts, and answers of going, maybe or waitlisted.**
+  Invited-and-silent and can't-go read but don't post (403
+  `answer_first`). · Posting is for people who might be there. ·
+  `canPost` in lib/rules.js.
+- Cancelled and finished events still take posts. · "So sorry it's off"
+  and "thanks for coming" are what a wall is for. · Add an
+  `answerRefusal`-style check in routes/wall.js.
+- **Posts are 1 to 1,000 characters, and longer is refused, not cut**
+  (unlike a title). · Cutting someone's message silently loses what they
+  said. · `MAX_POST` in routes/wall.js.
+- Posting limits: 5 a minute and 100 a day per person; 20 a minute and
+  300 a day per address; 300 a minute and 5,000 a day overall. ·
+  Generous for talking, a ceiling for scripts. · routes/wall.js.
+- Authors delete their own **posts** only (not "<you> is going", which
+  goes away when you stop going); hosts, co-hosts included, delete
+  anything. Deleting is a real delete. · Nothing to keep a deleted post
+  for. · routes/wall.js.
+- **The server's entries are typed rows** (`going`, `off_waitlist`,
+  `time_changed`, `place_changed`, `cancelled`, `uncancelled`,
+  `cohost_added`) with structured `details`, written in the same
+  transaction as the change. No English is stored. The `type` column has
+  no CHECK, so a new type is a code change, not a table rebuild. · n/a
+- **One "going" entry per person, kept true**: saying going again
+  replaces it with a fresh one, and withdrawing, changing to maybe or
+  can't go, or becoming a co-host deletes it. · Otherwise the wall says
+  people are coming who aren't. · lib/store/wall.js.
+- Time and place entries carry the new values; only a real change makes
+  one (re-sending the same start time doesn't). Time is startsAt, endsAt
+  or timeZone; place is locationName or locationAddress. Title,
+  description and visibility changes make no entry. · n/a
+- Wall ids are SQLite AUTOINCREMENT integers, as strings in the API. ·
+  An id is never reused, so deleting an old id can't hit a new post. · n/a
+
+### Cover images and capacity (schema version 4)
+
+- **Covers are public**: anyone with the URL loads it, signed in or not.
+  · Link previews fetch it with nobody's session. · routes/covers.js
+  `files`; to make them private, check `req.person` there (and lose the
+  picture in previews).
+- **A cover's URL is a random key, not the event's id**
+  (`/covers/<key>.jpg?v=<uploadedAt>`), and every upload gets a new key.
+  This is what schema version 4 adds (`events.cover_key`, unique). · The
+  event id is the link; a public image URL carrying it would hand the
+  link to anyone who copied the image's address. A new key also kills a
+  replaced cover's old URL at once. · lib/db.js VERSION_4.
+- **Re-encoded on the server with `sharp`** (libvips): auto-rotated from
+  EXIF, fit inside 1600 px, flattened onto white, JPEG quality 82, **no
+  metadata kept** (no GPS). The account service lets the browser crop to
+  a small JPEG instead, but covers come from apps too, and covers are
+  public, so the server can't trust a client to have stripped location.
+  · lib/coverImage.js.
+- **sharp is a new native-ish dependency.** It compiles nothing: npm
+  installs its prebuilt libvips for linuxmusl from package-lock.json.
+  Checked tonight by building the Dockerfile for both linux/amd64 and
+  linux/arm64 (the deps stage now makes a JPEG as a smoke test, like the
+  better-sqlite3 check) and converting a HEIC inside the amd64 image. ·
+  The alternative was pure-JS decoders for four formats plus our own
+  resize and rotate. · Dockerfile.
+- **HEIC via `heic-decode`** (libheif compiled to WebAssembly, LGPL-3.0,
+  about 9 MB installed), because sharp's prebuilt libvips only reads the
+  AVIF kind of HEIF. · iPhones save HEIC; Safari usually converts on
+  upload, but the iOS app needn't. · Drop it and refuse HEIC with
+  `bad_image` if the size or licence matters.
+- Type is told by the first bytes, never the filename or Content-Type.
+  Up to 15 MB and 50 megapixels; 30 uploads a day per person, 100 per
+  address, 2,000 overall. Served with `Cache-Control: public,
+  max-age=3600`, so a removed cover can live in caches up to an hour. ·
+  n/a
+- Covers live in `DATA_DIR/covers/<event id>.jpg`, outside the SQLite
+  snapshots (the Coolify volume backup has them). · Mirrors the account
+  service's photos. · n/a
+- **Capacity counts plus-ones**: going people + their guests ≤ capacity.
+  `maybe` isn't capped. · The spec. · lib/store/waitlist.js.
+- **Someone already going who asks for more plus-ones than fit is
+  refused** (409 `no_room`) and keeps their spot, rather than being
+  moved to the waitlist with their whole party. · Asking for one more
+  shouldn't lose you the one you had. · lib/store/rsvps.js setAnswer.
+- **Promotion is "earliest that fits"**: by when they were waitlisted,
+  skipping a party too big for the free spots (who stays first for the
+  next). It runs inside the same transaction as whatever freed the spot
+  (withdraw, maybe/not going, fewer guests, capacity raised or cleared,
+  co-host made, guest removed, event un-cancelled) and writes an
+  `off_waitlist` wall entry. A test makes the wall entry fail and checks
+  the whole withdrawal rolls back. · lib/store/waitlist.js.
+- **Lowering capacity below the current going count bumps nobody**; new
+  `going` answers wait until enough people leave. · The spec. · n/a
+- A cancelled or finished event promotes nobody; un-cancelling fills
+  from the waitlist. · Nobody should get "you're in!" for an event
+  that's off. · n/a
+- `PUT /rsvp` now answers `{event, waitlisted}` (a new `RsvpResult`
+  schema) rather than `{event}`. · "The response says so" without making
+  apps diff statuses. Additive for anyone reading `event`. · n/a
+- Events get `capacity`, `spotsLeft` (never below 0) and
+  `coverImageUrl`, shown to everyone including signed out (a preview can
+  say "3 spots left"). · n/a
+
+### Notifications, server side (schema version 5)
+
+- **One `notify(type, {to, actorId, eventId, details})`** (lib/notify.js)
+  writes the inbox rows and queues the pushes; routes never touch either
+  directly. It drops the actor from `to` and de-duplicates. · The spec:
+  nothing can push without landing in the inbox. · n/a
+- **Typed, not worded**: `invited`, `event_changed` (`{changed: [time,
+  place]}`, one notification for both), `event_cancelled`,
+  `event_uncancelled`, `cohost_added`, `waitlist_promoted`, `wall_post`
+  (`{entryId, text}`, text cut to 200 characters), `rsvp` (`{status}`).
+  · Clients render the text, in their own language. · n/a
+- `event_uncancelled` is added beside the spec's "cancelled". · Someone
+  told it's off needs telling it's back on. · Drop the notify call in
+  routes/events.js.
+- **Who hears event changes, cancelling and host posts: going, maybe and
+  waitlisted, plus the other hosts.** Invited-but-silent and can't-go
+  don't. · The spec says "going to or maybe at"; the waitlisted still
+  hope to be there, and co-hosts need to know what the creator did. ·
+  `audienceOf` in lib/store/notifications.js.
+- Only a **host's** post notifies; a guest's doesn't. · The spec ("a
+  host posted"), and a busy wall would buzz everyone constantly. · n/a
+- **RSVPs to hosts fold together while unread**: the unread `rsvp`
+  notification for that event gets `count + 1`, the newest `actor` and
+  status, and moves to the top; only the first of a batch pushes. Read
+  it and the next answer starts a new one. A change of plus-ones alone
+  isn't news; any change of status is (including to `not_going` and to
+  the waitlist). · "May be batched", and one buzz per guest is too many
+  for a big party. · `COLLAPSE` in lib/store/notifications.js.
+- Inbox order is by when the latest thing in a notification happened
+  (`updated_at`), so a folded one rises. There's no pruning of old
+  notifications yet. · Not needed at this size. · Add a startup DELETE
+  of read ones past N days.
+- Marking read is `POST /me/notifications/read {ids}` (1 to 100;
+  others' ids silently ignored) and `POST /me/notifications/read-all`,
+  plus `GET /me/notifications/unread` for a badge. · Simple for apps;
+  ignoring others' ids gives nothing away. · n/a
+- **Devices**: `POST /me/devices {platform, token}` upserts by token, so
+  a token registered by someone else moves to the new person (one phone,
+  whoever signed in last). `DELETE /me/devices` takes `{token}` in the
+  body, as the spec's path has no token in it, and only removes the
+  caller's own. Up to 10 phones each, least recently registered dropped.
+  Tokens are 16 to 4,096 of `A-Za-z0-9:_.-`. · n/a
+- **Push**: `lib/push.js` takes a sender `{name, send(device, message)}`;
+  the default logs `[push] ios …abc123 invited #17`, never the whole
+  token. A sender answering `invalidToken` unregisters it. Pushes are
+  sent after the response, on `setImmediate`; failures are logged, never
+  surfaced. The message is typed (`type`, ids, event title, `badge`) for
+  APNs `loc-key` / FCM `body_loc_key` later. · No keys tonight. · n/a
+
+### Host moderation (schema version 6)
+
+- **`removed` is a real RSVP status**, so every existing query that
+  filters by status (counts, lists, friends, "everyone coming") leaves
+  removed people out by itself. SQLite can't change a CHECK in place, so
+  version 6 rebuilds `rsvps` (new table, copy, drop, rename, indexes
+  again), tested on a version-1 file with a row in it. · The alternative,
+  a `removed_at` column, needed a filter added to every query, and one
+  forgotten would show a removed guest. · lib/db.js VERSION_6.
+- **Any host removes, co-hosts included.** · Moderating is running the
+  event, not owning it. · routes/moderation.js `hostsOnly`.
+- **A removed person still opens the event, and sees what someone
+  signed out sees** (no address, guest list, wall or friends going),
+  with `viewer.rsvp.status: removed`. · Anyone with the link sees the
+  public details anyway; hiding them from this one person would only
+  last until they signed out. The address is what matters, and they
+  lose it. A new link is the answer to "they mustn't see it at all." ·
+  lib/views.js `insider`.
+- Removed people can't answer, withdraw, post, or be invited
+  (`skipped: removed`); their going entry is deleted, and their posts
+  are hidden (not deleted) from the wall for everyone, so undoing a
+  removal brings the posts back. Their spot goes to the waitlist. ·
+  n/a
+- **Undo leaves them `invited`** (by the host undoing it), not their old
+  answer. · Their old "going" might no longer fit the capacity, and the
+  invitation puts the event back in their list to answer again. ·
+  lib/store/rsvps.js restoreGuest.
+- Hosts can remove someone not on the list yet (they must exist). · A
+  host who knows who's trouble can act first. · n/a
+- Hosts see removed people only with `?status=removed`, not in the
+  default guest list; there's no `removed` in the public counts. · The
+  count would tell guests someone was thrown out. · lib/rules.js.
+- Nobody is notified of a removal, of undoing one, or of a new link. ·
+  None is in the spec's triggers, and "you were removed" invites an
+  argument. · Add notify calls in routes/moderation.js.
+- **New link: an internal stable id plus a public link.** Version 6
+  adds `events.public_id` (unique), set to `id` for every existing
+  event; `id` never changes and stays the key for hosts, rsvps, wall,
+  notifications and the cover's file. A new link replaces `public_id`
+  only. Every lookup from outside goes by `public_id`
+  (`getEventByLink`, used by `loadEvent`), and views only ever output
+  `publicId`. · Changing `events.id` itself is impossible under the
+  existing foreign keys (no ON UPDATE CASCADE) without rebuilding four
+  tables; an alias table would mean keeping a list of dead ids around to
+  refuse. · To reverse, point `loadEvent` back at `getEvent`.
+- **The old link is a 404 `event_not_found`, not a 410.** · The point of
+  a new link is that the old one gives nothing away, not even that there
+  was an event there. · lib/api.js loadEvent.
+- New links are the creator's alone, like cancelling. New ids are
+  checked against both `id` and `public_id`. A link from two changes ago
+  isn't remembered, so in theory it could be reissued; at 71 bits that
+  won't happen. · n/a
+- List cursors (`/me/events/*`) carry the event's internal id inside the
+  opaque cursor. That can be an event's original link, which a new link
+  has already killed, so it gives nothing away. · n/a
+
+### Lookup to invite
+
+- `GET /api/v1/people/lookup?phone=…|instagram=…` is a straight proxy of
+  `canopy.lookup(req, …)`, **verified callers only** (checked here, from
+  their session, before asking the account service, so an unverified
+  caller's lookup never counts against anyone's limits). The answer is
+  `{person}` through `publicPerson`, so even a field the account service
+  added later couldn't come through. · The spec: "events only lets
+  verified hosts use it." "Hosts" read as anyone verified, since anyone
+  verified can host. · routes/people.js.
+- Exactly one of `phone` or `instagram`, a single string, is checked
+  here too (400 `one_of`); the cleaning and the rest are the account
+  service's. · A repeated `?phone=` would otherwise reach it as an
+  array. · n/a
+- **Its refusals keep their status and reason**: 400 `one_of`,
+  `bad_phone`, `bad_instagram`; 403 `email_unverified` (with this API's
+  `verify` link) and `lookup_not_allowed`; 429 `rate_limited`. Its 401
+  `signed_out` becomes this API's 401 `sign_in_required`, with the usual
+  links. Anything else (down, a 5xx, a reason we don't know) is 503
+  `accounts_unreachable`. The `error` sentences are ours. · One error
+  vocabulary for the apps. · `PASSED_ON` in routes/people.js.
+- No lookup limits of events' own: the account service's (per asker,
+  per address, overall) are the real ones, and doubling them here would
+  only make the two disagree. · n/a
+- **The visitor's address** is whatever the client file sends:
+  `CF-Connecting-IP`, else Express's `req.ip` (trust proxy on). Behind
+  Cloudflare that's the real address; without it, `req.ip` comes from
+  `X-Forwarded-For`, which a caller can set, so the per-address limit is
+  only as good as Cloudflare being in front. The per-asker and overall
+  limits hold regardless. · The client file is copied unchanged. · n/a
+- The fake account service in the tests gained `/api/people/lookup`,
+  exact matching on the fixtures' phones and handles, honouring
+  "findable", and switches to make it refuse in each way the real one
+  can. · n/a

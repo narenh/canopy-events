@@ -13,7 +13,10 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
-    "express": "^4.22.3"
+    "express": "^4.22.3",
+    "heic-decode": "^2.1.0",
+    "multer": "^2.4.0",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "ajv": "^8.20.0",
