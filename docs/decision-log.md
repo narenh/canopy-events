@@ -1277,3 +1277,12 @@ Fixes for the security review's events findings (branch `fix/review`).
   after each finished change, instead of the orchestrator merging at the
   end. · Schema steps deploy as they land, so a step on main is never
   edited, only followed by the next one.
+
+## Performance
+
+- **(You)** Covers get resized variants now. Caching and asset tuning
+  (external versioned JS/CSS, cache headers, an SVG logo) wait until
+  development is closer to done.
+- Measured on an event page (local, 6 guests): 1 request, 138 KB raw
+  / 40 KB gzipped, 3.5 MB JS heap, 164 DOM elements, first paint about
+  100 ms. Covers were the real weight.
