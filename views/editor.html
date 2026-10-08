@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>__PAGE_TITLE__</title>
+<meta name="theme-color" content="#03120c">
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/events.css">
+</head>
+<!-- Making an event (/new, verified people) or editing one (/e/<id>/edit,
+     hosts). The form is public/ui.js's editorForm; this sends it to POST
+     or PATCH /api/v1/events, and shows what the API refuses next to the
+     field it's about. -->
+<body class="mesh-bg">
+<!-- PAGE:HEADER -->
+<main class="wrap">
+  <!-- PAGE:BANNER -->
+  <div id="main" class="stack"><!-- PAGE:MAIN --></div>
+</main>
+<!-- PAGE:FOOTER -->
+<script type="application/json" id="pageData">__PAGE_DATA__</script>
+<script src="/copy.js"></script>
+<script src="/ui.js"></script>
+<script src="/events.js"></script>
+<script>
+applyCopy();
+
+const data = pageData();
+const editing = !!data.event;
+const form = document.getElementById('eventForm');
+const zoneSelect = document.getElementById('timeZone');
+const $ = (id) => document.getElementById(id);
+
+// Every time zone the browser knows, the chosen one selected: the
+// event's when editing, otherwise this browser's own.
+(function fillZones(){
+  const chosen = editing ? data.event.timeZone : (viewerZone() || zoneSelect.value);
+  let zones = [];
+  try{ zones = Intl.supportedValuesOf('timeZone'); }catch(e){}
+  zones = Array.from(new Set(zones.concat([chosen, 'UTC']))).sort();
+  zoneSelect.innerHTML = '';
+  zones.forEach((z) => {
+    const opt = document.createElement('option');
+    opt.value = z;
+    opt.textContent = z.replace(/_/g, ' ');
+    if (z === chosen) opt.selected = true;
+    zoneSelect.appendChild(opt);
+  });
+})();
+
+// The API's refusal, under the field it's about. The words are
+// copy.js's for the reasons it knows, otherwise the API's own.
+const FIELD_FOR = {
+  bad_title: 'title', bad_description: 'description', bad_starts_at: 'startsAt', bad_ends_at: 'endsAt',
+  ends_before_start: 'endsAt', bad_time_zone: 'timeZone', bad_location_name: 'locationName',
+  bad_location_address: 'locationAddress', bad_guest_list_visibility: 'guestListVisibility'
+};
+function showRefusal(d){
+  const words = COPY.editor.errors[d.reason] || sentence(d.error);
+  const fieldId = FIELD_FOR[d.reason];
+  const el = (fieldId && $(fieldId + 'Error')) || $('formError');
+  el.textContent = words;
+  const input = fieldId && $(fieldId);
+  if (input && input.focus) input.focus();
+}
+
+function clearErrors(){
+  form.querySelectorAll('.error').forEach((el) => { el.textContent = ''; });
+}
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  clearErrors();
+  const zone = zoneSelect.value;
+  const ends = UI.fromLocalInput($('endsAt').value, zone);
+  const body = {
+    title: $('title').value,
+    description: $('description').value,
+    startsAt: UI.fromLocalInput($('startsAt').value, zone),
+    timeZone: zone,
+    locationName: $('locationName').value,
+    locationAddress: $('locationAddress').value,
+    guestListVisibility: (form.querySelector('input[name=guestListVisibility]:checked') || {}).value
+  };
+  // An empty end: none (and, editing, clear the one there was).
+  if (ends) body.endsAt = ends;
+  else if (editing) body.endsAt = null;
+  busy($('saveBtn'), $('formError'), async () => {
+    const { res, data: d } = editing
+      ? await api('PATCH', '/events/' + encodeURIComponent(data.event.id), body)
+      : await api('POST', '/events', body);
+    if (!res.ok){ showRefusal(d); return; }
+    window.location.href = '/e/' + encodeURIComponent(d.event.id);
+  });
+});
+</script>
+</body>
+</html>

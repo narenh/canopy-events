@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>__PAGE_TITLE__</title>
+<meta name="theme-color" content="#03120c">
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/events.css">
+</head>
+<!-- Your events (/). Signed in: invitations (answer them right there),
+     what you're hosting, what's coming up, and what's past, each from
+     GET /api/v1/me/events/<list>, drawn by public/ui.js (homeLists) into
+     #lists. Signed out: what this is, and sign in. -->
+<body class="mesh-bg">
+<!-- PAGE:HEADER -->
+<main class="wrap">
+  <!-- PAGE:BANNER -->
+  <div id="main" class="stack"><!-- PAGE:MAIN --></div>
+</main>
+<!-- PAGE:FOOTER -->
+<script type="application/json" id="pageData">__PAGE_DATA__</script>
+<script src="/copy.js"></script>
+<script src="/ui.js"></script>
+<script src="/events.js"></script>
+<script>
+applyCopy();
+
+const data = pageData();
+const zone = viewerZone();
+const lists = document.getElementById('lists');
+
+function draw(){
+  if (lists) lists.innerHTML = UI.homeLists(data, { viewerZone: zone });
+}
+if (lists && data.drawnZone !== zone) draw();
+
+// One list from its first page again.
+async function reload(name){
+  const { res, data: d } = await api('GET', '/me/events/' + name + '?limit=' + data.sizes[name]);
+  if (res.ok) data.lists[name] = d;
+}
+
+onActions({
+  // Going or can't go, straight from the invitation. It then moves to
+  // "coming up", or off the page.
+  reply: (btn) => {
+    const card = btn.closest('[data-event]');
+    const errorEl = card.querySelector('.error');
+    let refusal = '';
+    busy(btn, errorEl, async () => {
+      const { res, data: d } = await api('PUT', '/events/' + encodeURIComponent(card.getAttribute('data-event')) + '/rsvp', { status: btn.getAttribute('data-status') });
+      if (!res.ok) refusal = sentence(d.error);
+      await Promise.all([reload('invitations'), reload('upcoming')]);
+      draw();
+    }).then(() => {
+      if (refusal){
+        const again = lists.querySelector('[data-event="' + card.getAttribute('data-event') + '"] .error');
+        if (again) again.textContent = refusal;
+      }
+    });
+  },
+
+  // The next page of a list, added to the end.
+  more: (btn) => busy(btn, null, async () => {
+    const name = btn.getAttribute('data-list');
+    const list = data.lists[name];
+    const { res, data: d } = await api('GET', '/me/events/' + name + '?limit=' + data.sizes[name] + '&cursor=' + encodeURIComponent(list.nextCursor));
+    if (!res.ok) return;
+    list.events = list.events.concat(d.events);
+    list.nextCursor = d.nextCursor;
+    draw();
+  })
+});
+</script>
+</body>
+</html>
