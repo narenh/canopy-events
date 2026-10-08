@@ -90,12 +90,15 @@ const apiRouters = [
   require('./routes/rsvps'),
   require('./routes/hosts'),
   require('./routes/wall'),
+  require('./routes/covers'),
   require('./routes/me')
 ].map((make) => make(ctx));
 
 // The spec and its page come first: they're the same for everyone, so
 // there's no need to ask the account service who's asking.
 app.use(docsRouter);
+// Cover images are public, for link previews (routes/covers.js).
+app.use(require('./routes/covers').files(ctx));
 
 // Answers about people are never for a cache to keep.
 app.use('/api/v1', (req, res, next) => {

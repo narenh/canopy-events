@@ -124,6 +124,8 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `GET /api/v1/events/{id}/wall` | the activity wall, newest first (whoever sees the guest list) |
 | `POST /api/v1/events/{id}/wall` | post on it (hosts, going, maybe, waitlisted) |
 | `DELETE /api/v1/events/{id}/wall/{entryId}` | delete a post (its author) or any entry (hosts) |
+| `PUT`, `DELETE /api/v1/events/{id}/cover` | upload or remove the cover image (hosts) |
+| `GET /covers/<key>.jpg` | a cover image, public (for link previews) |
 | `PUT /api/v1/events/{id}/rsvp` | answer: going, maybe, not_going |
 | `DELETE /api/v1/events/{id}/rsvp` | take the answer back |
 | `GET /api/v1/events/{id}/guests` | the guest list, by the visibility rule |
@@ -183,6 +185,7 @@ restart forgives everyone. The address is Cloudflare's
 | Making events | 20 a day | 60 a day | 1,000 a day |
 | Invitations (one per person invited) | 300 a day | 600 a day | 5,000 a day |
 | Wall posts | 5 a minute, 100 a day | 20 a minute, 300 a day | 300 a minute, 5,000 a day |
+| Cover uploads | 30 a day | 100 a day | 2,000 a day |
 
 On top of that, one invite request takes at most 100 people, and a
 request body at most 100 KB. The numbers live next to the routes they
@@ -228,7 +231,11 @@ starts its own server and fake account service.
 
 The repo has a `Dockerfile`, the same as the account service's. It builds
 `better-sqlite3` in a throwaway stage and checks the build actually
-works, so a broken install fails the build rather than the deploy. It
+works, so a broken install fails the build rather than the deploy. The
+same stage makes a JPEG with `sharp` (cover images): sharp ships prebuilt
+libvips for Alpine on x64 and arm64, so nothing compiles, but a missing
+binary would otherwise only show at the first upload. HEIC photos are
+decoded by `heic-decode`, which is WebAssembly, not native. It
 runs as `NODE_ENV=production`, port 3000, `DATA_DIR=/app/data`.
 
 1. New resource from this repository, branch **`main`**, build pack
@@ -272,7 +279,9 @@ Everything is in `DATA_DIR` (`/app/data` in the container):
 
 - `events.db` is the database (SQLite, WAL mode, so `events.db-wal` and
   `events.db-shm` sit beside it while it's open);
-- `backups/sqlite/events-YYYY-MM-DD.db` holds the snapshots.
+- `backups/sqlite/events-YYYY-MM-DD.db` holds the snapshots;
+- `covers/<event id>.jpg` holds the cover images (`lib/coverStore.js`).
+  They're not in the snapshots: copy the folder too, or covers are lost.
 
 Its tables are `events`, `hosts` (who hosts each event: the creator and
 any co-hosts), `rsvps` (one row per person per event: invited, or their

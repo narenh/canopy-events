@@ -10,8 +10,9 @@
 //                                     otherwise off the list
 //   invited  --the host takes it back-->  off the list
 //
-// 'waitlisted' is kept for capacity (v1 scope item 4) and nothing makes
-// it yet. Hosts don't answer their own events: hosting is being there.
+// 'waitlisted' is a "going" past the event's capacity, made by the server
+// (lib/store/waitlist.js); a freed spot makes the earliest that fits
+// going. Hosts don't answer their own events: hosting is being there.
 
 const express = require('express');
 const { handle, fail, loadEvent, pageParams, paginate } = require('../lib/api');
@@ -41,7 +42,8 @@ module.exports = function rsvpsRoutes(ctx) {
   }
 
   // Your answer, made or changed. { status, guests }: guests (plus-ones)
-  // is 0 unless the host allows more.
+  // is 0 unless the host allows more. `waitlisted` in the answer says a
+  // "going" didn't fit and is on the waitlist instead.
   router.put('/events/:id/rsvp', auth.requirePerson, withEvent, handle(async (req, res) => {
     const body = req.body || {};
     if (!ANSWERS.includes(body.status)) return fail(res, 400, 'bad_status', "status is 'going', 'maybe' or 'not_going'");
@@ -55,8 +57,11 @@ module.exports = function rsvpsRoutes(ctx) {
     const refusal = answerRefusal(req.event, req.role);
     if (refusal) return refuse(res, refusal);
     // Not going brings nobody.
-    store.setAnswer(req.event.id, req.person.id, body.status, body.status === 'not_going' ? 0 : guests);
-    res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }) });
+    const result = store.setAnswer(req.event.id, req.person.id, body.status, body.status === 'not_going' ? 0 : guests);
+    if (result.outcome === 'no_room') {
+      return fail(res, 409, 'no_room', `there isn't room for that many guests -- you're still going with ${result.before.guests}`);
+    }
+    res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }), waitlisted: result.outcome === 'waitlisted' });
   }));
 
   // Takes your answer back: invited again if a host invited you,

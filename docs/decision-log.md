@@ -234,3 +234,66 @@ waitlist, notifications, host moderation and lookup, built on branch
   description and visibility changes make no entry. · n/a
 - Wall ids are SQLite AUTOINCREMENT integers, as strings in the API. ·
   An id is never reused, so deleting an old id can't hit a new post. · n/a
+
+### Cover images and capacity (schema version 4)
+
+- **Covers are public**: anyone with the URL loads it, signed in or not.
+  · Link previews fetch it with nobody's session. · routes/covers.js
+  `files`; to make them private, check `req.person` there (and lose the
+  picture in previews).
+- **A cover's URL is a random key, not the event's id**
+  (`/covers/<key>.jpg?v=<uploadedAt>`), and every upload gets a new key.
+  This is what schema version 4 adds (`events.cover_key`, unique). · The
+  event id is the link; a public image URL carrying it would hand the
+  link to anyone who copied the image's address. A new key also kills a
+  replaced cover's old URL at once. · lib/db.js VERSION_4.
+- **Re-encoded on the server with `sharp`** (libvips): auto-rotated from
+  EXIF, fit inside 1600 px, flattened onto white, JPEG quality 82, **no
+  metadata kept** (no GPS). The account service lets the browser crop to
+  a small JPEG instead, but covers come from apps too, and covers are
+  public, so the server can't trust a client to have stripped location.
+  · lib/coverImage.js.
+- **sharp is a new native-ish dependency.** It compiles nothing: npm
+  installs its prebuilt libvips for linuxmusl from package-lock.json.
+  Checked tonight by building the Dockerfile for both linux/amd64 and
+  linux/arm64 (the deps stage now makes a JPEG as a smoke test, like the
+  better-sqlite3 check) and converting a HEIC inside the amd64 image. ·
+  The alternative was pure-JS decoders for four formats plus our own
+  resize and rotate. · Dockerfile.
+- **HEIC via `heic-decode`** (libheif compiled to WebAssembly, LGPL-3.0,
+  about 9 MB installed), because sharp's prebuilt libvips only reads the
+  AVIF kind of HEIF. · iPhones save HEIC; Safari usually converts on
+  upload, but the iOS app needn't. · Drop it and refuse HEIC with
+  `bad_image` if the size or licence matters.
+- Type is told by the first bytes, never the filename or Content-Type.
+  Up to 15 MB and 50 megapixels; 30 uploads a day per person, 100 per
+  address, 2,000 overall. Served with `Cache-Control: public,
+  max-age=3600`, so a removed cover can live in caches up to an hour. ·
+  n/a
+- Covers live in `DATA_DIR/covers/<event id>.jpg`, outside the SQLite
+  snapshots (the Coolify volume backup has them). · Mirrors the account
+  service's photos. · n/a
+- **Capacity counts plus-ones**: going people + their guests ≤ capacity.
+  `maybe` isn't capped. · The spec. · lib/store/waitlist.js.
+- **Someone already going who asks for more plus-ones than fit is
+  refused** (409 `no_room`) and keeps their spot, rather than being
+  moved to the waitlist with their whole party. · Asking for one more
+  shouldn't lose you the one you had. · lib/store/rsvps.js setAnswer.
+- **Promotion is "earliest that fits"**: by when they were waitlisted,
+  skipping a party too big for the free spots (who stays first for the
+  next). It runs inside the same transaction as whatever freed the spot
+  (withdraw, maybe/not going, fewer guests, capacity raised or cleared,
+  co-host made, guest removed, event un-cancelled) and writes an
+  `off_waitlist` wall entry. A test makes the wall entry fail and checks
+  the whole withdrawal rolls back. · lib/store/waitlist.js.
+- **Lowering capacity below the current going count bumps nobody**; new
+  `going` answers wait until enough people leave. · The spec. · n/a
+- A cancelled or finished event promotes nobody; un-cancelling fills
+  from the waitlist. · Nobody should get "you're in!" for an event
+  that's off. · n/a
+- `PUT /rsvp` now answers `{event, waitlisted}` (a new `RsvpResult`
+  schema) rather than `{event}`. · "The response says so" without making
+  apps diff statuses. Additive for anyone reading `event`. · n/a
+- Events get `capacity`, `spotsLeft` (never below 0) and
+  `coverImageUrl`, shown to everyone including signed out (a preview can
+  say "3 spots left"). · n/a

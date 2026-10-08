@@ -141,6 +141,11 @@ paths:
         Lowering `guestsAllowed` leaves answers that already bring more as
         they are, flagged with `guestsOverLimit`; their next change has to
         fit.
+
+        `capacity` caps people going plus their plus-ones (null: no cap).
+        Raising or clearing it promotes from the waitlist at once.
+        Lowering it under how many are going bumps nobody; new `going`
+        answers wait until there's room.
       requestBody:
         required: true
         content:
@@ -176,7 +181,12 @@ paths:
         `going`, `maybe` or `not_going`. Anyone signed in with the link may
         answer, invited or not, unverified accounts included. Refused with
         409 for a cancelled event (`event_cancelled`), one that's over
-        (`event_over`), or by a host (`host_cannot_rsvp`). `guests` (plus-
+        (`event_over`), or by a host (`host_cannot_rsvp`). With a
+        `capacity`, a `going` that doesn't fit is saved as `waitlisted`;
+        someone already going who asks for more plus-ones than there's
+        room for gets 409 `no_room` and keeps their spot as it was.
+        Changing to `maybe` or `not_going`, or fewer plus-ones, frees
+        spots for the waitlist. `guests` (plus-
         ones) is up to the event's `guestsAllowed` (400 `too_many_guests`),
         0 if left out, and always 0 for `not_going`.
       requestBody:
@@ -191,10 +201,15 @@ paths:
                 value: { status: going, guests: 2 }
       responses:
         '200':
-          description: The event after your answer; `viewer.rsvp` is it.
+          description: |
+            The event after your answer; `viewer.rsvp` is it. `waitlisted`
+            is true when you asked for `going` and the event was full (for
+            you and your plus-ones), so you're on the waitlist instead:
+            you'll be moved to `going` (and notified) when a spot that fits
+            you frees up.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/EventEnvelope' }
+              schema: { $ref: '#/components/schemas/RsvpResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -208,7 +223,8 @@ paths:
       description: |
         If a host invited you, you're left invited with no answer;
         otherwise you're off the list. With no answer to take back it does
-        nothing and still answers 200. The same 409s as answering.
+        nothing and still answers 200. The same 409s as answering. A spot
+        you free goes to the waitlist.
       responses:
         '200':
           description: The event after; `viewer.rsvp` is `invited` or null.
@@ -496,6 +512,63 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
+  /api/v1/events/{id}/cover:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    put:
+      tags: [Events]
+      operationId: setCover
+      summary: Upload a cover image
+      description: |
+        Hosts only. `multipart/form-data` with the image in a field named
+        `cover`: JPEG, PNG, WebP or HEIC, up to 15 MB (413 `too_large`).
+        It's told by its bytes, not its name or type; anything else is
+        400 `bad_image`. The server turns it the right way up, shrinks it
+        to fit 1600 px, and stores it as a JPEG **with no EXIF** (no
+        location). The event's `coverImageUrl` changes with every upload.
+        30 uploads a day per person.
+
+        **Covers are public**: anyone with the URL can load it, signed in
+        or not, so link previews can show it. The URL is random, never the
+        event's link.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [cover]
+              properties:
+                cover: { type: string, format: binary }
+      responses:
+        '200':
+          description: The event, with its new `coverImageUrl`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [Events]
+      operationId: deleteCover
+      summary: Remove the cover image
+      description: Hosts only. Its URL stops working at once (caches may keep it up to an hour). Fine with no cover.
+      responses:
+        '200':
+          description: The event, with `coverImageUrl` null.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
   /api/v1/me:
     get:
       tags: [Me]
@@ -665,8 +738,8 @@ components:
         `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`,
         `bad_location_name`, `bad_location_address`, `bad_status`,
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
-        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_cursor`,
-        `bad_limit`.
+        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`,
+        `bad_image`, `bad_cursor`, `bad_limit`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -712,13 +785,13 @@ components:
       description: |
         Not in this event's state: `event_cancelled`, `event_over`,
         `host_cannot_rsvp`, `already_responded`, `is_creator`,
-        `too_many_cohosts`.
+        `too_many_cohosts`, `no_room`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: 'this event has been cancelled', reason: event_cancelled }
     TooLarge:
-      description: The body is over 100 KB (`too_large`).
+      description: The body is over 100 KB, or an image over 15 MB (`too_large`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -838,9 +911,9 @@ components:
       type: string
       enum: [invited, going, maybe, not_going, waitlisted]
       description: |
-        `invited` is invited with no answer yet. `waitlisted` is reserved
-        for capacity: a `going` past the cap. Nothing sets it yet, but
-        apps should expect it.
+        `invited` is invited with no answer yet. `waitlisted` is a `going`
+        that didn't fit the event's capacity; the server moves it to
+        `going` when a spot that fits frees up. Nobody asks for it.
 
     Counts:
       description: |
@@ -943,7 +1016,8 @@ components:
       type: object
       additionalProperties: false
       required: [id, url, title, description, startsAt, endsAt, timeZone, locationName, locationAddress,
-                 locationAddressHidden, guestListVisibility, guestsAllowed, status, cancelledAt, createdAt, updatedAt,
+                 locationAddressHidden, guestListVisibility, guestsAllowed, capacity, spotsLeft, coverImageUrl,
+                 status, cancelledAt, createdAt, updatedAt,
                  hosts, counts, viewer]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
@@ -958,6 +1032,21 @@ components:
         locationAddressHidden: { type: boolean, description: True when there's an address you'll see once signed in. }
         guestListVisibility: { type: string, enum: [everyone, responded] }
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, description: Plus-ones each answer may bring. }
+        capacity:
+          type: [integer, 'null']
+          minimum: 1
+          description: The most people going, plus-ones included; null for no cap.
+        spotsLeft:
+          type: [integer, 'null']
+          minimum: 0
+          description: '`capacity` minus `counts.total.going`, never below 0; null with no cap.'
+        coverImageUrl:
+          type: [string, 'null']
+          format: uri
+          description: |
+            The cover image, a JPEG, or null. Public (no sign-in needed),
+            so it works in link previews; it changes with every upload,
+            so cache it by URL.
         status: { type: string, enum: [active, cancelled] }
         cancelledAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
@@ -986,6 +1075,9 @@ components:
         locationAddressHidden: false
         guestListVisibility: responded
         guestsAllowed: 1
+        capacity: 20
+        spotsLeft: 14
+        coverImageUrl: https://events.canopysf.com/covers/Qm7Zc2pR9xTa.jpg?v=1759870000000
         status: active
         cancelledAt: null
         createdAt: '2026-10-07T20:00:00.000Z'
@@ -1018,6 +1110,16 @@ components:
       required: [event]
       properties:
         event: { $ref: '#/components/schemas/Event' }
+
+    RsvpResult:
+      type: object
+      additionalProperties: false
+      required: [event, waitlisted]
+      properties:
+        event: { $ref: '#/components/schemas/Event' }
+        waitlisted:
+          type: boolean
+          description: You asked for `going`, it was full, and you're on the waitlist instead.
 
     EventList:
       type: object
@@ -1108,6 +1210,7 @@ components:
         locationAddress: { type: [string, 'null'], maxLength: 500 }
         guestListVisibility: { type: string, enum: [everyone, responded], default: everyone }
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, default: 0, description: Plus-ones each answer may bring. }
+        capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, default: null, description: 'The most people going, plus-ones included. null: no cap.' }
 
     EventPatch:
       description: Any of the fields of EventInput, plus status. Only what's sent changes.
@@ -1122,6 +1225,7 @@ components:
         locationAddress: { type: [string, 'null'], maxLength: 500 }
         guestListVisibility: { type: string, enum: [everyone, responded] }
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, description: Lowering it keeps answers that bring more (see guestsOverLimit). }
+        capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: "null clears it. Raising it promotes from the waitlist; lowering it bumps nobody." }
         status: { type: string, enum: [active, cancelled], description: 'cancelled cancels it; active takes that back. The creator only.' }
 
     RsvpInput:

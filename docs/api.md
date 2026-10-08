@@ -196,12 +196,54 @@ statuses.
 - `guests` (plus-ones): send `{"status": "going", "guests": 2}`, up to the
   event's `guestsAllowed`. More is 400 `too_many_guests`. Left out, it's
   0; with `not_going` it's always 0. See "Plus-ones".
-- **`waitlisted`** is coming with capacity: a `going` past the cap
-  becomes `waitlisted`, and a freed spot promotes the earliest. Nothing
-  sets it yet, but handle it now: show it as "on the waitlist".
+- **`waitlisted`**: with a `capacity`, a `going` that doesn't fit is
+  saved as `waitlisted`, and the answer has `"waitlisted": true`. Show
+  "you're on the waitlist". See "Capacity and the waitlist".
 
 Both calls answer with the whole event, so the screen can redraw from the
-answer.
+answer. `PUT` also says `waitlisted`.
+
+## Capacity and the waitlist
+
+A host can set `capacity`: the most people going, **plus-ones included**
+(`counts.total.going`). `spotsLeft` on the event is what's left (null with
+no cap).
+
+- A `going` that doesn't fit, with its plus-ones, is saved as
+  `waitlisted` instead (`"waitlisted": true` in the answer).
+- Someone already going who asks for more plus-ones than there's room for
+  gets **409 `no_room`** and keeps their spot as it was. Asking for one
+  more shouldn't cost you the one you had.
+- **A freed spot goes to the waitlist at once**: someone taking their
+  answer back, changing to `maybe` or `not_going`, bringing fewer guests,
+  being removed or made a co-host, or the host raising or clearing the
+  capacity. The earliest waitlisted answer that fits, plus-ones included,
+  becomes `going`; then the next, until nothing fits. A big party that
+  doesn't fit is passed over for a smaller one behind it, and stays first
+  in line. The person promoted gets an `off_waitlist` entry on the wall.
+- **Lowering the capacity bumps nobody.** It only means new `going`
+  answers wait until enough people leave.
+- A cancelled event promotes nobody; when it's back on, the waitlist is
+  filled.
+- `maybe` isn't capped.
+
+## Cover images
+
+`PUT /api/v1/events/{id}/cover` (hosts) uploads one, as
+`multipart/form-data` with the image in a field named `cover`: JPEG, PNG,
+WebP or HEIC, up to 15 MB. Send the photo as it is: the server turns it
+upright, shrinks it to fit 1600 px, and stores a JPEG with **no EXIF**,
+so where it was taken never leaves the phone. `DELETE` removes it.
+
+```bash
+curl -s "${auth[@]}" -X PUT -F cover=@IMG_0001.HEIC $API/events/4fQ9xKpL2mZa/cover
+```
+
+The event's `coverImageUrl` is where it is. **Covers are public**: anyone
+with that URL can load it, no sign-in, because link previews (iMessage,
+Slack) fetch it without anyone's session. The URL is random and isn't the
+event's link, and every upload makes a new one (the old one stops
+working), so cache by URL. `null` is no cover.
 
 ## Plus-ones
 
@@ -382,7 +424,7 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |
@@ -391,8 +433,8 @@ expect:
 | 403 | `not_yours` | deleting someone else's post: `canDelete` |
 | 403 | `bad_origin` | a web page's problem; apps never see it |
 | 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_found` | the link is wrong, or it's gone |
-| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts` | redraw from the event |
-| 413 | `too_large` | the body is over 100 KB |
+| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room` | redraw from the event |
+| 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |
 | 503 | `accounts_unreachable` | Canopy accounts is down; retry in a minute |
 | 500 | `server_error` | our bug; retry once, then tell us |
@@ -405,6 +447,7 @@ expect:
 | Invitations (each person invited counts one) | 300 a day | 600 a day | 5,000 a day |
 | Invitations in one request | 100 | | |
 | Wall posts | 5 a minute, 100 a day | 20 a minute, 300 a day | 300 a minute, 5,000 a day |
+| Cover uploads | 30 a day | 100 a day | 2,000 a day |
 
 Text fields are capped: title 120 characters (longer is cut), description
 5,000, place name 200, address 500. A request body is at most 100 KB.

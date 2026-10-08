@@ -83,6 +83,9 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   upgraded.noteVerification('00000000-0000-4000-8000-000000000001', true);
   // Version 3: the wall.
   assert.equal(upgraded.addPost('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000001', 'hi').body, 'hi');
+  // Version 4: cover keys.
+  assert.equal(upgraded.setCover('AAAAAAAAAAAA', 'CoverKey1234').coverKey, 'CoverKey1234');
+  assert.equal(upgraded.getEventByCoverKey('CoverKey1234').id, 'AAAAAAAAAAAA');
   assert.equal(upgraded.isKnownVerified('00000000-0000-4000-8000-000000000001'), true);
   upgraded.db.close();
   fresh.db.close();

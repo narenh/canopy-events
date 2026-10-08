@@ -138,7 +138,8 @@ function client(server, who, { mode = 'cookie', origin } = {}) {
     if (person && mode === 'bearer' && h.Authorization === undefined) h.Authorization = `Bearer ${person.token}`;
     if (method !== 'GET' && mode === 'cookie' && h.Origin === undefined && pageOrigin) h.Origin = pageOrigin;
     let payload;
-    if (body !== undefined) { h['Content-Type'] = 'application/json'; payload = typeof body === 'string' ? body : JSON.stringify(body); }
+    if (body instanceof FormData) payload = body;
+    else if (body !== undefined) { h['Content-Type'] = 'application/json'; payload = typeof body === 'string' ? body : JSON.stringify(body); }
     const res = await fetch(server.base + url, { method, headers: h, body: payload, redirect: 'manual' });
     const text = await res.text();
     let data = null;
@@ -156,7 +157,13 @@ function client(server, who, { mode = 'cookie', origin } = {}) {
     post: (url, body, opts) => request('POST', url, { ...opts, body: body === undefined ? {} : body }),
     put: (url, body, opts) => request('PUT', url, { ...opts, body }),
     patch: (url, body, opts) => request('PATCH', url, { ...opts, body }),
-    del: (url, opts) => request('DELETE', url, opts)
+    del: (url, opts) => request('DELETE', url, opts),
+    // A file upload: multipart/form-data with `buffer` in field `field`.
+    upload: (method, url, buffer, { field = 'cover', filename = 'photo', type = 'application/octet-stream', ...opts } = {}) => {
+      const form = new FormData();
+      form.append(field, new Blob([buffer], { type }), filename);
+      return request(method, url, { ...opts, body: form });
+    }
   };
 }
 
