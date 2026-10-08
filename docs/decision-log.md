@@ -2865,3 +2865,9 @@ settings), this is what was built. The rest:
 - **(You)** "Wall" is now **Updates** in everything people read (the
   heading, the hidden note, the delete confirm, the remove-guest copy).
   The API keeps its names (`/wall`, `wall_post`) so apps don't break.
+- **(You)** A declined event's card shows your answer as a small
+  dropdown (Can't Go, or change it to Going or Maybe) where its badge
+  was, not a big Going button.
+- **(You)** The background picker is one grid with no title headings
+  (each tile's screen-reader label still names its title). TMDB's credit
+  appears only at the foot of the picker, not on the home page.

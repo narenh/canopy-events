@@ -187,7 +187,7 @@ module.exports = function pagesRoutes(ctx) {
     // switching tabs in the browser needs no request.
     const tab = UI.homeTabOf(req.query.tab);
     const sizes = { all: LIST_SHOWN, invitations: LIST_SHOWN, declined: LIST_SHOWN, hosting: LIST_SHOWN, past: PAST_SHOWN };
-    const [backgrounds, settings, ...answers] = await Promise.all([backgroundsFor(req), apiGet(req, '/me/settings')]
+    const [settings, ...answers] = await Promise.all([apiGet(req, '/me/settings')]
       .concat(UI.HOME_LOADS.map((name) => apiGet(req, `/me/events/${name}?limit=${sizes[name]}`))));
     const lists = {};
     UI.HOME_LOADS.forEach((name, i) => { lists[name] = want(answers[i]); });
@@ -210,9 +210,6 @@ module.exports = function pagesRoutes(ctx) {
         + UI.esc(canopy.verifyUrl(req, render.hereUrl(req))) + '">' + UI.tx('home.verifyToHost') + '</a></p>';
     }
     main += '<div id="lists" class="home-lists">' + UI.homeLists(data, { viewerZone: render.viewerZone(req) }) + '</div>';
-    // TMDB's attribution, small at the foot, while its backgrounds are
-    // offered in the editor.
-    if (backgrounds.length) main += UI.tmdbCredit('home-credit');
     render.page(req, res, 'home.html', { current: 'home', main, data });
   }));
 

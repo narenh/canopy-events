@@ -258,6 +258,7 @@ const COPY = {
     // The tabs, and each one's line when it has nothing in it.
     tabsLabel: 'Your Events',
     declinedHeading: 'Declined',
+    yourAnswer: 'Your answer to {title}',
     tabs: {
       all: 'All',
       invited: 'Invited',

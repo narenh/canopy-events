@@ -124,6 +124,29 @@ if (invitesSwitch){
   });
 }
 
+// A declined event's dropdown: changing it answers again (going or
+// maybe), the same as the buttons.
+if (lists){
+  lists.addEventListener('change', (e) => {
+    const sel = e.target.closest('select[data-change="reply"]');
+    if (!sel) return;
+    const card = sel.closest('[data-event]');
+    const errorEl = card.querySelector('.error');
+    let refusal = '';
+    busy(sel, errorEl, async () => {
+      const { res, data: d } = await api('PUT', '/events/' + encodeURIComponent(card.getAttribute('data-event')) + '/rsvp', { status: sel.value });
+      if (!res.ok) refusal = sentence(d.error);
+      await Promise.all([reload('invitations'), reload('declined'), reload('all')]);
+      draw();
+    }).then(() => {
+      if (refusal){
+        const again = lists.querySelector('[data-event="' + card.getAttribute('data-event') + '"] .error');
+        if (again) again.textContent = refusal;
+      }
+    });
+  });
+}
+
 onActions({
   // Going or can't go, straight from the invitation (on All or Invited).
   // It then shows as going on All and leaves Invited, or leaves both.

@@ -1488,10 +1488,10 @@
   // An event in a list: a 3:2 picture, when, the title, where, and your
   // part in it as a status badge (statusTag), with "Cancelled" after it
   // if it's off.
-  function eventRow(e, o, asCard) {
+  function eventRow(e, o, asCard, hideStatus) {
     const phase = phaseOf(e);
     const status = viewerStatus(e);
-    let tags = status ? statusTag(status) : '';
+    let tags = status && !hideStatus ? statusTag(status) : '';
     if (phase === 'cancelled') tags += '<span class="tag danger">' + tx('status.cancelled') + '</span>';
     // The cover (or the generated picture) as a 3:2 thumbnail; then when,
     // in a bold line above the title, as calendars do; the title; where.
@@ -1516,12 +1516,15 @@
   }
 
   // An event you said you can't go to (on Invited, under Declined): the
-  // card, and Going to change your mind (an answer can change, never be
-  // taken back).
+  // card, with your answer as a small dropdown (Can't Go, or change it to
+  // Going or Maybe: an answer can change, never be taken back) in place of
+  // its badge.
   function declinedCard(e, o) {
-    return '<div class="card invite-card" data-event="' + esc(e.id) + '">' + eventRow(e, o, false)
-      + '<div class="reply"><button type="button" data-action="reply" data-status="going">' + tx('status.going') + '</button></div>'
-      + '<div class="error" role="alert"></div></div>';
+    const options = [['not_going', tx('status.not_going')], ['going', tx('status.going')], ['maybe', tx('status.maybe')]];
+    return '<div class="card invite-card declined-card" data-event="' + esc(e.id) + '">' + eventRow(e, o, false, true)
+      + '<div class="reply reply-select"><select class="answer-select" data-change="reply" aria-label="' + tx('home.yourAnswer', { title: e.title }) + '">'
+      + options.map(([v, label]) => '<option value="' + v + '"' + (v === 'not_going' ? ' selected' : '') + '>' + label + '</option>').join('')
+      + '</select></div><div class="error" role="alert"></div></div>';
   }
 
   // The tabs on your events page, and the list each shows (GET
@@ -1961,18 +1964,20 @@
   }
 
   // The sheet the background button opens: every background as a 3:2
-  // button, grouped by title with the title small under each group, and
-  // TMDB's attribution at the foot. `chosen` is the id picked, if any.
+  // button in one grid, and TMDB's attribution at the foot (the only place
+  // it appears). `chosen` is the id picked, if any.
   function backgroundSheet(list, chosen) {
     let h = '<div class="sheet-backdrop" id="backgroundBackdrop" hidden></div>'
       + '<div class="bg-panel" id="backgroundPanel" role="dialog" aria-modal="true" aria-labelledby="backgroundHeading" hidden>'
       + '<div class="bg-head"><h2 id="backgroundHeading">' + tx('editor.backgroundChoose') + '</h2>'
       + '<button type="button" class="round-btn" data-action="close-backgrounds" aria-label="' + tx('editor.backgroundClose') + '">' + ICON_CLOSE + '</button></div>'
       + '<div class="bg-scroll">';
+    // One grid, no titles under groups: each button still says, for a
+    // screen reader, which title it's from and which of how many.
+    h += '<div class="bg-grid">';
     backgroundGroups(list).forEach((group) => {
       const first = group[0];
       const name = first.year ? t('editor.backgroundLabelYear', { title: first.title, year: first.year }) : t('editor.backgroundLabel', { title: first.title });
-      h += '<div class="bg-group"><div class="bg-grid">';
       group.forEach((b, i) => {
         const label = group.length > 1 ? t('editor.backgroundOf', { label: name, n: i + 1, count: group.length }) : name;
         const thumb = safeUrl(b.thumbUrl);
@@ -1982,9 +1987,8 @@
             + ' alt="" loading="lazy" decoding="async">' : '')
           + '</button>';
       });
-      h += '</div><p class="bg-title">' + esc(name) + '</p></div>';
     });
-    h += '</div>' + tmdbCredit('bg-credit') + '</div>';
+    h += '</div></div>' + tmdbCredit('bg-credit') + '</div>';
     return h;
   }
 

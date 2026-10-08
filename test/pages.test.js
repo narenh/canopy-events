@@ -407,8 +407,11 @@ test('pages', async (t) => {
     assert.ok(invited.includes('id="declinedHeading"'), 'a Declined heading');
     const declined = invited.slice(invited.indexOf('id="list-declined"'));
     assert.ok(declined.includes('Declined dinner'));
-    assert.match(declined, /class="card invite-card" data-event="[^"]+">[\s\S]*?Declined dinner[\s\S]*?data-action="reply" data-status="going">Going<\/button><\/div>/);
-    assert.ok(!declined.includes('data-status="not_going"'), 'only Going: they already said they can\'t go');
+    // Your answer as a small dropdown (Can't Go, or Going or Maybe), in
+    // place of its badge: no big button, no Can't Go badge.
+    assert.match(declined, /class="card invite-card declined-card" data-event="[^"]+">[\s\S]*?Declined dinner[\s\S]*?<select class="answer-select" data-change="reply" aria-label="Your answer to Declined dinner"><option value="not_going" selected>Can&#39;t Go<\/option><option value="going">Going<\/option><option value="maybe">Maybe<\/option><\/select>/);
+    assert.ok(!declined.includes('data-action="reply"'), 'no answer buttons');
+    assert.ok(!declined.includes('class="tag off">Can&#39;t Go<'), 'no Can\'t Go badge');
     // Not on All: All is what you're part of.
     assert.ok(!panel((await page(server, dee, '/')).body).includes('Declined dinner'));
     // Nobody who declined nothing gets the heading.

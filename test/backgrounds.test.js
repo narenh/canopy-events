@@ -310,15 +310,17 @@ test('the curated set: a manifest and a TMDB list, chosen as a cover', async (t)
         'Red Sunset (2001), 1 of 2', 'Red Sunset (2001), 2 of 2', 'Blue Sea',
         'The Matrix (1999), 1 of 3', 'The Matrix (1999), 2 of 3', 'The Matrix (1999), 3 of 3'
       ]);
-      assert.deepEqual(Array.from(body.matchAll(/<p class="bg-title">([^<]+)<\/p>/g)).map((m) => m[1]),
-        ['Red Sunset (2001)', 'Blue Sea', 'The Matrix (1999)', 'Breaking Bad (2008)', 'The Dark Knight (2008)']);
+      // One grid, no titles under groups.
+      assert.equal(Array.from(body.matchAll(/class="bg-grid"/g)).length, 1);
+      assert.ok(!body.includes('class="bg-title"'));
       assert.match(body, /<p class="tmdb-credit bg-credit"><svg class="tmdb-logo"[^>]*role="img" aria-label="TMDB">[\s\S]*?<span>This product uses the TMDB API but is not endorsed or certified by TMDB\.<\/span><\/p>/);
       // The page's script has the set, with each one's hue.
       const data = JSON.parse(/<script type="application\/json" id="pageData">([\s\S]*?)<\/script>/.exec(html)[1]);
       assert.deepEqual(data.backgrounds, set.backgrounds);
     }
+    // The credit is only in the picker, never on the home page.
     const home = await page(server, 'ana', '/');
-    assert.match(home.body, /<p class="tmdb-credit home-credit"><svg class="tmdb-logo"/);
+    assert.ok(!home.body.includes('tmdb-credit'));
   });
 });
 
