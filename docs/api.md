@@ -642,6 +642,17 @@ Five lists, each a page at a time:
 Each item is a whole `Event` as you see it (with `viewer`), minus
 `friendsGoing`, which is only on a single event.
 
+### In their phone's calendar
+
+Not from here. Each person's **Canopy calendar** is one link from the
+account service (`GET /api/native/v1/me/calendar`, see its
+`docs/native-api.md`), which a calendar app subscribes to, with events
+they host, co-host or answered `going` (confirmed), `maybe` or are
+waitlisted for (tentative), and cancelled ones they were on. The account
+service gets events' part of it from `GET /api/calendar/{personId}`,
+which is in `openapi.yaml` under **Site to site**: it's signed by the
+account service, and an app can't call it.
+
 ## Pagination
 
 Lists take `?limit=` (1 to 100, 20 by default) and `?cursor=`, and answer

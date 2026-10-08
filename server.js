@@ -29,7 +29,17 @@ if (!process.env.CANOPY_ACCOUNT_URL || !process.env.CANOPY_ACCOUNT_KEY) {
   console.error('[canopy-events] CANOPY_ACCOUNT_URL and CANOPY_ACCOUNT_KEY are both required -- see README.md > Running locally.');
   process.exit(1);
 }
-const canopy = createCanopyAccount({ url: process.env.CANOPY_ACCOUNT_URL, key: process.env.CANOPY_ACCOUNT_KEY });
+const canopy = createCanopyAccount({
+  url: process.env.CANOPY_ACCOUNT_URL,
+  key: process.env.CANOPY_ACCOUNT_KEY,
+  // What the account service signs its calendar requests with
+  // (routes/calendar.js). Optional: without it, events just isn't in
+  // anyone's Canopy calendar, and the log says so.
+  calendarSecret: process.env.CANOPY_CALENDAR_SECRET
+});
+if (!process.env.CANOPY_CALENDAR_SECRET) {
+  console.warn('[canopy-events] CANOPY_CALENDAR_SECRET not set: the account service\'s calendar feed can\'t ask events, so events won\'t be in anyone\'s Canopy calendar. See README.md > Calendar.');
+}
 const auth = createAuth(canopy);
 
 {
@@ -104,6 +114,11 @@ const apiRouters = [
 // The spec and its page come first: they're the same for everyone, so
 // there's no need to ask the account service who's asking.
 app.use(docsRouter);
+// The account service asking for someone's calendar, signed
+// (routes/calendar.js). Before anything that asks who's visiting: nobody
+// is, it's another server.
+const calendarRouter = require('./routes/calendar')(ctx);
+app.use('/api/calendar', calendarRouter);
 // Cover images are public, for link previews (routes/covers.js).
 app.use(require('./routes/covers').files(ctx));
 
@@ -173,18 +188,21 @@ app.use((err, req, res, next) => {
   fail(res, 500, 'server_error', 'something went wrong on our side');
 });
 
-// Every /api/v1 route Express knows, as { method, path } with OpenAPI's
-// {param} for :param. test/spec.test.js holds this against openapi.yaml.
+// Every /api/v1 route Express knows, and the calendar's, as { method,
+// path } with OpenAPI's {param} for :param. test/spec.test.js holds this
+// against openapi.yaml.
 function apiRoutes() {
   const found = [];
   const add = (prefix, router) => router.stack.forEach((layer) => {
     if (!layer.route) return;
     const full = (prefix + layer.route.path).replace(/:(\w+)/g, '{$1}');
-    if (!full.startsWith('/api/v1/')) return;
+    if (!full.startsWith('/api/v1/') && !full.startsWith('/api/calendar/')) return;
     Object.keys(layer.route.methods).forEach((m) => found.push({ method: m, path: full }));
   });
   add('', docsRouter);
   apiRouters.forEach((router) => add('/api/v1', router));
+  // The one route outside /api/v1 in the spec: site to site, not for apps.
+  add('/api/calendar', calendarRouter);
   return found;
 }
 

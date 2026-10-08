@@ -3,7 +3,8 @@
 // of its people: with the cookie, as a browser page does, or with a
 // bearer token, as an app does.
 //
-// Every JSON answer from /api/v1 that any test gets goes through the
+// Every JSON answer from /api/v1 (and the account service's
+// /api/calendar) that any test gets goes through the
 // checks in CHECKS before the test sees it. The first is the leak walker:
 // nobody's email, phone, Instagram, Venmo or Cash App, anywhere in it, not
 // even the caller's own (events shows none, so it answers with none). A
@@ -20,6 +21,19 @@ const { startFakeAccount } = require('./fakeAccount');
 const { checkResponse } = require('./openapi');
 
 const CONTACT_FIELDS = ['email', 'phone', 'instagram', 'venmo', 'cashapp'];
+
+// What the account service signs its calendar requests with, as the
+// account admin's Sites tab would show it (routes/calendar.js).
+const CALENDAR_SECRET = 'cnc_test-calendar-secret';
+
+// The account service's signature on a calendar request for `personId`
+// (its lib/calendar.js), worked out here from the contract rather than
+// borrowed from either side's code. `at` is when it's signed, in ms.
+function calendarAuth(personId, { secret = CALENDAR_SECRET, at = Date.now() } = {}) {
+  const t = Math.floor(at / 1000);
+  const sig = require('crypto').createHmac('sha256', secret).update(`canopy-calendar-v1\n${personId}\n${t}`).digest('hex');
+  return `Canopy-Calendar t=${t}, sig=${sig}`;
+}
 
 // Every place in `data` that shows anyone's contact details, the caller's
 // included: a contact field on any object, or anyone's actual email,
@@ -82,6 +96,7 @@ async function startServer(extraEnv = {}) {
     NODE_ENV: 'test',
     CANOPY_ACCOUNT_URL: fake.base,
     CANOPY_ACCOUNT_KEY: fake.key,
+    CANOPY_CALENDAR_SECRET: CALENDAR_SECRET,
     PUBLIC_URL: '',
     ...extraEnv
   };
@@ -160,7 +175,7 @@ function client(server, who, { mode = 'cookie', origin } = {}) {
     let data = null;
     try { data = JSON.parse(text); } catch (e) {}
     const r = { method, url, status: res.status, data, text, headers: res.headers };
-    if (url.startsWith('/api/v1') && data !== null) {
+    if ((url.startsWith('/api/v1') || url.startsWith('/api/calendar/')) && data !== null) {
       CHECKS.forEach((check) => check(r, { callerId: person ? person.id : null, people: server.people }));
     }
     return r;
@@ -212,4 +227,4 @@ async function makeEvent(host, overrides) {
   return r.data.event;
 }
 
-module.exports = { startServer, client, eventBody, makeEvent, counts, findLeaks, CHECKS, CONTACT_FIELDS };
+module.exports = { startServer, client, eventBody, makeEvent, counts, findLeaks, CHECKS, CONTACT_FIELDS, CALENDAR_SECRET, calendarAuth };

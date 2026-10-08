@@ -7,7 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { startServer, client, makeEvent, findLeaks } = require('./harness');
+const { startServer, client, makeEvent, findLeaks, calendarAuth } = require('./harness');
 const { makePeople } = require('./fakeAccount');
 
 const PUBLIC_FIELDS = ['firstName', 'id', 'lastName', 'photoUrl', 'shortName'];
@@ -87,6 +87,15 @@ test('every endpoint, every caller: other people are the five public fields and 
   await call(ana, 'del', `/api/v1/events/${e.id}/cohosts/${P.cy.id}`);
   await call(ana, 'post', `/api/v1/events/${e.id}/cohosts`, { personId: P.cy.id });
   await call(ana, 'post', `/api/v1/events/${e.id}/new-link`);
+  // The account service asking for each person's calendar (site to site):
+  // no caller, so nobody's contact details at all, and no people in it.
+  for (const p of Object.values(P)) {
+    const r = await anon.get(`/api/calendar/${p.id}`, { headers: { Authorization: calendarAuth(p.id) } });
+    assert.equal(r.status, 200);
+    answers.push({ who: 'the account service', url: `/api/calendar/${p.id}`, r });
+    assert.ok(!JSON.stringify(r.data).includes('firstName'), `${p.name}'s calendar has nobody in it`);
+  }
+  assert.ok(answers.some((a) => a.url.startsWith('/api/calendar/') && a.r.data.entries.length >= 2), 'there were entries to walk');
 
   // Every person-shaped object in every answer: anything with a firstName.
   let checked = 0;
