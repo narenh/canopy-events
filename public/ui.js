@@ -1006,7 +1006,7 @@
     return h;
   }
 
-  const ANSWER_BUTTONS = [['going', 'Going'], ['maybe', 'Maybe'], ['not_going', "Can't go"]];
+  const ANSWER_BUTTONS = [['going', 'Going'], ['maybe', 'Maybe'], ['not_going', "Can't Go"]];
 
   const BRINGS_GUESTS = ['going', 'maybe', 'waitlisted'];
 

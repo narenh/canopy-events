@@ -9,7 +9,7 @@
 //   invited  --the host takes it back-->  off the list
 //
 // An answer is never taken back: nothing a guest can do leads from an
-// answer to invited or off the list. "Can't go" is how you leave, and it
+// answer to invited or off the list. "Can't Go" is how you leave, and it
 // frees your spot like any other change.
 //
 // 'waitlisted' is a "going" past the event's capacity, made by the server

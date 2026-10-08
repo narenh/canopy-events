@@ -39,7 +39,7 @@ const COPY = {
   status: {
     going: 'Going',
     maybe: 'Maybe',
-    not_going: "Can't go",
+    not_going: "Can't Go",
     waitlisted: 'On the waitlist',
     invited: 'Invited',
     // Only hosts ever see this one, on their own guest list; a removed
@@ -97,7 +97,7 @@ const COPY = {
     rsvpHint: "New to Canopy? It's just your name, your email and a passkey.",
     haveAccount: 'I have a Canopy Account, sign in',
     // Signed in, not hosting.
-    question: 'Are you going?',
+    question: 'RSVP',
     invitedQuestion: 'RSVP',
     yourAnswer: 'You said: {status}.',
     waitlisted: "You're on the waitlist. You'll move up if a spot opens.",

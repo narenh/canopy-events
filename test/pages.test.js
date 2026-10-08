@@ -185,7 +185,7 @@ test('pages', async (t) => {
     assert.ok(html.includes(ADDRESS), 'signed in sees the address');
     const rsvp = section(html, 'rsvp');
     assert.ok(rsvp.includes('data-action="answer" data-status="going"'));
-    assert.ok(rsvp.includes('Are you going?'));
+    assert.ok(rsvp.includes('>RSVP<'));
     assert.ok(section(html, 'guests').includes('Ben Okafor'), 'everyone-visible list');
   });
 
