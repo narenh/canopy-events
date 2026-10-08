@@ -2712,3 +2712,122 @@ with hosting blue. The rest:
   Going button to change your mind (an answer can change, never be
   withdrawn). Declined events aren't on All. · routes/pages.js loads
   `/me/events/declined` with the other lists (UI.HOME_LOADS).
+
+## Backgrounds from TMDB
+
+On `feat/backgrounds`. **(You)** asked for a curated background picker
+sourced from TMDB: a TMDB list (`TMDB_TOKEN`, `TMDB_LIST_ID`), cached
+for a day, `GET /api/v1/backgrounds`, and `PUT
+/api/v1/events/{id}/cover/background` saving the choice exactly as an
+upload, hosts only, same limits, no SSRF; a second hero button in the
+editor; TMDB's attribution. Then: **(You)** the set is mainly a
+hand-picked manifest of exact images, `config/backgrounds.json`, with
+the list optional after it; and the first 23 picks (Mean Girls 9, The
+Devil Wears Prada 7, The Wizard of Oz 1, Wicked 5, Schitt's Creek 1),
+kept even where they have text on them. The rest:
+
+- **The manifest needs no token.** Its entries are exact file paths on
+  TMDB's public image CDN; nothing asks TMDB's API about them (thumbnail,
+  hue and the download on choose are all image.tmdb.org). The feature is
+  on when the set isn't empty: manifest entries, or list backdrops with
+  `TMDB_TOKEN` + `TMDB_LIST_ID`. · Fewer settings for the common case;
+  the token only matters for the list. · Require the token in
+  `createBackgrounds` (lib/backgrounds.js) for both.
+- **The hue is worked out on the server, once per image, in the cover
+  worker** (`measureThumb`: the 300 px thumbnail through the same
+  `hueOf` as covers), and the API gives `hue`/`grayscale` per
+  background. image.tmdb.org does send `Access-Control-Allow-Origin: *`
+  (checked: a w300 backdrop answers with it), so the browser's canvas
+  match would work, but this way the iOS app gets the hue without a
+  canvas, the web doesn't depend on a CDN header, and it costs one small
+  download per image per server start. Measured in the worker, behind
+  any upload. · The editor could use `matchPicked(thumbUrl)` with
+  `crossOrigin = 'anonymous'` instead; `hue` would then be droppable.
+- **`width`/`height` are the thumbnail's** (300 × 169 for 16:9), measured
+  from the image itself, since manifest entries have no other source for
+  them without the API. They're for the shape. · Ask TMDB's images
+  endpoint for each title's originals when there's a token.
+- **`previewUrl` (w780) added** next to `thumbUrl` (w300): the hero shows
+  the 780 while the host decides (the 300 is blurry that big), and the
+  grid uses it as the 2x `srcset`. · Drop it and preview the thumbnail.
+- **`year` is optional in the manifest** (null when absent); the list
+  path takes it from the release or first-air date. · n/a
+- **The id is the file path, base64url**, looked up in the current set;
+  a path or URL is never taken from a request. Paths are checked against
+  `/^\/[A-Za-z0-9]{8,64}\.(jpg|jpeg|png|webp)$/` whether they came from
+  the manifest or TMDB's API, and fetches refuse redirects. An id no
+  longer in the set (a refresh dropped it) is 400 `bad_background`;
+  TMDB's CDN failing on choose is a new 502 `background_unreachable`. ·
+  SSRF. · n/a
+- **The download** is TMDB's `original` (backdrops are up to 3840 px),
+  then `w1280` if that fails, at most 15 MB (the upload's limit), 20 s;
+  then the upload's own pixel limits and pipeline. The rate limit is the
+  upload's counter: uploads and backgrounds count together, 30 a day. ·
+  As asked. · n/a
+- **Cache: loaded at startup, refreshed every 24 h on a timer** (not on
+  the next request), retried after 10 minutes when anything failed. A
+  failed list load keeps the last list; a title whose images fail keeps
+  its last ones; a thumbnail is fetched once per image and kept, so a CDN
+  outage doesn't empty the set. An image whose thumbnail never loaded
+  isn't shown (so a mistyped `filePath` drops out, with a count in the
+  log). The first answer after a start waits up to 5 s for the first
+  load. · Simple; nothing survives a restart, which is fine at a day's
+  staleness. · `REFRESH_MS`, `RETRY_MS`, `FIRST_LOAD_WAIT_MS`.
+- **The list path:** up to 10 pages and 200 titles, 4 requests at a time,
+  3 backdrops per title (`include_image_language=null`, sorted by
+  `vote_average` then `width`; when a title has none, a second call
+  without the parameter, any language). A list item that's a person is
+  ignored. · n/a
+- **Grouping:** a title's manifest entries are put together where the
+  title first appears; the same image in both sources is shown once (the
+  manifest's). The API says "consecutive entries with the same title and
+  year are a group" rather than adding a group field. · Add `group` if
+  two different titles ever share a name and year.
+- **`GET /backgrounds` says `Cache-Control: private, max-age=3600`**, the
+  one exception to no-store: it's the same for everyone and changes
+  daily. Signed in only (requirePerson), not verified-only. · Remove the
+  override in routes/backgrounds.js.
+- **The pages ask the API** (`apiGet('/backgrounds')`, so the boundary
+  test still holds): the editor (the button, and the sheet drawn
+  server-side, hidden, with lazy images) and Your Events (the credit).
+  A failure there means no picker, never a broken page. · n/a
+- **The picker** is a dialog sheet like the time zone search: 2 per row
+  on phones, 3 on wider screens, 3:2 tiles, the title (and year) small
+  under each group, each tile a button labelled "Title (year), n of m",
+  `aria-pressed` on the chosen one, Escape and the backdrop close it,
+  Tab stays inside, focus returns to the button. The page behind doesn't
+  scroll while it's open. Choosing closes it. · n/a
+- **The new-event flow** reuses the upload-on-save path: the choice is
+  the pending `coverChange`, sent right after the event is made; a
+  refusal sends a new event to its editor with `?coverError=` like a
+  failed upload. · n/a
+- **Attribution:** TMDB's official "blue short" logo, inlined as SVG in
+  public/ui.js (from themoviedb.org/about/logos-attribution, one path,
+  its own gradient, `role="img" aria-label="TMDB"`), with their sentence,
+  at the foot of the picker and small at the foot of Your Events, shown
+  only while there are backgrounds. Their sentence is used as they word
+  it. No image file was added. · n/a
+- **Overrides:** `TMDB_API_BASE`, `TMDB_IMAGE_BASE` and
+  `BACKGROUNDS_REFRESH_MS` are ignored with `NODE_ENV=production`;
+  `BACKGROUNDS_FILE` (a path, or empty for none) works everywhere. The
+  test harness sets it empty, so no test reaches the real TMDB. · n/a
+- **No schema change.** · n/a
+- **Tests** (test/backgrounds.test.js, against test/fakeTmdb.js): the
+  manifest's validation and that the shipped file is all good entries;
+  off without settings (empty set, no button, no credit, choosing
+  refused); the set's shape, order, grouping, hues and the skipped bad
+  entry; textless first and the fallback; pagination; the cache (no
+  TMDB requests on repeat); choosing makes a real cover (every size, no
+  EXIF, `coverHue`, `themeHue` untouched, a gray one, an app's bearer
+  token); hosts only, co-hosts yes, the Origin check; 13 ids and 5
+  bodies that aren't in the set, with TMDB asked nothing; the CDN down
+  on choose (502); the shared daily limit; the editor's markup, labels,
+  captions and credit, and Your Events' credit; an outage keeping the
+  set, then a refresh picking up a change; a manifest without a token
+  never asking the API. The harness now checks every API answer for the
+  token (`noTmdbToken`), and the leak walker reads `/backgrounds`. The
+  spec check and the boundary test pass unchanged. Checked by hand at
+  375 px and in the desktop pane against the real image.tmdb.org with
+  the 23 picks: opening, scrolling, Escape, picking (hero, slider to
+  the server's hue), Create event saving it as a local cover, and the
+  credit on Your Events.

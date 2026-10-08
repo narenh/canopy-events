@@ -22,7 +22,7 @@ The web pages use exactly this API. Anything a page can do, an app can.
   (`4fQ9xKpL2mZa`), and an event's link is
   `https://events.canopysf.com/e/<id>`. Person ids are the account
   service's UUIDs.
-- Every answer is `Cache-Control: no-store`. Don't cache answers about
+- Every answer is `Cache-Control: no-store` (except `GET /backgrounds`). Don't cache answers about
   people longer than the screen that shows them.
 - Fields the server doesn't know are ignored, so an app built against a
   newer version still works against an older server.
@@ -409,6 +409,77 @@ the bin whose ±12° window has the most; the answer is the
 chroma-weighted circular mean of the bins in that window, rounded. If
 fewer than 4% of the pixels counted, the photo is grey. The code is
 `hueFromPixels` in `public/ui.js`.
+
+## Backgrounds (from TMDB)
+
+Instead of uploading a photo, a host can choose one of a curated set of
+film and TV backdrops from TMDB (The Movie Database). Choosing one makes
+it the cover exactly as an upload would, and from then on it's an
+ordinary cover.
+
+`GET /api/v1/backgrounds` (signed in) is the set:
+
+```json
+{
+  "enabled": true,
+  "backgrounds": [
+    {
+      "id": "L2NnRlY3NjF3eE50UHhmVnNFVlNBTTV4RWtjRy5qcGc",
+      "title": "Mean Girls",
+      "year": null,
+      "thumbUrl": "https://image.tmdb.org/t/p/w300/cgFV761wxNtPxfVsEVSAM5xEkcG.jpg",
+      "previewUrl": "https://image.tmdb.org/t/p/w780/cgFV761wxNtPxfVsEVSAM5xEkcG.jpg",
+      "width": 300,
+      "height": 169,
+      "hue": 35,
+      "grayscale": false
+    }
+  ]
+}
+```
+
+- **`enabled: false`** (and no backgrounds): the feature is off, or
+  nothing has loaded yet. Show no picker, and nothing else changes.
+- **Order and groups.** They come in display order, with a title's
+  backgrounds next to each other: group consecutive entries with the
+  same `title` and `year`, and show the title small under each group
+  (the web does).
+- **Images.** Load `thumbUrl` (300 px wide) straight from TMDB's public
+  image CDN for the grid, and `previewUrl` (780 px) as the hero while
+  the host decides. `width` × `height` is the thumbnail's size (its
+  shape: they're 16:9 or close). The web shows them in 3:2 tiles,
+  `object-fit: cover`.
+- **The color.** `hue` (0–359, or null with `grayscale: true`) is the
+  hue that matches it, worked out on the server the same way as
+  `coverHue`. When the host picks one, jump your color control there,
+  as for a photo just picked; nothing changes until they save.
+- **Caching.** The set changes at most once a day. This is the one
+  answer that says `Cache-Control: private, max-age=3600`.
+- **Attribution (TMDB's terms).** Wherever you show the backgrounds,
+  show TMDB's logo and "This product uses the TMDB API but is not
+  endorsed or certified by TMDB." The web has it at the foot of the
+  picker and, small, at the foot of Your Events. Logos:
+  themoviedb.org/about/logos-attribution.
+
+`PUT /api/v1/events/{id}/cover/background` (hosts) chooses one:
+
+```bash
+curl -s "${auth[@]}" -X PUT -H 'Content-Type: application/json' \
+  -d '{"backgroundId":"L2NnRlY3NjF3eE50UHhmVnNFVlNBTTV4RWtjRy5qcGc"}' \
+  $API/events/4fQ9xKpL2mZa/cover/background
+```
+
+It answers exactly as the upload does (`{"event": ...}` with the new
+`coverImageUrl`, `coverImages`, `coverHue`), under the same daily limit
+(uploads and backgrounds count together). The server downloads TMDB's
+full-size image and runs it through the upload's pipeline, so the cover
+is served from here, not TMDB. **The `id` is opaque**: send back one the
+list gave you. One that isn't in the current set (the set changed, or
+the feature is off) is 400 `bad_background`: fetch the list again. If
+TMDB doesn't answer, it's 502 `background_unreachable`: try again in a
+minute. For a new event, make the event first, then choose (the web
+remembers the choice and sends it right after the event is made, as it
+does a picked photo).
 
 ## Event colours
 
@@ -948,7 +1019,7 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`, `bad_details`, `too_many_details`, `bad_detail`, `bad_detail_type`, `bad_detail_label`, `bad_detail_value`, `bad_detail_url`, `bad_detail_phone`, `detail_too_long` (with `index`), `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`, `bad_details`, `too_many_details`, `bad_detail`, `bad_detail_type`, `bad_detail_label`, `bad_detail_value`, `bad_detail_url`, `bad_detail_phone`, `detail_too_long` (with `index`), `bad_image`, `bad_background`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |
@@ -963,6 +1034,7 @@ expect:
 | 409 | `is_you`, `own_link` | adding yourself, or saying yes to your own friend link |
 | 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |
+| 502 | `background_unreachable` | TMDB didn't give the background just now; retry in a minute |
 | 503 | `accounts_unreachable` | Canopy Accounts is down; retry in a minute |
 | 500 | `server_error` | our bug; retry once, then tell us |
 
@@ -974,7 +1046,7 @@ expect:
 | Invitations (each person invited counts one) | 300 a day | 600 a day | 5,000 a day |
 | Invitations in one request | 100 | | |
 | Wall posts | 5 a minute, 100 a day | 20 a minute, 300 a day | 300 a minute, 5,000 a day |
-| Cover uploads | 30 a day | 100 a day | 2,000 a day |
+| Cover uploads (and backgrounds chosen, counted together) | 30 a day | 100 a day | 2,000 a day |
 | Adding friends (by id, or saying yes to a link; every try counts) | 200 a day | 500 a day | 5,000 a day |
 | Friend links that find nobody | | 60 an hour | |
 

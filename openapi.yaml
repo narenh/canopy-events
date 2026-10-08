@@ -642,7 +642,7 @@ paths:
         fetch the list again. TMDB not answering is 502
         `background_unreachable`: try again in a minute.
 
-        **The event's colour doesn't change** (`themeHue`): offer the
+        **The event's color doesn't change** (`themeHue`): offer the
         background's `hue` (or `coverHue` after) to the host, as for an
         upload.
       requestBody:
@@ -1728,7 +1728,7 @@ components:
             previewUrl: https://image.tmdb.org/t/p/w780/cgFV761wxNtPxfVsEVSAM5xEkcG.jpg
             width: 300
             height: 169
-            hue: 352
+            hue: 35
             grayscale: false
 
     Background:
@@ -1747,8 +1747,8 @@ components:
           type: [integer, 'null']
           minimum: 0
           maximum: 359
-          description: 'The hue that matches it, worked out as `coverHue` is; null when `grayscale`. Jump the colour slider here when the host picks it.'
-        grayscale: { type: boolean, description: 'Essentially grey: suggest no colour.' }
+          description: 'The hue that matches it, worked out as `coverHue` is; null when `grayscale`. Jump the color slider here when the host picks it.'
+        grayscale: { type: boolean, description: 'Essentially gray: suggest no color.' }
 
     Error:
       type: object

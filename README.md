@@ -60,7 +60,8 @@ cover all of it except notifications, which belong to the apps.
   (co-hosts), `wall.js` (the activity wall), `moderation.js` (removing
   guests, new links), `people.js` (finding someone by phone or
   Instagram), `covers.js` (cover images,
-  and serving them at `/covers/`), `notifications.js` (your inbox and
+  and serving them at `/covers/`), `backgrounds.js` (the curated
+  backgrounds from TMDB), `notifications.js` (your inbox and
   your phones), `friends.js` (your friends, adding and taking people
   out, friend links), `me.js` (you, your events) and `docs.js`
   (the spec and `/docs`). A new
@@ -84,6 +85,9 @@ cover all of it except notifications, which belong to the apps.
     is synchronous, never holds up other requests. `coverStore.js` keeps
     them in `DATA_DIR/covers`. `coverBackfill.js` makes the copies for
     covers uploaded before there were any, after the server starts.
+  - `backgrounds.js` is the curated backgrounds from TMDB (see
+    "Backgrounds"): `config/backgrounds.json` and, optionally, a TMDB
+    list, cached in memory and refreshed daily.
   - `people.js` is **the only place a person is turned into JSON**:
     `publicPerson` (the five public fields, copied by name), the former
     member, and `ownPerson` for `/me`.
@@ -132,7 +136,7 @@ event link on a phone.
 |---|---|
 | `/e/<id>` | **An event**, what a shared link opens, drawn in the event's colour. On top, the cover (or a generated picture) as a 3:2 hero fading into the page, the title on the fade, and **when**, big: the day, the time, and a pill saying how soon ("Tomorrow", "This Saturday"). Then a card with the place, the hosts, the counts (people and their plus-ones), spots left, the host's **details** (a link, the dress code, food, parking, where to stay, a phone number: a row each with its icon) and the description. Signed out: no address, no parking, place to stay or phone number (a line says more details show once you sign in), and a big **RSVP** to the account service's quick sign-up, with a smaller "I have a Canopy Account, sign in". Signed in: going / maybe / can't go, how many guests you're bringing (when the host allows any), the waitlist when it's full, friends going, who's coming by the host's visibility rule, and the **wall** (posts, and what happened: "Ana is going", "the time changed"), with a box to post in once you've answered. A guest's **⋯ menu** on their answer card: mute the event, opt out of invites from each host (or allow them again), and remove themselves from the event (asked first). Hosts get share, invite, edit and the guest list with **Remove** (and the removed, with Undo) instead of answering; the creator also cancels, makes a **new link**, and adds and removes **co-hosts**; a co-host can step down. Someone a host removed sees the public details and a calm line saying they're not on the list. |
 | `/` | **Your events**: invitations (going or can't go right there), what you're hosting, what's coming up, and what's past, each row a 3:2 picture, the date in bold, the title and the place. "New event" for verified people; unverified people get a line saying to confirm their email to host. Signed out: what this is, and sign in. |
-| `/new`, `/e/<id>/edit` | **The editor**, drawn like the event page: the cover as the hero (an upload button and a × on it, sent on save), the title typed where it shows, the date and times as big as the page's (each tapped to change), the time zone by friendly name with a "Change" menu (nearby zones first, then a search of all), the place and address, the description, chips under it to add **details** ("+ Link", "+ Info", "+ Dress code", "+ Food", "+ Parking", "+ Stay", "+ Phone"; a row each, with a ×), who sees the guest list, plus-ones, capacity, and the event's colour (a slider that repaints the page as you drag). No help text. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
+| `/new`, `/e/<id>/edit` | **The editor**, drawn like the event page: the cover as the hero (an upload button, a button to choose one of the curated backgrounds when there are any, and a × on it, sent on save), the title typed where it shows, the date and times as big as the page's (each tapped to change), the time zone by friendly name with a "Change" menu (nearby zones first, then a search of all), the place and address, the description, chips under it to add **details** ("+ Link", "+ Info", "+ Dress code", "+ Food", "+ Parking", "+ Stay", "+ Phone"; a row each, with a ×), who sees the guest list, plus-ones, capacity, and the event's colour (a slider that repaints the page as you drag). No help text. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
 | `/e/<id>/invite` | **Inviting** (hosts): find someone by their exact phone number or Instagram username (verified hosts; a name and a photo come back, never their details), then your friends with a search box, the ones already on the list (or removed, or hosting) marked. |
 | `/e/<id>/cohosts` | **Adding co-hosts** (the creator): your friends with a search box and "Add"; anyone who can't co-host yet (an unconfirmed email) is told why under their row. |
 | `/friends` | **Your friends**: your friend link with Share, Copy and its QR code (drawn on the server as an inline SVG, `lib/qr.js`), and Reset; "Add by phone or Instagram" (verified people; the invite page's lookup, with "Add friend"); and your list, how each is in it, with Remove (asked first); and, when there are any, the hosts whose invitations you've opted out of, with Undo. |
@@ -255,6 +259,8 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `POST /api/v1/events/{id}/wall` | post on it (hosts, going, maybe, waitlisted) |
 | `DELETE /api/v1/events/{id}/wall/{entryId}` | delete a post (its author) or any entry (hosts) |
 | `PUT`, `DELETE /api/v1/events/{id}/cover` | upload or remove the cover image (hosts) |
+| `GET /api/v1/backgrounds` | the curated backgrounds from TMDB (signed in) |
+| `PUT /api/v1/events/{id}/cover/background` | make one of them the cover, as an upload does (hosts) |
 | `GET /covers/<key>.jpg`, `/covers/<key>-<width>.jpg` | a cover image at full size, or a narrower copy; public (for link previews) |
 | `GET /api/v1/me/notifications`, `/unread` | your inbox, and its unread count |
 | `POST /api/v1/me/notifications/read`, `/read-all` | mark some, or all, read |
@@ -407,7 +413,7 @@ restart forgives everyone. The address is Cloudflare's
 | Making events | 20 a day | 60 a day | 1,000 a day |
 | Invitations (one per person invited) | 300 a day | 600 a day | 5,000 a day |
 | Wall posts | 5 a minute, 100 a day | 20 a minute, 300 a day | 300 a minute, 5,000 a day |
-| Cover uploads | 30 a day | 100 a day | 2,000 a day |
+| Cover uploads (and backgrounds chosen, counted together) | 30 a day | 100 a day | 2,000 a day |
 | Adding friends (by id, or a friend link; every try counts) | 200 a day | 500 a day | 5,000 a day |
 | Friend links that find nobody | | 60 an hour | |
 
@@ -496,6 +502,9 @@ runs as `NODE_ENV=production`, port 3000, `DATA_DIR=/app/data`.
      (`https://events.canopysf.com`, or events' address on Coolify's
      internal network) and Save, and it's shown once. Without it, events
      isn't in anyone's Canopy calendar (see "Calendar").
+   - `TMDB_TOKEN` and `TMDB_LIST_ID` (optional): a TMDB list of films
+     and shows whose backdrops join the curated backgrounds. See
+     "Backgrounds". `config/backgrounds.json` works without them.
    - `PUBLIC_URL` and `CANOPY_DOMAIN`: leave unset. They default to
      `https://events.canopysf.com` and `canopysf.com`.
    - Leave `PORT` and `DATA_DIR` alone. The Dockerfile sets them.
@@ -512,6 +521,66 @@ Every startup logs how many events it found:
 If it says `0` when you know there are events, the volume isn't attached
 (the Storages tab is empty, the path isn't `/app/data`, or it was added
 without a redeploy since). On a brand-new install, 0 is right.
+
+## Backgrounds
+
+Hosts can choose a cover from a curated set of film and TV backdrops
+from TMDB (The Movie Database) instead of uploading a photo: the second
+button on the editor's photo. Choosing one makes it the cover exactly as
+an upload does (the server downloads TMDB's full-size image and runs it
+through the upload's pipeline), so from then on it's an ordinary cover.
+With nothing curated, there's no button and nothing else changes.
+
+The set is, in order:
+
+1. **`config/backgrounds.json`**, the owner's hand-picked backdrops, in
+   the order they show. Edit it by hand and redeploy. Each entry is one
+   exact image:
+
+   ```json
+   [
+     { "type": "movie", "tmdbId": 10625, "title": "Mean Girls", "filePath": "/cgFV761wxNtPxfVsEVSAM5xEkcG.jpg" },
+     { "type": "tv", "tmdbId": 61662, "title": "Schitt's Creek", "filePath": "/1wFyBfKo6LpYppY9UABYkbv320s.jpg", "year": 2015 }
+   ]
+   ```
+
+   - `type` is `"movie"` or `"tv"`, and `tmdbId` the number in the
+     title's address on themoviedb.org (`/movie/10625-mean-girls`).
+   - `title` is the name shown under its group in the picker. A title's
+     entries are shown together, where its first one is.
+   - `filePath` is the image's path on TMDB: on the title's page, open
+     **Media → Backdrops**, open the image, and take the last part of its
+     address (`https://image.tmdb.org/t/p/original/cgFV761wxNtPxfVsEVSAM5xEkcG.jpg`
+     → `/cgFV761wxNtPxfVsEVSAM5xEkcG.jpg`).
+   - `year` is optional, shown after the title.
+
+   It holds references only, never image data. An entry that's wrong is
+   skipped, and the log says which and why at startup; an image TMDB
+   doesn't have is left out (and the log says how many). These need no
+   TMDB token: the images are on TMDB's public image CDN.
+2. **A TMDB list** (optional), with `TMDB_TOKEN` and `TMDB_LIST_ID` set:
+   for each film or show on it, up to three of its best backdrops
+   without text on them (by TMDB's votes, then size), or its others if
+   it has none without text. To make one: sign in at themoviedb.org,
+   open your profile's **Lists → Create List**, add films and shows, and
+   take the number in the list's address (`/list/8512345` →
+   `TMDB_LIST_ID=8512345`). The token is the **API Read Access Token**
+   (v4) from **Settings → API** (request an API key first if there isn't
+   one). It's sent only to TMDB's API, never to a browser or an app.
+
+The same image twice is shown once. The set is loaded when the server
+starts and again every day, in memory; a refresh that fails keeps what
+there was. The server fetches each image's 300 px thumbnail once, to
+work out the color that matches it, so picking one moves the editor's
+color slider (and the apps can do the same, from `hue`).
+
+**Attribution.** TMDB's terms ask for their logo and "This product uses
+the TMDB API but is not endorsed or certified by TMDB." It's at the foot
+of the picker and, small, at the foot of Your Events, whenever there are
+backgrounds.
+
+`TMDB_API_BASE` and `TMDB_IMAGE_BASE` point it at a fake TMDB, for the
+tests (`test/fakeTmdb.js`); they're ignored in production.
 
 ## Storage & backups
 
