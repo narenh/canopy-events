@@ -2046,3 +2046,11 @@ change.
   friends (hidden), and nobody is notified of adds or removals. Your
   list is only shown to you. Adding by lookup needs a verified email,
   like lookup itself.
+- **(You)** Calendar feed: events you're invited to show as
+  "[INVITED] <title>" (tentative) when an option is on, which it is by
+  default. Answering updates the same entry: going → confirmed with the
+  plain title; maybe → tentative; can't go, uninvited or removed →
+  dropped. The setting is stored in events (`calendarInvites`), toggled
+  from a Calendar card on the events home page and in the app's
+  Profile. Queued after explicit friends, so the two schema steps don't
+  collide.
