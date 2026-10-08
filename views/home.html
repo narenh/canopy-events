@@ -109,7 +109,7 @@ onActions({
     busy(btn, errorEl, async () => {
       const { res, data: d } = await api('PUT', '/events/' + encodeURIComponent(card.getAttribute('data-event')) + '/rsvp', { status: btn.getAttribute('data-status') });
       if (!res.ok) refusal = sentence(d.error);
-      await Promise.all([reload('invitations'), reload('all')]);
+      await Promise.all([reload('invitations'), reload('declined'), reload('all')]);
       draw();
     }).then(() => {
       if (refusal){

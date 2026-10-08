@@ -399,6 +399,22 @@ test('pages', async (t) => {
     }
   });
 
+  await t.test('home tabs: Invited also shows the events you declined, under Declined, with Going to change your mind', async () => {
+    const e = (await ana.post('/api/v1/events', { title: 'Declined dinner', startsAt: new Date(Date.now() + 5 * 86400000).toISOString(), timeZone: 'UTC', guestListVisibility: 'everyone' })).data.event;
+    await dee.put(`/api/v1/events/${e.id}/rsvp`, { status: 'not_going' });
+    const panel = (body) => body.slice(body.indexOf('id="homePanel"'), body.indexOf('id="calendar"'));
+    const invited = panel((await page(server, dee, '/?tab=invited')).body);
+    assert.ok(invited.includes('id="declinedHeading"'), 'a Declined heading');
+    const declined = invited.slice(invited.indexOf('id="list-declined"'));
+    assert.ok(declined.includes('Declined dinner'));
+    assert.match(declined, /class="card invite-card" data-event="[^"]+">[\s\S]*?Declined dinner[\s\S]*?data-action="reply" data-status="going">Going<\/button><\/div>/);
+    assert.ok(!declined.includes('data-status="not_going"'), 'only Going: they already said they can\'t go');
+    // Not on All: All is what you're part of.
+    assert.ok(!panel((await page(server, dee, '/')).body).includes('Declined dinner'));
+    // Nobody who declined nothing gets the heading.
+    assert.ok(!panel((await page(server, ben, '/?tab=invited')).body).includes('id="declinedHeading"'));
+  });
+
   await t.test('home tabs: a tab list, each tab a link with its panel, the selected one in the tab order', async () => {
     const body = (await page(server, ana, '/?tab=hosting')).body;
     const bar = body.slice(body.indexOf('<div class="home-tabs">'), body.indexOf('id="homePanel"'));

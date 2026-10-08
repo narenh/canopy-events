@@ -2707,3 +2707,8 @@ with hosting blue. The rest:
   arrows, Home/End and wrap, the address changing, answering Going on
   Invited moving it to a Going card on All, the sticky bar over the
   list.
+- **(You)** The Invited tab also shows upcoming events you declined, under
+  a "Declined" heading below the unanswered invitations. Each has just a
+  Going button to change your mind (an answer can change, never be
+  withdrawn). Declined events aren't on All. · routes/pages.js loads
+  `/me/events/declined` with the other lists (UI.HOME_LOADS).

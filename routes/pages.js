@@ -175,11 +175,11 @@ module.exports = function pagesRoutes(ctx) {
     // else is All. Every tab's first page comes with the page, so
     // switching tabs in the browser needs no request.
     const tab = UI.homeTabOf(req.query.tab);
-    const sizes = { all: LIST_SHOWN, invitations: LIST_SHOWN, hosting: LIST_SHOWN, past: PAST_SHOWN };
+    const sizes = { all: LIST_SHOWN, invitations: LIST_SHOWN, declined: LIST_SHOWN, hosting: LIST_SHOWN, past: PAST_SHOWN };
     const [settings, ...answers] = await Promise.all([apiGet(req, '/me/settings')]
-      .concat(UI.HOME_LISTS.map((name) => apiGet(req, `/me/events/${name}?limit=${sizes[name]}`))));
+      .concat(UI.HOME_LOADS.map((name) => apiGet(req, `/me/events/${name}?limit=${sizes[name]}`))));
     const lists = {};
-    UI.HOME_LISTS.forEach((name, i) => { lists[name] = want(answers[i]); });
+    UI.HOME_LOADS.forEach((name, i) => { lists[name] = want(answers[i]); });
     const me = meView(req.person);
     const data = { me, tab, lists, sizes };
     // The Calendar card: the feed's link lives on the Canopy profile.

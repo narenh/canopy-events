@@ -253,6 +253,7 @@ const COPY = {
     verifyToHost: 'Confirm your email to make your own events.',
     // The tabs, and each one's line when it has nothing in it.
     tabsLabel: 'Your Events',
+    declinedHeading: 'Declined',
     tabs: {
       all: 'All',
       invited: 'Invited',

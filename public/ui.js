@@ -1513,12 +1513,24 @@
       + '<div class="error" role="alert"></div></div>';
   }
 
+  // An event you said you can't go to (on Invited, under Declined): the
+  // card, and Going to change your mind (an answer can change, never be
+  // taken back).
+  function declinedCard(e, o) {
+    return '<div class="card invite-card" data-event="' + esc(e.id) + '">' + eventRow(e, o, false)
+      + '<div class="reply"><button type="button" data-action="reply" data-status="going">' + tx('status.going') + '</button></div>'
+      + '<div class="error" role="alert"></div></div>';
+  }
+
   // The tabs on your events page, and the list each shows (GET
   // /api/v1/me/events/<list>). All is everything coming up: hosting,
   // going, maybe, waitlisted and invited, in one list.
   const HOME_TABS = ['all', 'invited', 'hosting', 'past'];
   const TAB_LIST = { all: 'all', invited: 'invitations', hosting: 'hosting', past: 'past' };
   const HOME_LISTS = HOME_TABS.map((tab) => TAB_LIST[tab]);
+  // Every list the page loads: the tabs' own, and Declined, which shows on
+  // Invited under the invitations still to answer.
+  const HOME_LOADS = HOME_LISTS.concat(['declined']);
 
   // ?tab=<tab> as a tab: anything else is All.
   function homeTabOf(value) {
@@ -1546,7 +1558,12 @@
   function homeList(name, list, o) {
     let h = '<section class="home-list" id="list-' + name + '" data-section="' + name + '">';
     h += '<div class="event-list">';
-    h += list.events.map((e) => (viewerStatus(e) === 'invited' ? invitationCard(e, o) : eventRow(e, o, true))).join('');
+    h += list.events.map((e) => {
+      const status = viewerStatus(e);
+      if (status === 'invited') return invitationCard(e, o);
+      if (status === 'not_going' && name === 'declined') return declinedCard(e, o);
+      return eventRow(e, o, true);
+    }).join('');
     h += '</div>';
     if (list.nextCursor) h += '<button type="button" class="secondary more" data-action="more" data-list="' + name + '">' + tx('common.showMore') + '</button>';
     return h + '</section>';
@@ -1558,8 +1575,13 @@
     const tab = homeTabOf(d.tab);
     const name = TAB_LIST[tab];
     const list = (d.lists || {})[name];
+    // Invited also shows the ones you declined, under their own heading.
+    const declined = tab === 'invited' ? (d.lists || {}).declined : null;
+    const has = (l) => !!(l && l.events.length);
     let h = '<div class="home-panel" id="homePanel" role="tabpanel" aria-labelledby="tab-' + tab + '" tabindex="0">';
-    h += list && list.events.length ? homeList(name, list, o) : '<div class="card"><p class="empty">' + tx('home.empty.' + tab) + '</p></div>';
+    if (!has(list) && !has(declined)) h += '<div class="card"><p class="empty">' + tx('home.empty.' + tab) + '</p></div>';
+    if (has(list)) h += homeList(name, list, o);
+    if (has(declined)) h += '<h2 class="list-heading" id="declinedHeading">' + tx('home.declinedHeading') + '</h2>' + homeList('declined', declined, o);
     return h + '</div>';
   }
 
@@ -2141,6 +2163,6 @@
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
-    ASSUMED_LENGTH_MS, HOME_LISTS, HOME_TABS, MAX_GUESTS_ALLOWED
+    ASSUMED_LENGTH_MS, HOME_LISTS, HOME_LOADS, HOME_TABS, MAX_GUESTS_ALLOWED
   };
 });

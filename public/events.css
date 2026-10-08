@@ -982,3 +982,6 @@ textarea.address-input{min-height:0;margin-top:8px;}
   .zone-panel{left:50%;right:auto;width:460px;transform:translateX(-50%);top:8vh;max-height:80vh;}
   .event-row .thumb{width:168px;}
 }
+
+/* A heading inside a home tab's list (Invited's "Declined"). */
+.home-panel .list-heading{color:var(--on-bg);font-size:var(--fs-small);font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin:22px 4px 10px;}
