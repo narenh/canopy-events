@@ -1659,3 +1659,11 @@ Fixes for the security review's events findings (branch `fix/review`).
   the event's base colour, with no glows and no grain, so it matches
   Safari's flat status-bar and toolbar strips exactly. The cover and the
   glass cards carry the colour. Desktop keeps the glowing mesh.
+- **(You)** Invite notifications: still exactly two actions (Going,
+  Can't Go; no Maybe, to discourage maybes), with icons. The title is the
+  sender ("Adam Smith"), matching the communication-notification avatar.
+  The body is "10/16 · 7p · Throw Eggs at Karl" (M/d · h+a/p · title, in
+  the event's time zone, with middle dots). The server's push wording
+  should match (iOS repo docs/push-payloads.md). Next: a Notification
+  Content Extension with an app-styled card (cover, date, place, faces,
+  Going / Can't Go).
