@@ -591,3 +591,38 @@ waitlist, notifications, host moderation and lookup, built on branch
 - List cursors (`/me/events/*`) carry the event's internal id inside the
   opaque cursor. That can be an event's original link, which a new link
   has already killed, so it gives nothing away. · n/a
+
+### Lookup to invite
+
+- `GET /api/v1/people/lookup?phone=…|instagram=…` is a straight proxy of
+  `canopy.lookup(req, …)`, **verified callers only** (checked here, from
+  their session, before asking the account service, so an unverified
+  caller's lookup never counts against anyone's limits). The answer is
+  `{person}` through `publicPerson`, so even a field the account service
+  added later couldn't come through. · The spec: "events only lets
+  verified hosts use it." "Hosts" read as anyone verified, since anyone
+  verified can host. · routes/people.js.
+- Exactly one of `phone` or `instagram`, a single string, is checked
+  here too (400 `one_of`); the cleaning and the rest are the account
+  service's. · A repeated `?phone=` would otherwise reach it as an
+  array. · n/a
+- **Its refusals keep their status and reason**: 400 `one_of`,
+  `bad_phone`, `bad_instagram`; 403 `email_unverified` (with this API's
+  `verify` link) and `lookup_not_allowed`; 429 `rate_limited`. Its 401
+  `signed_out` becomes this API's 401 `sign_in_required`, with the usual
+  links. Anything else (down, a 5xx, a reason we don't know) is 503
+  `accounts_unreachable`. The `error` sentences are ours. · One error
+  vocabulary for the apps. · `PASSED_ON` in routes/people.js.
+- No lookup limits of events' own: the account service's (per asker,
+  per address, overall) are the real ones, and doubling them here would
+  only make the two disagree. · n/a
+- **The visitor's address** is whatever the client file sends:
+  `CF-Connecting-IP`, else Express's `req.ip` (trust proxy on). Behind
+  Cloudflare that's the real address; without it, `req.ip` comes from
+  `X-Forwarded-For`, which a caller can set, so the per-address limit is
+  only as good as Cloudflare being in front. The per-asker and overall
+  limits hold regardless. · The client file is copied unchanged. · n/a
+- The fake account service in the tests gained `/api/people/lookup`,
+  exact matching on the fixtures' phones and handles, honouring
+  "findable", and switches to make it refuse in each way the real one
+  can. · n/a

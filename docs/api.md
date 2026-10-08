@@ -469,8 +469,18 @@ event still to come doesn't either.
 
 A host invites with `POST /api/v1/events/{id}/invites` and
 `{"personIds": [...]}` (1 to 100). Offer friends in the app; the API takes
-any Canopy person id, so a "find by phone number or Instagram" lookup can
-feed it later. Each id comes back in `invited`, or in `skipped` with a
+any Canopy person id, so the lookup below feeds straight into it.
+
+**Finding someone by phone or Instagram**:
+`GET /api/v1/people/lookup?phone=(415) 555-1234` or
+`?instagram=@ana.lima` (URL-encoded), exactly one of them, as typed. It
+answers `{"person": {...}}` (the public `Person`, never the number or
+handle asked about) or `{"person": null}`, with no hint why. Matches are
+exact, never by prefix, and only find people who let themselves be found.
+Verified people only. It's tightly limited (429 `rate_limited`), per
+person, per network address and overall, so look up when they press
+"find", never as they type. 400 `bad_phone` or `bad_instagram` is a form
+error to show; 403 `lookup_not_allowed` means it isn't switched on. Each id comes back in `invited`, or in `skipped` with a
 reason: `already_on_list`, `is_host`, `not_found` or `removed`. 300
 invitations per host a day.
 
@@ -518,13 +528,14 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |
 | 403 | `creator_only` | hide the control: `viewer.role` is `creator` for the one person who can |
 | 403 | `answer_first` | posting on the wall before answering going or maybe: `viewer.canPost` |
 | 403 | `not_yours` | deleting someone else's post: `canDelete` |
+| 403 | `lookup_not_allowed` | finding people isn't switched on for this site: hide the search |
 | 403 | `bad_origin` | a web page's problem; apps never see it |
 | 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_found` | the link is wrong, or it's gone (or the host made a new one) |
 | 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room`, `removed`, `is_host` | redraw from the event |

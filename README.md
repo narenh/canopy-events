@@ -29,12 +29,14 @@ email or text sent from here, no `.ics`, no tickets or payments, and no
 public discovery. `docs/decisions.md` is the source of truth for what's
 in and out.
 
-**Where it's up to.** This is the core: the database, the API (events,
-answers, the guest list, invitations, friends, your events), its spec
-and docs, the web pages (below), and the tests. Co-hosts and plus-ones,
-the activity wall, cover images and capacity with a waitlist come next,
-in that order (`docs/decisions.md`, "v1 scope"). The schema already has
-room for all of them, and the pages have a place for each.
+**Where it's up to.** All of v1 (`docs/decisions.md`, "v1 scope") is in
+the API: events, answers, the guest list, invitations, friends and your
+events; co-hosts and plus-ones; the activity wall; cover images and
+capacity with a waitlist; notifications (the inbox and phone
+registration; push itself only logs until the APNs and FCM keys come
+with the apps); removing guests and making a new link; and finding people
+by phone or Instagram. The web pages (below) cover the core; pages for
+the rest come next.
 
 ## How it works
 
@@ -47,7 +49,8 @@ room for all of them, and the pages have a place for each.
   `events.js` (making, reading, editing and cancelling events),
   `rsvps.js` (answers, the guest list, invitations), `hosts.js`
   (co-hosts), `wall.js` (the activity wall), `moderation.js` (removing
-  guests, new links), `covers.js` (cover images,
+  guests, new links), `people.js` (finding someone by phone or
+  Instagram), `covers.js` (cover images,
   and serving them at `/covers/`), `notifications.js` (your inbox and
   your phones), `me.js` (you, your friends, your events) and `docs.js`
   (the spec and `/docs`). A new
@@ -222,6 +225,7 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `POST`, `DELETE /api/v1/me/devices` | register a phone for push, or stop |
 | `PUT`, `DELETE /api/v1/events/{id}/removed/{personId}` | remove a guest, or undo it (hosts) |
 | `POST /api/v1/events/{id}/new-link` | give the event a new link; the old one stops working (the creator) |
+| `GET /api/v1/people/lookup` | find someone to invite by exact phone or Instagram (verified people) |
 | `PUT /api/v1/events/{id}/rsvp` | answer: going, maybe, not_going |
 | `DELETE /api/v1/events/{id}/rsvp` | take the answer back |
 | `GET /api/v1/events/{id}/guests` | the guest list, by the visibility rule |
@@ -301,7 +305,9 @@ aren't port-specific, so signing in on one signs you in on both.
 2. In its **Account Manager → Sites**, add a site named `events`. Copy
    the key it shows (it's only shown once), and switch on **Allows quick
    (unverified) accounts** for it. Without that switch, quick accounts
-   are signed out here and get sent to verify their email instead.
+   are signed out here and get sent to verify their email instead. Switch
+   on **Can find people by phone number or Instagram** too, or lookups
+   answer 403 `lookup_not_allowed`.
 3. Here:
 
    ```bash
@@ -352,7 +358,8 @@ runs as `NODE_ENV=production`, port 3000, `DATA_DIR=/app/data`.
      service's address on Coolify's internal network).
    - `CANOPY_ACCOUNT_KEY`: the key from the account service's **Sites**
      tab for a site named `events`, with **Allows quick (unverified)
-     accounts** switched on.
+     accounts** and **Can find people by phone number or Instagram**
+     switched on.
    - `PUBLIC_URL` and `CANOPY_DOMAIN`: leave unset. They default to
      `https://events.canopysf.com` and `canopysf.com`.
    - Leave `PORT` and `DATA_DIR` alone. The Dockerfile sets them.

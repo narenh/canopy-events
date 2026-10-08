@@ -50,6 +50,13 @@ test('every endpoint, every caller: other people are the five public fields and 
   await una.put(`/api/v1/events/${e.id}/rsvp`, { status: 'not_going' });
   await gus.put(`/api/v1/events/${e.id}/rsvp`, { status: 'going' });
   await ana.post(`/api/v1/events/${e.id}/invites`, { personIds: [P.dee.id, P.eve.id] });
+  // A co-host, the wall and notifications, so those answers have people
+  // in them too.
+  await cy.get('/api/v1/me');
+  await ana.post(`/api/v1/events/${e.id}/cohosts`, { personId: P.cy.id });
+  await ben.post(`/api/v1/events/${e.id}/wall`, { text: 'See you all there' });
+  await gus.post(`/api/v1/events/${e.id}/wall`, { text: 'Gone soon' });
+  await ana.patch(`/api/v1/events/${e.id}`, { locationName: 'Upstairs' });
   server.fake.deleted.add(P.gus.id);
 
   const answers = [];
@@ -63,6 +70,10 @@ test('every endpoint, every caller: other people are the five public fields and 
     await call(who, 'get', `/api/v1/events/${e.id}/guests`);
     await call(who, 'get', '/api/v1/me');
     await call(who, 'get', '/api/v1/me/friends');
+    await call(who, 'get', `/api/v1/events/${e.id}/wall`);
+    await call(who, 'get', '/api/v1/me/notifications');
+    await call(who, 'get', `/api/v1/people/lookup?phone=${encodeURIComponent(P.eve.phone)}`);
+    await call(who, 'get', `/api/v1/people/lookup?instagram=${encodeURIComponent(P.una.instagram)}`);
     for (const list of ['hosting', 'upcoming', 'invitations', 'past']) await call(who, 'get', `/api/v1/me/events/${list}`);
   }
   await call(ana, 'get', `/api/v1/events/${e.id}/guests?status=invited`);
@@ -72,6 +83,10 @@ test('every endpoint, every caller: other people are the five public fields and 
   await call(ben, 'put', `/api/v1/events/${e.id}/rsvp`, { status: 'maybe' });
   await call(benApp, 'del', `/api/v1/events/${e.id}/rsvp`);
   await call(ana, 'post', '/api/v1/events', { title: 'New', startsAt: '2030-01-01T20:00:00Z', timeZone: 'UTC' });
+  await call(ben, 'post', `/api/v1/events/${e.id}/wall`, { text: 'Again' });
+  await call(ana, 'del', `/api/v1/events/${e.id}/cohosts/${P.cy.id}`);
+  await call(ana, 'post', `/api/v1/events/${e.id}/cohosts`, { personId: P.cy.id });
+  await call(ana, 'post', `/api/v1/events/${e.id}/new-link`);
 
   // Every person-shaped object in every answer: anything with a firstName.
   let checked = 0;
@@ -89,9 +104,12 @@ test('every endpoint, every caller: other people are the five public fields and 
     };
     walk(r.data);
   }
-  assert.ok(checked > 50, `checked ${checked} people`);
+  assert.ok(checked > 100, `checked ${checked} people`);
+  // The lookups found people, as the five fields.
+  const found = answers.filter((a) => a.who === 'ana' && a.url.includes('/people/lookup')).map((a) => a.r.data.person);
+  assert.deepEqual(found.map((p) => p && p.id), [P.eve.id, P.una.id]);
   // And the former member really was in there, as one.
   const hostView = answers.find((a) => a.who === 'ana' && a.url === `/api/v1/events/${e.id}/guests`).r.data;
   assert.equal(hostView.guests.find((g) => g.person.id === P.gus.id).person.shortName, 'Former member');
-  assert.equal(hostView.guests.length, 6);
+  assert.equal(hostView.guests.length, 5, 'everyone but Cy, who co-hosts now');
 });

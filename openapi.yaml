@@ -41,6 +41,8 @@ tags:
     description: Your inbox, and the phones push goes to.
   - name: Moderation
     description: Removing guests, and making a new link.
+  - name: People
+    description: Finding someone to invite by their phone or Instagram.
   - name: Me
     description: You, your friends and your events.
   - name: Docs
@@ -654,6 +656,57 @@ paths:
         '404': { $ref: '#/components/responses/EventNotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
+  /api/v1/people/lookup:
+    get:
+      tags: [People]
+      operationId: lookupPerson
+      summary: Find someone by phone or Instagram
+      description: |
+        For inviting someone you know the number or handle of: feed the
+        `person.id` you get to `POST /api/v1/events/{id}/invites`.
+        Verified people only (403 `email_unverified`, with `verify`).
+        Exactly one of `phone` or `instagram` (400 `one_of`), as typed
+        (`(415) 555-1234`, `@ana.lima`); they're cleaned the way the
+        Canopy profile cleans them, and matched exactly, never by prefix.
+
+        The answer is the public `Person` and nothing else: never the
+        number or handle you asked about, nor anything else about them. A
+        miss is `{"person": null}` with no hint why (no such person, or
+        they don't let themselves be found, or two accounts claim it).
+
+        Limited tightly by Canopy accounts, per person, per network
+        address and overall (429 `rate_limited`): don't look up as
+        someone types. 403 `lookup_not_allowed` means it isn't switched on
+        for this site.
+      parameters:
+        - name: phone
+          in: query
+          schema: { type: string }
+          example: (415) 555-1234
+        - name: instagram
+          in: query
+          schema: { type: string }
+          example: '@ana.lima'
+      responses:
+        '200':
+          description: Who it is, or null.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [person]
+                properties:
+                  person:
+                    oneOf:
+                      - $ref: '#/components/schemas/Person'
+                      - type: 'null'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
   /api/v1/me:
     get:
       tags: [Me]
@@ -974,8 +1027,8 @@ components:
         `bad_location_name`, `bad_location_address`, `bad_status`,
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
         `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`,
-        `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `bad_cursor`,
-        `bad_limit`.
+        `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
+        `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -994,7 +1047,7 @@ components:
       description: |
         Not allowed: `hosts_only`, `creator_only` (co-hosts can't do this),
         `answer_first` (posting before saying you're going or maybe),
-        `not_yours` (deleting someone else's post),
+        `not_yours` (deleting someone else's post), `lookup_not_allowed`,
         `email_unverified` (with a `verify` link when it's about your own
         email; without one when it's about someone you tried to make a
         co-host), or `bad_origin` (a change made with the cookie from a
