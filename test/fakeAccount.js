@@ -27,6 +27,7 @@ function fixture(n, name, first, last, extra = {}) {
     venmo: `${name}-venmo`,
     cashapp: `${name}Cash`,
     emailVerified: true,
+    findable: n % 2 === 1,
     token: token(name),
     ...extra
   };
@@ -78,12 +79,14 @@ async function startFakeAccount() {
     const p = byToken.get(t);
     if (!p || state.deleted.has(p.id)) return res.json({ person: null });
     if (!p.emailVerified && !state.allowsUnverified) return res.json({ person: null, unverified: true });
-    const body = {
-      person: {
-        id: p.id, email: p.email, firstName: p.firstName, lastName: p.lastName, shortName: `${p.firstName} ${p.lastName[0]}`,
-        photoUrl: photoUrl(p), venmo: p.venmo, phone: p.phone, instagram: p.instagram, cashapp: p.cashapp, emailVerified: p.emailVerified
-      }
+    const person = {
+      id: p.id, email: p.email, firstName: p.firstName, lastName: p.lastName, shortName: `${p.firstName} ${p.lastName[0]}`,
+      photoUrl: photoUrl(p), venmo: p.venmo, phone: p.phone, instagram: p.instagram, cashapp: p.cashapp
     };
+    // Like the real one: only a site that allows unverified accounts is
+    // told whether the email is proven (and whether they're findable).
+    if (state.allowsUnverified) Object.assign(person, { emailVerified: p.emailVerified, findable: p.findable });
+    const body = { person };
     if (state.renew.has(t)) {
       state.renew.delete(t);
       body.renewCookie = `canopy_session=${t}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`;
