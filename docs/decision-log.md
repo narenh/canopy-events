@@ -1098,3 +1098,9 @@ Fixes for the security review's events findings (branch `fix/review`).
   "Match photo" button. `themeHue` only changes when the host saves, and
   an API-only upload never changes it, so the apps decide for
   themselves.
+- **(You)** No "Canopy green" button: green is just where the slider
+  starts. One end of the slider is fully greyscale, for colour-free
+  events. A greyscale cover makes "Match photo" choose greyscale.
+- Assumed (the agent may refine it): the API is `themeHue` plus a
+  `themeGrayscale` boolean, with no magic hue values. Greyscale keeps
+  the same lightness as every other position, so contrast holds.
