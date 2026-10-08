@@ -2326,3 +2326,16 @@ rest:
   were checked by hand in the browser (375 px): grey → accent 330 → Save
   stored `accentHue: 330` and drew a purple pill and button on grey;
   moving Colour to a hue hid the Accent slider and Save stored null.
+
+## Guest menu (queued after event details)
+
+- **(You)** Guests get a ⋯ menu on the event page with: Mute event,
+  Remove me from event, Opt out of all invites from this host.
+- Assumed: mute stops wall posts, RSVP chatter and co-host news, but
+  keeps the essentials (cancelled, time or place changed). Leaving
+  deletes your row, invitation and notifications, and frees your spot
+  for the waitlist. The link still works for you as a fresh visitor, so
+  it's a deliberate exit, not the withdrawn "take back my answer".
+  Opt-out silently skips that host's future invites; the host only sees
+  a generic "couldn't invite", never why. Undo from the friends page
+  (and the app's Profile).
