@@ -96,6 +96,23 @@ module.exports = function friendsRoutes(ctx) {
     res.json({ friends, nextCursor });
   }));
 
+  // Who to suggest first when inviting: up to ?limit= (1 to 50, 10 by
+  // default) of your friends, best first, each with its `score`
+  // (lib/store/friends.js says how it's worked out: events together,
+  // recent ones and your own more). Not paginated: it's a short list to
+  // put on top of the whole one.
+  router.get('/me/friends/suggested', auth.requirePerson, handle(async (req, res) => {
+    let limit = 10;
+    if (req.query.limit !== undefined) {
+      limit = Number(req.query.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 50) return fail(res, 400, 'bad_limit', 'limit is a whole number from 1 to 50');
+    }
+    const rows = store.suggestedFriendsOf(req.person.id, { limit });
+    const people = await loadPeople(canopy, rows.map((r) => r.personId));
+    const friends = rows.filter((r) => people.has(r.personId)).map((r) => ({ ...friendView(r, people.get(r.personId)), score: r.score }));
+    res.json({ friends });
+  }));
+
   // Add someone by id: { personId }. One way. Adding someone already in
   // your list changes nothing; adding someone you took out brings them
   // back.

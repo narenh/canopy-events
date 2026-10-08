@@ -4,3 +4,5 @@ data/*
 .env
 *.log
 .claude/worktrees/
+# Test people's tokens (scripts/seed-guests.js): they sign in as them.
+canopy-test-tokens*.json

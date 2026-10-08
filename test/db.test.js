@@ -173,6 +173,17 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   upgraded.optOutOfInvites(C, A);
   assert.deepEqual(upgraded.inviteOptouts(C), [A]);
   assert.throws(() => upgraded.db.prepare('INSERT INTO invite_optouts (person_id, host_id, created_at) VALUES (?, ?, 1)').run(C, C), /CHECK/);
+  // Version 15: lists, empty for everyone, their members and events going
+  // with them.
+  assert.deepEqual(upgraded.listsOf(A), []);
+  const list = upgraded.createList(A, 'Regulars');
+  assert.equal(upgraded.joinList(list.id, C).outcome, 'joined');
+  assert.equal(upgraded.joinList(list.id, A).outcome, 'own_list');
+  assert.deepEqual(upgraded.membershipsOf(C).map((m) => m.name), ['Regulars']);
+  upgraded.db.prepare('INSERT INTO event_lists (event_id, list_id, attached_by, attached_at) VALUES (?, ?, ?, 1)').run('AAAAAAAAAAAA', list.id, A);
+  upgraded.deleteList(list.id);
+  assert.deepEqual(upgraded.membershipsOf(C), []);
+  assert.equal(upgraded.db.prepare('SELECT COUNT(*) AS n FROM event_lists').get().n, 0);
   // And whoever was hosting at the upgrade has hosted, from when
   // they started; nobody else has, until they host.
   assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000001'), true);

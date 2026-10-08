@@ -16,6 +16,12 @@ the link, sign in (or quick-sign-up), and say **going**, **maybe** or
   either way. There are no friend requests, nobody is told they were
   added, and only you see your list. Friends are who a host picks from to
   invite, and who's called out as "friends going".
+- **Lists** are a person's own, private list of people who joined it
+  themselves, by its link or QR code (`/l/<code>`). A host puts one on an
+  event and everyone on it is invited; anyone who joins later is invited
+  to its events still to come. For a weekly night: the QR code at the
+  door, and newcomers get invited to the next one. Only the owner sees
+  who's on a list.
 - **The guest list is the host's choice**, per event: everyone with the
   link sees the names, or only people who've answered do (everyone else
   sees counts). Hosts always see everything.
@@ -63,7 +69,8 @@ cover all of it except notifications, which belong to the apps.
   and serving them at `/covers/`), `backgrounds.js` (the curated
   backgrounds from TMDB), `notifications.js` (your inbox and
   your phones), `friends.js` (your friends, adding and taking people
-  out, friend links), `me.js` (you, your events) and `docs.js`
+  out, friend links), `lists.js` (your lists, joining by link, and lists
+  on events), `me.js` (you, your events) and `docs.js`
   (the spec and `/docs`). A new
   subject is a new file here, so work on different subjects doesn't
   collide. `pages.js` is the web pages (see "The pages").
@@ -72,7 +79,7 @@ cover all of it except notifications, which belong to the apps.
     the schema, its version and upgrades, and the daily snapshots. The
     queries are in `lib/store/`, one file per subject (`events.js`,
     `rsvps.js`, `hosts.js`, `waitlist.js`, `wall.js`, `notifications.js`,
-    `friends.js`, `people.js`, `calendar.js`), and `init()` hands them back
+    `friends.js`, `lists.js`, `people.js`, `calendar.js`), and `init()` hands them back
     as one store.
   - `notify.js` is the one way anyone hears about anything: it writes
     the inbox entry and queues the push in one call, and never tells the
@@ -283,6 +290,13 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `PUT`, `DELETE /api/v1/events/{id}/mute` | mute an event's chatter, or unmute it (guests) |
 | `POST /api/v1/events/{id}/leave` | take yourself off an event entirely (guests; not hosts) |
 | `GET /api/v1/me/invite-optouts`, `PUT`, `DELETE .../{personId}` | the hosts whose invitations you've opted out of; opt out, or back in |
+| `GET /api/v1/me/friends/suggested` | friends to suggest first when inviting, best first, with a `score` (docs/api.md says how) |
+| `GET`, `POST /api/v1/me/lists` | your lists (with how many are on each), or a new one (verified people) |
+| `PATCH`, `DELETE /api/v1/me/lists/{listId}`, `POST .../reset-link` | rename, delete, or a new join link |
+| `GET /api/v1/me/lists/{listId}/members`, `DELETE .../{personId}` | who's on a list of yours (only ever to you), or take someone off |
+| `GET /api/v1/me/list-memberships`, `DELETE .../{listId}` | the lists you're on (name and owner only), or leave one |
+| `GET /api/v1/list-links/{code}`, `POST .../join` | a list's name and owner (anyone with the link), or join it: invited to its events still to come |
+| `PUT`, `DELETE /api/v1/events/{id}/lists/{listId}` | put one of your lists on an event (hosts): everyone on it is invited; or take it off |
 | `GET /api/v1/friend-links/{code}` | whose link it is: a name and a photo (anyone with it) |
 | `POST /api/v1/friend-links/{code}/accept` | say yes: you're friends both ways |
 | `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/declined`, `/past` | your events |
@@ -419,6 +433,9 @@ restart forgives everyone. The address is Cloudflare's
 | Cover uploads (and backgrounds chosen, counted together) | 30 a day | 100 a day | 2,000 a day |
 | Adding friends (by id, or a friend link; every try counts) | 200 a day | 500 a day | 5,000 a day |
 | Friend links that find nobody | | 60 an hour | |
+| Making lists | 20 a day (50 in all) | 60 a day | 1,000 a day |
+| Joining lists (every try counts) | 200 a day | 500 a day | 5,000 a day |
+| List links that find nothing | | 60 an hour | |
 
 On top of that, one invite request takes at most 100 people, and a
 request body at most 100 KB. The numbers live next to the routes they
@@ -467,6 +484,86 @@ which the Dockerfile sets.
 
 `npm test` runs the tests (Node 22). They need nothing running: each
 starts its own server and fake account service.
+
+## Seeding test guests
+
+`scripts/seed-guests.js` fills real events, and your friends list, with
+**test people**: made-up Canopy Accounts the account service's admin
+creates for exactly this (see "Admin: test people" in its README). It
+acts as each of them through the ordinary API with their bearer tokens,
+so everything it makes is what real guests would make, and everything is
+taken off again by `cleanup`. Plain Node 22, nothing to install. It never
+touches your own account: it has only the test people's tokens.
+
+1. **Create test people.** Account Manager → **People** → **Test
+   people**: type how many (1 to 50 at a time; press it again for more)
+   and **Create test people**. 30 to 40 makes a realistic friends list
+   and invite picker. Each gets an orange **Test** badge.
+2. **Get tokens.** **Get tokens** there shows them once; **Download**
+   saves `canopy-test-tokens.json`. Anyone with this file is signed in as
+   those test people, so keep it out of the repo. Pressing it again makes
+   new tokens and signs the old ones out.
+3. **Make them your friends.** Copy your friend link (Friends → your link,
+   `https://events.canopysf.com/f/<code>`), then:
+
+   ```bash
+   node scripts/seed-guests.js friends --tokens canopy-test-tokens.json \
+     --friend-link https://events.canopysf.com/f/<code> --photos --history 5
+   ```
+
+   Every test person says yes to your link, so they're all in your friends
+   list and invite picker (a link works both ways). `--photos` gives each
+   one without a photo an avatar (from `https://i.pravatar.cc`, uploaded
+   to their Canopy Account; skipped quietly if either can't be reached).
+   `--history <n>` makes n past events (at most 20), each hosted by a test
+   person with other test people going, so the test people have events in
+   common and a "last together" with each other. **Your own** events in
+   common with them can't be made this way: that would take your token,
+   which the script never has. They're your friends through the link
+   (`source: "link"`, 0 events in common) until you're at real events
+   together.
+4. **Optionally, fill events.** For events you made (or any you have the
+   link to):
+
+   ```bash
+   node scripts/seed-guests.js seed --tokens canopy-test-tokens.json \
+     --event https://events.canopysf.com/e/<id> --event <another id> --updates
+   ```
+
+   For each event, 60 to 85% of the test people answer (or `--answers
+   <n>`): mostly going, some maybe, a few can't go, and about a quarter of
+   those coming bring a plus-one when the event allows them. With a
+   capacity, the "going" answers that don't fit land on the waitlist, the
+   way they would for anyone. `--updates` has a few of them post a short,
+   friendly line on each event's Updates (at most 4 from test people per
+   event, one each). Running it again tops up to the same mix rather than
+   adding more, and skips anyone who already answered or posted.
+   `--friend-link` and `--photos` work here too. Cancelled and finished
+   events are skipped.
+5. **Clean up.**
+
+   ```bash
+   node scripts/seed-guests.js cleanup --tokens canopy-test-tokens.json
+   ```
+
+   For every test person: their updates are deleted, they leave every
+   event they're on (from their events lists, `/declined`, and the events
+   the script remembers touching), any event they made (the `--history`
+   ones) is deleted, and everyone is taken out of their friends list.
+6. **Delete the test people.** Account Manager → **Delete all test
+   people**. That deletes their accounts (photos included), and takes them
+   out of your friends list: a deleted account is left out of it.
+
+Every command takes `--dry-run` (reads, but changes nothing, and prints
+what it would do), `--base <url>` for another events site (default
+`https://events.canopysf.com`, or the site of the first link you give),
+`--account-url` for another account service (for `--photos`), and
+`--concurrency` / `--delay` (3 at a time, 150 ms after each request). A
+429 is waited out. The events it touched are remembered next to the
+tokens file (`canopy-test-tokens.state.json`) for `cleanup`, which
+deletes it when it's done; `--event` on `cleanup` adds more.
+
+Locally: `--base http://localhost:3001 --account-url http://localhost:3000`.
 
 ## Deploying on Coolify
 

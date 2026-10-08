@@ -925,6 +925,100 @@ error to show; 403 `lookup_not_allowed` means it isn't switched on. Each id come
 reason: `already_on_list`, `is_host`, `not_found` or `removed`. 300
 invitations per host a day.
 
+**Who to suggest first when inviting**: `GET /api/v1/me/friends/suggested`
+(`?limit=` 1 to 50, 10 by default) is your friends with a `score`, best
+first, not paginated. Each event you were both at (the friends rule:
+hosting or `going`, started, not cancelled) adds `2^(-d/90)`, where `d` is
+the days since it started, so an event three months ago counts half as
+much as one today; **an event you hosted counts double** (its guests are
+the people you invite back). A way into your list other than events adds a
+little, fading the same way from when it was made: an invitation (either
+way) 0.5, a friend link or adding by id 0.25. Only friends with a score
+above 0 are in it; ties go to whoever you were with last, then by id.
+
+## Lists
+
+A list is **one person's own list of people who joined it themselves**,
+by its link or QR code, for inviting them all at once. The case it's for:
+someone hosts a weekly night, shows the list's QR code at the door,
+newcomers join, and they're invited to the next one without the host
+remembering them.
+
+**Privacy.** Only the owner ever sees who's on a list (as `Person`, with
+when they joined) and how many. A member sees the list's name, its owner
+and that they're on it, never anyone else on it, nor a count. Anyone else
+sees nothing, except through a link: the name and the owner.
+
+**Yours** (verified people only, like making events):
+
+| Call | What |
+|---|---|
+| `GET /api/v1/me/lists` | yours, oldest first: `{id, name, code, url, memberCount, createdAt}`, at most 50, not paginated |
+| `POST /api/v1/me/lists` `{name}` | 201 `{list}`. 1 to 60 characters (400 `bad_name`); 409 `too_many_lists`; 429 |
+| `PATCH /api/v1/me/lists/{listId}` `{name}` | rename |
+| `DELETE /api/v1/me/lists/{listId}` | gone, with its members and its place on events; invitations it made stay |
+| `POST /api/v1/me/lists/{listId}/reset-link` | a new `code` and `url`; the old link stops working; members stay |
+| `GET /api/v1/me/lists/{listId}/members` | `{members: [{person, joinedAt}], nextCursor}`, newest first, paginated |
+| `DELETE /api/v1/me/lists/{listId}/members/{personId}` | take someone off (404 `not_a_member`); they aren't told |
+
+Someone else's list, or none, is always 404 `list_not_found`: whether it
+exists is its owner's business. `id` is for the API only; `url`
+(`https://events.canopysf.com/l/<code>`) is what's shared, and the text of
+its QR code (drawn exactly like the friend link's, above).
+
+**Ones you're on**: `GET /api/v1/me/list-memberships` is `{lists: [{id,
+name, owner, joinedAt}]}`, newest first; `DELETE
+/api/v1/me/list-memberships/{listId}` leaves (404 `not_a_member`). The
+owner isn't told.
+
+**Joining** (claim `/l/<code>` as a universal link, as with `/f/`):
+
+1. `GET /api/v1/list-links/{code}` is `{list: {name}, owner, viewer}` for
+   anyone, signed in or not; `viewer` is null signed out, or `{isOwner,
+   isMember}`. 404 `list_link_not_found` for a wrong or reset code
+   (misses are limited per address). **Opening it joins nobody.**
+2. Ask: "Join Ana's Drag Race? Ana will be able to invite you to events."
+   (`isOwner`: say it's theirs; `isMember`: say they're on it.)
+3. On yes, `POST /api/v1/list-links/{code}/join` answers `{list, invitedTo}`.
+   `list` is the membership (as above); `invitedTo` is how many events
+   they were just invited to (below). 409 `own_list` for your own,
+   `list_full` at 1,000 people; 429 like adding friends. Quick accounts
+   can join. Signed out, the 401's links come back to `/l/<code>`.
+
+**Joining makes no friends by itself.** The owner and a member become
+friends the way everyone does: the owner's invitation (both ways), or an
+event together.
+
+**On events.** A host puts one of their own lists on an event with `PUT
+/api/v1/events/{id}/lists/{listId}` (co-hosts too, each with their own
+lists; anyone else's is 404 `list_not_found`). That **invites everyone on
+it**, by the list's owner, by the same rules as `POST .../invites`:
+anyone who opted out of the owner's invitations is skipped without a word,
+and so are the event's hosts and anyone a host removed. It answers
+`{event, invitedCount}`. From then on, **anyone who joins the list is
+invited too**, in the same step, with the usual `invited` notification,
+until the event is over or cancelled (an event happening now counts). Up
+to 10 lists on an event (409 `too_many_lists`); 409 `event_over` or
+`event_cancelled` for those. List invitations don't count against the
+daily invitation limit: everyone on a list asked to be. `DELETE` takes it
+off (its owner, or the event's creator; another co-host gets 403
+`not_your_list`); nobody's invitation changes. A co-host's lists come off
+an event when they stop hosting it.
+
+**On the event's answer** (`GET /api/v1/events/{id}`, and every answer
+about one event, never lists of events):
+
+- `hostLists`: to hosts, every list on it, `{id, name, code, url, owner,
+  isYours, memberCount, attachedAt}`, in the order they were put on;
+  `memberCount` is null for a co-host's list. Null for anyone else. Use
+  `url` for a big QR code at the door.
+- `joinableList`: `{code, name, url, owner}`, a list on the event the
+  viewer isn't on and could join, for a "Get invited next time" card with
+  "Join Drag Race". Signed out too (send them to `url`); null for hosts,
+  for someone a host removed, and when they're on every list. With
+  several, the creator's first, then the one put on first. Joining from
+  the event is the same `POST /api/v1/list-links/{code}/join`.
+
 ## Your events
 
 Six lists, each a page at a time:
@@ -1019,19 +1113,22 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`, `bad_details`, `too_many_details`, `bad_detail`, `bad_detail_type`, `bad_detail_label`, `bad_detail_value`, `bad_detail_url`, `bad_detail_phone`, `detail_too_long` (with `index`), `bad_image`, `bad_background`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_name`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`, `bad_details`, `too_many_details`, `bad_detail`, `bad_detail_type`, `bad_detail_label`, `bad_detail_value`, `bad_detail_url`, `bad_detail_phone`, `detail_too_long` (with `index`), `bad_image`, `bad_background`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |
 | 403 | `creator_only` | hide the control: `viewer.role` is `creator` for the one person who can |
 | 403 | `answer_first` | posting on the wall before answering going or maybe: `viewer.canPost` |
 | 403 | `not_yours` | deleting someone else's post: `canDelete` |
+| 403 | `not_your_list` | taking another co-host's list off an event: only its owner or the creator can (`hostLists[].isYours`) |
 | 403 | `lookup_not_allowed` | finding people isn't switched on for this site: hide the search |
 | 403 | `bad_origin` | a web page's problem; apps never see it |
 | 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_found` | the link is wrong, or it's gone (or the host made a new one) |
 | 404 | `friend_link_not_found`, `not_a_friend` | the friend link is wrong or was reset; they weren't in your list |
+| 404 | `list_not_found`, `list_link_not_found`, `not_a_member` | not a list of yours (or gone); the list link is wrong or was reset; they (or you) aren't on it |
 | 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room`, `removed`, `is_host`, `not_on_event` | redraw from the event |
 | 409 | `is_you`, `own_link` | adding yourself, or saying yes to your own friend link |
+| 409 | `own_list`, `list_full`, `too_many_lists` | joining your own list; a list at 1,000 people; more than 50 lists, or more than 10 on one event |
 | 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |
 | 502 | `background_unreachable` | TMDB didn't give the background just now; retry in a minute |
@@ -1049,6 +1146,9 @@ expect:
 | Cover uploads (and backgrounds chosen, counted together) | 30 a day | 100 a day | 2,000 a day |
 | Adding friends (by id, or saying yes to a link; every try counts) | 200 a day | 500 a day | 5,000 a day |
 | Friend links that find nobody | | 60 an hour | |
+| Making lists | 20 a day (50 in all) | 60 a day | 1,000 a day |
+| Joining lists (every try counts) | 200 a day | 500 a day | 5,000 a day |
+| List links that find nothing | | 60 an hour | |
 
 Text fields are capped: title 120 characters (longer is cut), description
 5,000, place name 200, address 500. A request body is at most 100 KB.

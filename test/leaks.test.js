@@ -95,7 +95,20 @@ test('every endpoint, every caller: other people are the five public fields and 
   await una.put(`/api/v1/me/invite-optouts/${P.ana.id}`);
   await ben.put(`/api/v1/me/invite-optouts/${P.cy.id}`);
   await ben.put(`/api/v1/events/${e.id}/mute`);
+  // A list of Ana's with people on it, on an event of its own (so the
+  // guest counts below stay as they are), for the lists' answers.
+  const list = (await ana.post('/api/v1/me/lists', { name: 'Regulars' })).data.list;
+  await call(ben, 'post', `/api/v1/list-links/${list.code}/join`);
+  await call(una, 'post', `/api/v1/list-links/${list.code}/join`);
+  const listed = await makeEvent(ana, { title: 'Listed' });
+  await call(ana, 'put', `/api/v1/events/${listed.id}/lists/${list.id}`);
   for (const who of [ana, ben, benApp, una, cy, anon]) {
+    await call(who, 'get', '/api/v1/me/lists');
+    await call(who, 'get', `/api/v1/me/lists/${list.id}/members`);
+    await call(who, 'get', '/api/v1/me/list-memberships');
+    await call(who, 'get', `/api/v1/list-links/${list.code}`);
+    await call(who, 'get', `/api/v1/events/${listed.id}`);
+    await call(who, 'get', '/api/v1/me/friends/suggested');
     await call(who, 'get', '/api/v1/me/invite-optouts');
     await call(who, 'get', `/api/v1/friend-links/${anaLink.code}`);
     await call(who, 'get', '/api/v1/me/friend-link');

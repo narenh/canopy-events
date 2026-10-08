@@ -49,6 +49,8 @@ tags:
     description: You and your events.
   - name: Friends
     description: Your friends, adding and taking people out, and your friend link.
+  - name: Lists
+    description: Your own lists of people, who join by a link or QR code, and putting them on events you host.
   - name: Guest menu
     description: "A guest's own controls on an event: mute it, leave it, and opt out of a host's invitations."
   - name: Backgrounds
@@ -1213,6 +1215,354 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
+  /api/v1/me/friends/suggested:
+    get:
+      tags: [Friends]
+      operationId: suggestedFriends
+      summary: Friends to suggest first when inviting
+      description: |
+        Up to `limit` (1 to 50, 10 by default) of your friends, best
+        first, each with a `score`: the people you've been with most and
+        most recently, more so the guests of events you hosted. Each event
+        you were both at (the friends rule: hosting or `going`, started,
+        not cancelled) adds `2^(-days since it started / 90)`, doubled for
+        an event you hosted; a way in other than events adds a little,
+        fading the same way from when it was made (an invitation either
+        way 0.5, a friend link or adding by id 0.25). Only friends with a
+        score above 0; ties go to whoever you were with last. Not
+        paginated: put it above the whole list (`GET /api/v1/me/friends`),
+        which is everyone else. Deleted accounts are left out.
+      parameters:
+        - name: limit
+          in: query
+          description: How many, 1 to 50.
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        '200':
+          description: Suggestions, best first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuggestedFriends' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/lists:
+    get:
+      tags: [Lists]
+      operationId: listOwnLists
+      summary: Your lists
+      description: |
+        Your lists, oldest first, each with its join link and how many
+        are on it. Not paginated: you can have at most 50.
+      responses:
+        '200':
+          description: Your lists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OwnedLists' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      tags: [Lists]
+      operationId: createList
+      summary: Make a list
+      description: |
+        `{ name }`, 1 to 60 characters (400 `bad_name`). Verified people
+        only, like making an event (403 `email_unverified`, with
+        `verify`). At most 50 lists (409 `too_many_lists`); making them
+        is limited per person, per address and overall (429
+        `rate_limited`). The list starts empty: share `url` (or show it as
+        a QR code, whose text is exactly `url`) for people to join.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListNameInput' }
+      responses:
+        '201':
+          description: Your new list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OwnedListEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/lists/{listId}:
+    parameters:
+      - $ref: '#/components/parameters/ListId'
+    patch:
+      tags: [Lists]
+      operationId: renameList
+      summary: Rename a list
+      description: |
+        `{ name }`, 1 to 60 characters. Someone else's list, or none, is
+        404 `list_not_found` (whether it exists is its owner's business).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListNameInput' }
+      responses:
+        '200':
+          description: The list, renamed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OwnedListEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [Lists]
+      operationId: deleteList
+      summary: Delete a list
+      description: |
+        The list goes, with its members and its place on events. Nobody is
+        told, and invitations it made stay. 404 `list_not_found`.
+      responses:
+        '200':
+          description: Gone.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/lists/{listId}/reset-link:
+    parameters:
+      - $ref: '#/components/parameters/ListId'
+    post:
+      tags: [Lists]
+      operationId: resetListLink
+      summary: Make a new link for a list
+      description: |
+        A new `code` and `url`; the old link (and its QR code) stops
+        working at once (404 `list_link_not_found`). Everyone on the list
+        stays on it. 404 `list_not_found`.
+      responses:
+        '200':
+          description: The list, with its new link.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OwnedListEnvelope' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/lists/{listId}/members:
+    parameters:
+      - $ref: '#/components/parameters/ListId'
+    get:
+      tags: [Lists]
+      operationId: listListMembers
+      summary: Who's on a list of yours
+      description: |
+        Only ever to the list's owner: each member as a `Person` (name and
+        photo, nothing else) with when they joined, newest first.
+        Paginated. Deleted accounts are left out, so a page can be short of
+        `limit` with more to come. 404 `list_not_found`.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of members.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListMembers' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/lists/{listId}/members/{personId}:
+    parameters:
+      - $ref: '#/components/parameters/ListId'
+      - $ref: '#/components/parameters/PersonId'
+    delete:
+      tags: [Lists]
+      operationId: removeListMember
+      summary: Take someone off a list of yours
+      description: |
+        They aren't told, and invitations they had stay. They could join
+        again with the link (reset it to stop that). 404 `list_not_found`
+        or `not_a_member`.
+      responses:
+        '200':
+          description: Off the list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/list-memberships:
+    get:
+      tags: [Lists]
+      operationId: listListMemberships
+      summary: Lists you're on
+      description: |
+        Each list's name and owner, and when you joined, newest first.
+        Never who else is on it, nor how many.
+      responses:
+        '200':
+          description: The lists you're on.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListMemberships' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/list-memberships/{listId}:
+    parameters:
+      - $ref: '#/components/parameters/ListId'
+    delete:
+      tags: [Lists]
+      operationId: leaveList
+      summary: Leave a list
+      description: |
+        You're off it; the owner isn't told, and invitations you had stay.
+        404 `not_a_member`.
+      responses:
+        '200':
+          description: Off the list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/list-links/{code}:
+    get:
+      tags: [Lists]
+      operationId: getListLink
+      summary: The list a link is for
+      description: |
+        The list's name and its owner as a `Person`, for anyone with the
+        link, signed in or not (nothing about who's on it). Signed in,
+        `viewer` says whether it's your own list and whether you're on it;
+        signed out it's null. Opening it joins nobody: show it and ask
+        first ("Join Ana's Drag Race? Ana will be able to invite you to
+        events."). 404 `list_link_not_found` for a code that's unknown or
+        was reset; misses are limited per address (429 `rate_limited`).
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/ListCode'
+      responses:
+        '200':
+          description: The list and its owner.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListLink' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/list-links/{code}/join:
+    post:
+      tags: [Lists]
+      operationId: joinList
+      summary: Join a list
+      description: |
+        You're on the list, and in the same step its owner invites you to
+        every event the list is attached to that isn't over or cancelled
+        (a normal invitation, with its notification; `invitedTo` says how
+        many). Unless you opted out of the owner's invitations: then you
+        join, and nothing else happens. Joining doesn't make you and the
+        owner friends; an invitation does. Anyone signed in, quick
+        accounts included. Already on it changes nothing. 404
+        `list_link_not_found`, 409 `own_list` (your own list) or
+        `list_full` (1,000 people), 429 `rate_limited` (limited like
+        adding friends).
+      parameters:
+        - $ref: '#/components/parameters/ListCode'
+      responses:
+        '200':
+          description: You're on the list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListJoined' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/lists/{listId}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/ListId'
+    put:
+      tags: [Lists]
+      operationId: attachList
+      summary: Put one of your lists on an event
+      description: |
+        Hosts (the creator and co-hosts), each with lists of their own
+        only (anyone else's, or none, is 404 `list_not_found`; a guest is
+        403 `hosts_only`). Everyone on the list is invited, by you, with
+        the same rules as `POST .../invites`: anyone who opted out of your
+        invitations, the event's hosts and anyone a host removed are
+        skipped without a word. From then on, anyone who joins the list
+        is invited too, until the event is over or cancelled. Sending it
+        again invites anyone on the list who isn't invited yet. List
+        invitations don't count against the daily invitation limit:
+        everyone on a list asked to be on it. 409 `event_cancelled`,
+        `event_over`, `too_many_lists` (10 on one event). A co-host's
+        lists come off the event when they stop hosting it. Answers with
+        the event (its `hostLists`) and how many were invited just now.
+      responses:
+        '200':
+          description: The list is on the event.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListAttached' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [Lists]
+      operationId: detachList
+      summary: Take a list off an event
+      description: |
+        The list's owner may, and so may the event's creator (403
+        `not_your_list` for another co-host's list). Nobody's invitation
+        changes; people who join the list later just aren't invited to
+        this event. Fine to send twice for a list of your own.
+      responses:
+        '200':
+          description: The event, without it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
   /api/v1/me/settings:
     get:
       tags: [Me]
@@ -1605,6 +1955,18 @@ components:
       required: true
       description: A Canopy person id (a UUID).
       schema: { type: string }
+    ListId:
+      name: listId
+      in: path
+      required: true
+      description: A list's id, 12 characters of base62 (from `GET /api/v1/me/lists`, or an event's `hostLists`).
+      schema: { type: string }
+    ListCode:
+      name: code
+      in: path
+      required: true
+      description: A list link's code, 12 characters of base62 (the last part of `/l/<code>`).
+      schema: { type: string }
     FriendCode:
       name: code
       in: path
@@ -1621,7 +1983,7 @@ components:
         `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`,
         `bad_location_name`, `bad_location_address`, `bad_status`,
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
-        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`,
+        `bad_person_ids`, `bad_person_id`, `bad_name` (a list's), `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`,
         `bad_details`, `too_many_details` (more than 10), and, with the
         detail's `index`: `bad_detail`, `bad_detail_type`,
         `bad_detail_label`, `bad_detail_value`, `bad_detail_url`,
@@ -1651,7 +2013,8 @@ components:
       description: |
         Not allowed: `hosts_only`, `creator_only` (co-hosts can't do this),
         `answer_first` (posting before saying you're going or maybe),
-        `not_yours` (deleting someone else's post), `lookup_not_allowed`,
+        `not_yours` (deleting someone else's post), `not_your_list`
+        (taking another co-host's list off an event), `lookup_not_allowed`,
         `email_unverified` (with a `verify` link when it's about your own
         email; without one when it's about someone you tried to make a
         co-host), or `bad_origin` (a change made with the cookie from a
@@ -1670,7 +2033,7 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: "there's no event at that link", reason: event_not_found }
     NotFound:
-      description: '`event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_a_friend` or `friend_link_not_found`.'
+      description: '`event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_a_friend`, `friend_link_not_found`, `list_not_found`, `list_link_not_found` or `not_a_member`.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1682,7 +2045,9 @@ components:
         `is_host` (removing a host, or a host muting or leaving their own
         event), `not_on_event` (muting or leaving an event you aren't on);
         and for friends and opt-outs, `is_you` (yourself) and `own_link`
-        (accepting your own friend link).
+        (accepting your own friend link); for lists, `own_list` (joining
+        your own), `list_full`, and `too_many_lists` (making more than 50,
+        or putting more than 10 on one event).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -2122,6 +2487,25 @@ components:
         friendsGoing:
           $ref: '#/components/schemas/FriendsGoing'
           description: Only on a single event (not in lists), and only when signed in.
+        hostLists:
+          description: |
+            Only on a single event (not in lists). To its hosts, the lists
+            on it (`PUT /api/v1/events/{id}/lists/{listId}`), in the order
+            they were attached; null for anyone else.
+          oneOf:
+            - type: array
+              items: { $ref: '#/components/schemas/HostList' }
+            - type: 'null'
+        joinableList:
+          description: |
+            Only on a single event (not in lists). A list on this event the
+            viewer isn't on and could join ("Get invited next time"), signed
+            out too; null for its hosts, someone a host removed, or when
+            there's none. With several, the creator's first, then the one
+            attached first.
+          oneOf:
+            - $ref: '#/components/schemas/JoinableList'
+            - type: 'null'
       example:
         id: 4fQ9xKpL2mZa
         url: https://events.canopysf.com/e/4fQ9xKpL2mZa
@@ -2622,6 +3006,169 @@ components:
       required: [unreadCount]
       properties:
         unreadCount: { type: integer, minimum: 0 }
+
+    SuggestedFriend:
+      description: A `Friend`, with its suggestion `score`.
+      type: object
+      additionalProperties: false
+      required: [person, source, eventsInCommon, lastTogetherAt, score]
+      properties:
+        person: { $ref: '#/components/schemas/Person' }
+        source: { type: string, enum: [shared_events, added, link, invite] }
+        eventsInCommon: { type: integer, minimum: 0 }
+        lastTogetherAt: { type: [string, 'null'], format: date-time }
+        score: { type: number, exclusiveMinimum: 0, description: 'Higher first; GET /api/v1/me/friends/suggested says how.' }
+
+    SuggestedFriends:
+      type: object
+      additionalProperties: false
+      required: [friends]
+      properties:
+        friends:
+          type: array
+          items: { $ref: '#/components/schemas/SuggestedFriend' }
+
+    ListNameInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+
+    OwnedList:
+      description: A list of yours. Only you see `memberCount`, and who's on it.
+      type: object
+      additionalProperties: false
+      required: [id, name, code, url, memberCount, createdAt]
+      properties:
+        id: { type: string, pattern: '^[0-9A-Za-z]{12}$', description: "The list's id, for the API. Never in a link." }
+        name: { type: string }
+        code: { type: string, pattern: '^[0-9A-Za-z]{12}$', description: "The join link's code." }
+        url: { type: string, description: 'The join link, to share, and the text of its QR code: https://events.canopysf.com/l/<code>.' }
+        memberCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+      example: { id: Lq7Hn2xP0aZr, name: Drag Race, code: 9xQ2mPc7LtRe, url: 'https://events.canopysf.com/l/9xQ2mPc7LtRe', memberCount: 14, createdAt: '2026-10-08T20:00:00.000Z' }
+
+    OwnedListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [list]
+      properties:
+        list: { $ref: '#/components/schemas/OwnedList' }
+
+    OwnedLists:
+      type: object
+      additionalProperties: false
+      required: [lists]
+      properties:
+        lists:
+          type: array
+          items: { $ref: '#/components/schemas/OwnedList' }
+
+    ListMembers:
+      type: object
+      additionalProperties: false
+      required: [members, nextCursor]
+      properties:
+        members:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [person, joinedAt]
+            properties:
+              person: { $ref: '#/components/schemas/Person' }
+              joinedAt: { type: string, format: date-time }
+        nextCursor: { $ref: '#/components/schemas/NextCursor' }
+
+    ListMembership:
+      description: A list you're on, as a member sees it. Nobody else on it, and no count.
+      type: object
+      additionalProperties: false
+      required: [id, name, owner, joinedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9A-Za-z]{12}$', description: 'For leaving it (DELETE /api/v1/me/list-memberships/{listId}).' }
+        name: { type: string }
+        owner: { $ref: '#/components/schemas/Person' }
+        joinedAt: { type: string, format: date-time }
+
+    ListMemberships:
+      type: object
+      additionalProperties: false
+      required: [lists]
+      properties:
+        lists:
+          type: array
+          items: { $ref: '#/components/schemas/ListMembership' }
+
+    ListLink:
+      type: object
+      additionalProperties: false
+      required: [list, owner, viewer]
+      properties:
+        list:
+          type: object
+          additionalProperties: false
+          required: [name]
+          properties:
+            name: { type: string }
+        owner: { $ref: '#/components/schemas/Person' }
+        viewer:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [isOwner, isMember]
+              properties:
+                isOwner: { type: boolean, description: "It's your own list (joining it is a 409)." }
+                isMember: { type: boolean, description: "You're on it already." }
+            - type: 'null'
+
+    ListJoined:
+      type: object
+      additionalProperties: false
+      required: [list, invitedTo]
+      properties:
+        list: { $ref: '#/components/schemas/ListMembership' }
+        invitedTo: { type: integer, minimum: 0, description: 'How many events you were invited to just now (they are in your invitations).' }
+
+    ListAttached:
+      type: object
+      additionalProperties: false
+      required: [event, invitedCount]
+      properties:
+        event: { $ref: '#/components/schemas/Event' }
+        invitedCount: { type: integer, minimum: 0, description: How many people were invited just now. }
+
+    HostList:
+      description: |
+        A list on an event, as its hosts see it. `memberCount` only for
+        your own (null for a co-host's).
+      type: object
+      additionalProperties: false
+      required: [id, name, code, url, owner, isYours, memberCount, attachedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
+        name: { type: string }
+        code: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
+        url: { type: string, description: 'The join link, for a QR code at the door.' }
+        owner: { $ref: '#/components/schemas/Person' }
+        isYours: { type: boolean }
+        memberCount: { type: [integer, 'null'], minimum: 0 }
+        attachedAt: { type: string, format: date-time }
+
+    JoinableList:
+      description: |
+        A list on this event the viewer could join, for "Get invited next
+        time": its link's `code`, `name` and `owner` (one of the hosts).
+        Joining is `POST /api/v1/list-links/{code}/join`; signed out, send
+        them to `url`.
+      type: object
+      additionalProperties: false
+      required: [code, name, url, owner]
+      properties:
+        code: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
+        name: { type: string }
+        url: { type: string }
+        owner: { $ref: '#/components/schemas/Person' }
 
     DeviceInput:
       type: object
