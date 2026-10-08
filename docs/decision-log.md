@@ -1121,3 +1121,8 @@ Fixes for the security review's events findings (branch `fix/review`).
   is new: `DELETE /api/v1/events/{id}`, creator only, removing everything
   (the link then 404s). The confirm suggests cancelling instead when
   people have answered. Co-hosts get "Step down" in the menu.
+- **(You)** UI updates reach events main more often. The web agent
+  merges main into its branch, runs the tests, and fast-forwards main
+  after each finished change, instead of the orchestrator merging at the
+  end. · Schema steps deploy as they land, so a step on main is never
+  edited, only followed by the next one.
