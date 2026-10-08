@@ -1395,3 +1395,22 @@ Fixes for the security review's events findings (branch `fix/review`).
   public/ui.js (the page tests pin the current `sizes`). Picking a new
   photo in the editor drops the saved cover's `srcset`, or the browser
   would keep showing the old one.
+
+## Calendar feed (queued, on branches for review)
+
+- **(You)** A personal calendar feed, and a shared Canopy calendar
+  across all apps.
+- Design: one `webcal://account.canopysf.com/cal/<secret>.ics` per
+  person (the secret is stored hashed, with reset on the profile). The
+  account service pulls each site's entries server to server
+  (`GET /api/calendar/<personId>`, JSON), merges them, caches each site
+  for about 5 minutes, and serves a site's last good copy when it's
+  down. Sites keep their own data; the account service stores none.
+  Events is the first site. **Tickets has to implement the same
+  contract** (that repo isn't on this machine).
+- The account side is built on `feat/data-security` (schema v11),
+  because that branch already uses v8–10. So **merge data-security
+  first.**
+- Events entries: hosting and going are confirmed; maybe and waitlisted
+  are tentative; cancelled ones are kept marked cancelled for 30 days;
+  declined and removed are dropped. No guest names.
