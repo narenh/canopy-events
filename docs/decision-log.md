@@ -2490,3 +2490,10 @@ viewers like the address. The rest:
   person stays on as `not_going`; the concurrency test has everyone
   going say can't go at once; the store-level rollback test uses
   `setAnswer(..., 'not_going')`; the event page has no withdraw button.
+- **(You)** No autofill on any event-editor field (contacts, addresses,
+  emails, passwords). The form and every field get `autocomplete="off"`
+  plus the password managers' opt-outs (1Password, LastPass, Bitwarden,
+  Dashlane), applied by script to fields added later too. · Browsers
+  treat `off` as a hint (Chrome ignores it for fields it takes for
+  addresses, Safari guesses from labels), so it's best-effort. · The
+  iOS editor should match (no textContentType on its fields).

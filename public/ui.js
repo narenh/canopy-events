@@ -1900,7 +1900,9 @@
     const e = d.event || {};
     const zone = e.timeZone || o.zone || 'UTC';
     const vis = e.guestListVisibility || 'everyone';
-    let h = '<form class="stack editor" id="eventForm" novalidate>';
+    // No autofill anywhere in the editor (contacts, addresses, emails,
+    // passwords): see views/editor.html, which also marks every field.
+    let h = '<form class="stack editor" id="eventForm" novalidate autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">';
     h += '<h1 class="sr-only">' + tx(d.event ? 'editor.editHeading' : 'editor.newHeading') + '</h1>';
 
     // The event card, as the page draws it.
