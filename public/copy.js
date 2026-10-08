@@ -209,7 +209,7 @@ const COPY = {
     added: '{name} is now a co-host.',
     creatorOnly: 'Only the person who made this event can add co-hosts.',
     closed: "Co-hosts can't be added: this event is over or cancelled.",
-    noFriends: "You don't have friends here yet. Friends are people you've been to an event with.",
+    noFriends: "You don't have friends here yet. Add some on the Friends page, or after an event everyone who was there shows up.",
     noMatch: 'No friends by that name.',
     errors: {
       email_unverified: "{name} can't co-host yet. A co-host needs a confirmed email, and to have opened Canopy Events with it at least once.",
@@ -319,9 +319,9 @@ const COPY = {
   // ---------------- Inviting friends, at /e/<id>/invite ----------------
   invite: {
     heading: 'Invite Friends',
-    hint: "Your friends are the people you've been to events with. They'll see this in their invitations.",
+    hint: "Your friends: people you've been to events with, and people you've added. They'll see this in their invitations.",
     search: 'Search by name',
-    noFriends: "You don't have friends here yet. Friends are people you've been to an event with. Share the link instead, and after the event they'll be here.",
+    noFriends: "You don't have friends here yet. Share the link instead, or add friends on the Friends page.",
     noMatch: 'No friends by that name.',
     inviteSome: 'Invite {count}',
     invited: 'Invited {count} friends.',
@@ -352,11 +352,65 @@ const COPY = {
   // ---------------- Your friends, at /friends ----------------
   friends: {
     heading: 'Friends',
-    hint: "People you've been to an event with: hosting it or going, once it happened.",
-    empty: "No friends yet. Once you've been to an event, everyone else who was there shows up here.",
+    hint: "People you've been to an event with, and people you've added. Only you see this list.",
+    empty: "No friends yet. Share your friend link, or add someone by phone or Instagram. Everyone you go to an event with shows up here too.",
     together: '{count} events together',
     togetherOne: '1 event together',
-    lastTogether: 'last {date}'
+    lastTogether: 'last {date}',
+    // How someone is in your list, under their name.
+    source: {
+      added: 'Added',
+      link: 'Friend link',
+      invite: 'Invitation'
+    },
+    // Your friend link and its QR code.
+    linkHeading: 'Your friend link',
+    linkHint: "Anyone who opens it and says yes is your friend, and you're theirs.",
+    reset: 'Reset link',
+    resetConfirm: 'Make a new link? The old link and QR code stop working. Friends you made with it stay friends.',
+    copied: 'Link copied.',
+    // Adding by phone or Instagram.
+    lookupHeading: 'Add by phone or Instagram',
+    lookupHint: "Type their number or Instagram username exactly. Only people who let themselves be found will show up. They aren't told.",
+    lookupVerify: 'Confirm your email to add people by phone number or Instagram.',
+    lookupNone: 'No one found. Check the number or username, or send them your friend link instead.',
+    lookupOff: "Finding people by phone number or Instagram isn't available yet.",
+    added: 'Added {name}.',
+    alreadyTag: 'Friend',
+    removeConfirm: "Remove {name} from your friends? They won't be told, and they won't come back unless you add them.",
+    errors: {
+      bad_phone: "That doesn't look like a phone number.",
+      bad_instagram: 'An Instagram username is letters, numbers, dots and underscores.',
+      one_of: 'Type a phone number or an Instagram username.',
+      rate_limited: "That's a lot for one day. Try again tomorrow.",
+      email_unverified: 'Confirm your email to add people by phone number or Instagram.'
+    }
+  },
+
+  // ---------------- Someone's friend link, at /f/<code> ----------------
+  friendLink: {
+    signedOutHeading: '{name} on Canopy',
+    signedOutHint: "Sign in or make a quick account to add {first} as a friend. You'll be in each other's friends.",
+    signUp: 'Sign up to add {first}',
+    signIn: 'I have a Canopy account, sign in',
+    confirm: 'Add {name} as a friend?',
+    confirmHint: "You'll be in each other's friends, for inviting and seeing who's going.",
+    yoursHeading: 'This is your friend link',
+    yoursHint: 'Share it, and whoever opens it can add you.',
+    alreadyHeading: "You and {first} are friends",
+    toFriends: 'See your friends',
+    notFoundHeading: "This link doesn't work",
+    notFound: 'It may have been reset. Ask for a new one.',
+    tooMany: "That's a lot of links that didn't work. Try again later.",
+    pageTitle: 'Add {first}',
+    // Link previews (iMessage, WhatsApp): the first name only, no photo.
+    previewTitle: 'Add {first} on Canopy',
+    previewText: "{first}'s friend link on Canopy Events.",
+    errors: {
+      own_link: "That's your own friend link.",
+      friend_link_not_found: "This link doesn't work any more. It may have been reset.",
+      rate_limited: "That's a lot of friends for one day. Try again tomorrow."
+    }
   }
 };
 

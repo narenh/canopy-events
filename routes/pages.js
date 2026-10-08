@@ -1,7 +1,8 @@
 // The web pages: an event (/e/<id>, what a shared link opens), your
 // events (/), making and editing one (/new, /e/<id>/edit), inviting
 // friends or anyone by phone or Instagram (/e/<id>/invite), adding
-// co-hosts (/e/<id>/cohosts) and your friends (/friends).
+// co-hosts (/e/<id>/cohosts), your friends and your friend link
+// (/friends), and someone else's friend link (/f/<code>).
 //
 // **The pages are a client of the API, the same as the apps.** Each page
 // asks this server's own /api/v1 for what it shows (over loopback, as
@@ -23,7 +24,8 @@ const http = require('http');
 const createRender = require('../lib/render');
 const UI = require('../public/ui.js');
 const { t } = require('../public/copy.js');
-const { EVENT_ID_RE } = require('../lib/ids');
+const { EVENT_ID_RE, FRIEND_CODE_RE } = require('../lib/ids');
+const { qrSvg } = require('../lib/qr');
 const { isVerified } = require('../lib/people');
 const { publicBase } = require('../lib/domain');
 
@@ -290,16 +292,45 @@ module.exports = function pagesRoutes(ctx) {
 
   // ---------------- Friends ----------------
 
+  // Your friend link (with its QR code, drawn here: lib/qr.js), adding by
+  // phone or Instagram, and your list. The QR code is the one thing on a
+  // page the API doesn't give: it's the link, drawn.
   router.get('/friends', attach, signedIn, pageRoute(async (req, res) => {
-    const friends = want(await apiGet(req, `/me/friends?limit=${FRIENDS_SHOWN}`));
-    const main = '<section class="card" id="friends"><h2>' + UI.tx('friends.heading') + '</h2>'
-      + '<p>' + UI.tx('friends.hint') + '</p>'
-      + (friends.friends.length
-        ? '<ul class="people" id="friendList">' + UI.friendRows(friends.friends) + '</ul>'
-        : '<p class="empty" style="margin:0">' + UI.tx('friends.empty') + '</p>')
-      + (friends.nextCursor ? '<button type="button" class="secondary more" data-action="more">' + UI.tx('common.showMore') + '</button>' : '')
-      + '</section>';
-    render.page(req, res, 'friends.html', { current: 'friends', title: t('friends.heading'), main, data: { me: meView(req.person), nextCursor: friends.nextCursor } });
+    const [link, friends] = await Promise.all([apiGet(req, '/me/friend-link'), apiGet(req, `/me/friends?limit=${FRIENDS_SHOWN}`)]);
+    const me = meView(req.person);
+    const data = {
+      me, link: want(link), friends: want(friends).friends, nextCursor: want(friends).nextCursor,
+      // Adding by phone or Instagram is for verified people.
+      links: me.emailVerified ? null : { verify: canopy.verifyUrl(req, render.hereUrl(req)) }
+    };
+    const qr = qrSvg(data.link.url, { label: t('friends.linkHeading') }).svg;
+    render.page(req, res, 'friends.html', { current: 'friends', title: t('friends.heading'), main: UI.friendsPage(data, { qr }), data });
+  }));
+
+  // Someone's friend link: who it is, and (signed in) "Add them?" with one
+  // button. Opening it adds nobody, so a link preview or a tap by mistake
+  // changes nothing. Signed out, sign in or quick-sign-up and come back.
+  router.get('/f/:code', attach, pageRoute(async (req, res) => {
+    const r = FRIEND_CODE_RE.test(req.params.code) ? await apiGet(req, `/friend-links/${req.params.code}`) : { status: 404 };
+    if (r.status === 404 || r.status === 429) {
+      return render.message(req, res, r.status, {
+        heading: t('friendLink.notFoundHeading'),
+        text: t(r.status === 429 ? 'friendLink.tooMany' : 'friendLink.notFound'),
+        button: req.person ? { href: '/friends', label: t('friendLink.toFriends') } : null
+      });
+    }
+    const { person, viewer } = want(r);
+    const here = `${publicBase(req)}/f/${req.params.code}`;
+    const data = {
+      me: meView(req.person), person, viewer, code: req.params.code,
+      links: req.person ? null : { quickSignUp: canopy.quickSignUpUrl(req, here), signIn: canopy.signInUrl(req, here) }
+    };
+    render.page(req, res, 'friend-link.html', {
+      title: t('friendLink.pageTitle', { first: person.firstName || person.shortName }),
+      meta: render.friendLinkMeta(person, here),
+      main: UI.friendLinkPage(data),
+      data
+    });
   }));
 
   // Anything else a browser asks for, that nothing above or in public/

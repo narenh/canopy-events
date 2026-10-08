@@ -8,8 +8,13 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/events.css">
 </head>
-<!-- Your friends (/friends): people you've been to an event with, most
-     events in common first, from GET /api/v1/me/friends. -->
+<!-- Your friends (/friends): your friend link (GET /api/v1/me/friend-link)
+     with its QR code (drawn by the server, lib/qr.js), Share, Copy and
+     Reset (POST .../reset); adding someone by phone or Instagram (POST
+     /api/v1/people/lookup, then POST /api/v1/me/friends); and your list
+     (GET /api/v1/me/friends), each with Remove (DELETE
+     /api/v1/me/friends/<id>, asked first). Drawn by public/ui.js
+     (friendsPage). -->
 <body class="mesh-bg">
 <!-- PAGE:HEADER -->
 <main class="wrap">
@@ -25,13 +30,138 @@
 applyCopy();
 
 const data = pageData();
+const listEl = document.getElementById('friendList');
+const shown = new Set(data.friends.map((f) => f.person.id));
+
+// Says `text` in the notice or error `id`, clearing the other one of the
+// pair (linkNotice and linkError, say).
+function say(id, text){
+  const prefix = id.replace(/(Notice|Error)$/, '');
+  [prefix + 'Notice', prefix + 'Error'].forEach((x) => { const el = document.getElementById(x); if (el) el.textContent = ''; });
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function emptyCheck(){
+  document.getElementById('noFriends').classList.toggle('hidden', listEl.children.length > 0);
+}
+
+// ---------------- Your friend link ----------------
+
+async function copyLink(url){
+  try{
+    await navigator.clipboard.writeText(url);
+    say('linkNotice', t('friends.copied'));
+  }catch(e){
+    window.prompt('', url);
+  }
+}
+
+// ---------------- Adding by phone or Instagram ----------------
+//
+// The invite page's lookup, with "Add friend" for the person it finds.
+// What's typed decides which to ask: anything with a letter or starting
+// with @ is an Instagram username, otherwise it's a phone number.
+const lookupForm = document.getElementById('lookupForm');
+let found = null;
+
+function drawFound(){
+  document.getElementById('lookupResult').innerHTML = found ? UI.friendFound(found, shown.has(found.id)) : '';
+}
+
+if (lookupForm){
+  lookupForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = document.getElementById('lookupQuery').value.trim();
+    found = null;
+    drawFound();
+    if (!q){ say('lookupError', COPY.friends.errors.one_of); return; }
+    const kind = /^@|[a-z]/i.test(q) ? 'instagram' : 'phone';
+    let after = null;
+    busy(document.getElementById('lookupBtn'), document.getElementById('lookupError'), async () => {
+      const { res, data: d } = await api('POST', '/people/lookup', { [kind]: q }, { stay: true });
+      if (res.ok){
+        found = d.person && d.person.id !== data.me.id ? d.person : null;
+        drawFound();
+        if (!found) after = ['lookupNotice', t('friends.lookupNone')];
+        return;
+      }
+      if (d.reason === 'lookup_not_allowed'){
+        document.getElementById('lookup').innerHTML = '<h3>' + UI.tx('friends.lookupHeading') + '</h3><p style="margin:0">' + UI.tx('friends.lookupOff') + '</p>';
+        return;
+      }
+      after = ['lookupError', COPY.friends.errors[d.reason] || sentence(d.error)];
+    }).then(() => { if (after) say(after[0], after[1]); });
+  });
+}
 
 onActions({
+  'share-link': async (btn) => {
+    const url = btn.getAttribute('data-url');
+    if (navigator.share){
+      try{ await navigator.share({ title: t('friends.linkHeading'), url }); }catch(e){}
+      return;
+    }
+    copyLink(url);
+  },
+  'copy-link': (btn) => copyLink(btn.getAttribute('data-url')),
+  select: (el) => el.select(),
+
+  // A new link: the old one (and its QR code) stops working. The page is
+  // drawn again by the server, which draws the new QR code.
+  'reset-link': (btn) => {
+    if (!confirm(t('friends.resetConfirm'))) return;
+    let refused = '';
+    busy(btn, document.getElementById('linkError'), async () => {
+      const { res, data: d } = await api('POST', '/me/friend-link/reset');
+      if (!res.ok){ refused = sentence(d.error); return; }
+      window.location.reload();
+    }).then(() => { if (refused) say('linkError', refused); });
+  },
+
+  // Adding the person a lookup found: one way, they aren't told. They go
+  // at the top of the list.
+  'add-found': (btn) => {
+    const id = btn.getAttribute('data-person');
+    const name = btn.getAttribute('data-name');
+    let after = null;
+    busy(btn, document.getElementById('lookupError'), async () => {
+      const { res, data: d } = await api('POST', '/me/friends', { personId: id }, { stay: true });
+      if (!res.ok){ after = ['lookupError', COPY.friends.errors[d.reason] || sentence(d.error)]; return; }
+      if (!shown.has(id)){
+        listEl.insertAdjacentHTML('afterbegin', UI.friendRows([d.friend]));
+        shown.add(id);
+        emptyCheck();
+      }
+      drawFound();
+      after = ['lookupNotice', t('friends.added', { name })];
+    }).then(() => { if (after) say(after[0], after[1]); });
+  },
+
+  // Taking someone out, after asking. Quietly: they aren't told.
+  'remove-friend': (btn) => {
+    const id = btn.getAttribute('data-person');
+    if (!confirm(t('friends.removeConfirm', { name: btn.getAttribute('data-name') }))) return;
+    let refused = '';
+    busy(btn, document.getElementById('friendsError'), async () => {
+      const { res, data: d } = await api('DELETE', '/me/friends/' + encodeURIComponent(id));
+      // Already gone (another tab): the same as done.
+      if (!res.ok && d.reason !== 'not_a_friend'){ refused = sentence(d.error); return; }
+      const row = btn.closest('li');
+      if (row) row.remove();
+      shown.delete(id);
+      emptyCheck();
+      if (found && found.id === id) drawFound();
+    }).then(() => { if (refused) say('friendsError', refused); });
+  },
+
   // The next page, added to the end.
   more: (btn) => busy(btn, null, async () => {
     const { res, data: d } = await api('GET', '/me/friends?limit=50&cursor=' + encodeURIComponent(data.nextCursor));
     if (!res.ok) return;
-    document.getElementById('friendList').insertAdjacentHTML('beforeend', UI.friendRows(d.friends));
+    const fresh = d.friends.filter((f) => !shown.has(f.person.id));
+    fresh.forEach((f) => shown.add(f.person.id));
+    listEl.insertAdjacentHTML('beforeend', UI.friendRows(fresh));
     data.nextCursor = d.nextCursor;
     if (!d.nextCursor) btn.remove();
   })

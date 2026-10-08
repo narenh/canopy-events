@@ -135,7 +135,8 @@ event link on a phone.
 | `/new`, `/e/<id>/edit` | **The editor**, drawn like the event page: the cover as the hero (an upload button and a × on it, sent on save), the title typed where it shows, the date and times as big as the page's (each tapped to change), the time zone by friendly name with a "Change" menu (nearby zones first, then a search of all), the place and address, the description, who sees the guest list, plus-ones, capacity, and the event's colour (a slider that repaints the page as you drag). No help text. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
 | `/e/<id>/invite` | **Inviting** (hosts): find someone by their exact phone number or Instagram username (verified hosts; a name and a photo come back, never their details), then your friends with a search box, the ones already on the list (or removed, or hosting) marked. |
 | `/e/<id>/cohosts` | **Adding co-hosts** (the creator): your friends with a search box and "Add"; anyone who can't co-host yet (an unconfirmed email) is told why under their row. |
-| `/friends` | **Your friends**: people you've been to an event with, and how many events in common. |
+| `/friends` | **Your friends**: your friend link with Share, Copy and its QR code (drawn on the server as an inline SVG, `lib/qr.js`), and Reset; "Add by phone or Instagram" (verified people; the invite page's lookup, with "Add friend"); and your list, how each is in it, with Remove (asked first). |
+| `/f/<code>` | **Someone's friend link**: their name and photo. Signed out, "Sign up to add Ana" (quick sign-up) or sign in, coming back here. Signed in, "Add Ana Lima as a friend?" with one button, then your friends; opening the page adds nobody. Link previews get the first name only, no photo. |
 
 Every page has the header (the logo, your events, friends, and your
 photo, which opens your Canopy profile), a sign-out link at the bottom,

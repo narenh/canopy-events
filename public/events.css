@@ -800,6 +800,22 @@ textarea.address-input{min-height:0;margin-top:8px;}
 .lookup-row button{width:auto;flex:0 0 auto;padding:12px 20px;}
 .found{margin-top:12px;}
 #lookup .notice, #lookup .error{margin-top:10px;}
+
+/* Your friend link: the QR code on its own white tile (scanners want
+   black on white, whatever the page's colours), the link, Share and Copy,
+   and a quiet Reset. */
+.qr{width:min(220px, 70%);margin:4px auto 16px;background:#fff;border-radius:14px;padding:6px;}
+.qr svg{display:block;width:100%;height:auto;}
+.link-field{text-align:center;font-size:var(--fs-small) !important;}
+.button-row{display:flex;gap:8px;}
+.button-row > *{flex:1;}
+#friendLink .notice, #friendLink .error{margin-top:10px;}
+.reset-link{display:flex;margin:6px auto 0;}
+
+/* Someone's friend link, /f/<code>: their face, big, over the question. */
+.friend-card .avatar.big{--av:88px;margin:4px auto 14px;display:flex;font-size:28px;}
+.friend-card h1{font-size:var(--fs-h2);margin:0 0 8px;}
+.friend-card p{margin:0 0 18px;}
 /* What happened, under a row of a long list. */
 .row-note{list-style:none;font-size:var(--fs-small);padding:0 0 12px 56px;}
 .row-note.error{color:var(--danger);}

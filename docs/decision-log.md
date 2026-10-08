@@ -2148,3 +2148,48 @@ events together) and that it's one way, like following. The rest:
   file, as the README says. · n/a
 - **`auth.returnTo` knows `:code`**: a signed-out accept's 401 sends
   people back to `/f/<code>`, not the home page. · lib/auth.js.
+- **The QR code is drawn on the server as an inline SVG (`lib/qr.js`)
+  with `qrcode-generator` 2.0.4** (Kazuhiko Arase's, MIT, no
+  dependencies) for the encoding and our own drawing (one path, a run per
+  row, black on a white tile with the standard 4-module quiet zone,
+  correction level M). The production link is version 3, 29 modules. ·
+  The `qrcode` package pulls in a CLI's worth of dependencies; this one
+  has none. Drawing it ourselves makes the SVG about a tenth the size of
+  the library's own. **Checked by decoding:** test/qr.test.js renders the
+  SVG to pixels with sharp and reads it back with `jsqr` (a dev
+  dependency, an independent decoder) at two sizes for three links, and
+  checks version 3 and the quiet zone; test/friend-pages.test.js decodes
+  the one on the friends page the same way. A deliberately broken code
+  doesn't decode (checked by hand). · Swap the encoder in lib/qr.js.
+- **lib/qr.js is allowed on the web side of the boundary test.** · It's
+  pure (text in, SVG out) and draws a link the API gave; the apps make
+  their own QR codes (docs/api.md says how). · Return a `qrSvg` from
+  `GET /me/friend-link` instead.
+- **Reset reloads the friends page** rather than redrawing the QR code in
+  the browser. · The encoder is server side only; a reset is rare. ·
+  Ship the encoder to the page.
+- **/f/<code>: link previews get "Add Ana on Canopy" and "Ana's friend
+  link on Canopy Events.", the first name only, no photo, no image tag.**
+  The page itself shows the full name and photo (initials signed out,
+  since photos need a Canopy session). · Previews are fetched and kept by
+  machines, and a link pasted somewhere public shouldn't carry a face
+  and a full name. · `friendLinkMeta` in lib/render.js.
+- **/f/<code> signed in: one confirm card; already friends and your own
+  link say so instead of offering the button; after yes, the friends
+  page.** A wrong or reset code is a 404 page. · As designed. ·
+  views/friend-link.html, `UI.friendLinkPage`.
+- **Friends page lookup**: the invite page's lookup UI (`lookupSection`
+  now takes a copy prefix), with "Add friend" or a "Friend" tag; a found
+  person is put at the top of the list. Finding yourself shows nothing.
+  · Reuse. · `UI.friendFound`, views/friends.html.
+- **Removing asks first ("They won't be told, and they won't come back
+  unless you add them").** · It sticks (hidden), so the confirm says so.
+  · `friends.removeConfirm` in public/copy.js.
+- **A friend's line says how they're in your list ("Added", "Friend
+  link", "Invitation") and then events together;** the invite and
+  co-host pickers use the same line, so a friend with 0 events in common
+  doesn't read "0 events together". · `UI.friendSub`.
+- **Visual check** at 375 px and desktop against the fake account
+  service: the friends page (QR, link, Share/Copy, Reset, lookup →
+  "Add friend" → top of the list, Remove), and /f/<code> signed in
+  (confirm → friends page) and signed out.

@@ -26,7 +26,8 @@ const ALLOWED = new Set([
   ...ENTRY_POINTS,
   'lib/people.js', // isVerified: reads a person the account service gave us
   'lib/domain.js', // publicBase: this site's own address
-  'lib/ids.js' // EVENT_ID_RE: what an event id looks like
+  'lib/ids.js', // EVENT_ID_RE, FRIEND_CODE_RE: what an event id and a friend link code look like
+  'lib/qr.js' // qrSvg: a QR code for a link the API gave, drawn as SVG (text in, string out)
 ]);
 
 function localRequires(file) {

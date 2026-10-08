@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>__PAGE_TITLE__</title>
+<meta name="theme-color" content="#03120c">
+<meta name="robots" content="noindex, nofollow">
+<!-- The link preview: the first name only, no photo. lib/render.js's
+     friendLinkMeta(). -->
+<!-- PAGE:META -->
+<link rel="stylesheet" href="/events.css">
+</head>
+<!-- Someone's friend link (/f/<code>): who it is (GET
+     /api/v1/friend-links/<code>), and, signed in, "Add them as a friend?"
+     with one button (POST .../accept), then your friends. Opening the
+     page adds nobody. Signed out: sign in or quick-sign-up, and back here.
+     Drawn by public/ui.js (friendLinkPage). -->
+<body class="mesh-bg">
+<!-- PAGE:HEADER -->
+<main class="wrap">
+  <!-- PAGE:BANNER -->
+  <div id="main" class="stack"><!-- PAGE:MAIN --></div>
+</main>
+<!-- PAGE:FOOTER -->
+<script type="application/json" id="pageData">__PAGE_DATA__</script>
+<script src="/copy.js"></script>
+<script src="/ui.js"></script>
+<script src="/events.js"></script>
+<script>
+applyCopy();
+
+const data = pageData();
+
+onActions({
+  // Saying yes: you're friends both ways, and off to your friends.
+  accept: (btn) => {
+    let refused = '';
+    busy(btn, document.getElementById('acceptError'), async () => {
+      const { res, data: d } = await api('POST', '/friend-links/' + encodeURIComponent(data.code) + '/accept');
+      if (!res.ok){ refused = COPY.friendLink.errors[d.reason] || sentence(d.error); return; }
+      window.location.href = '/friends';
+    }).then(() => { if (refused) document.getElementById('acceptError').textContent = refused; });
+  }
+});
+</script>
+</body>
+</html>

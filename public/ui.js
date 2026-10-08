@@ -1300,17 +1300,102 @@
 
   // ---------------- Friends ----------------
 
+  // "2 events together", or nothing with none in common (someone you
+  // added).
   function together(f, prefix) {
+    if (!f.eventsInCommon) return '';
     return f.eventsInCommon === 1 ? t(prefix + '.togetherOne') : t(prefix + '.together', { count: f.eventsInCommon });
   }
 
+  // How a friend is in your list, under their name: the way in ("Friend
+  // link", "Added") when there's one, then events together.
+  function friendSub(f, prefix, withLast) {
+    const how = f.source && f.source !== 'shared_events' ? t('friends.source.' + f.source) : '';
+    const last = withLast && f.lastTogetherAt
+      ? t('friends.lastTogether', { date: new Date(f.lastTogetherAt).toLocaleDateString(LOCALE, { month: 'short', day: 'numeric', year: 'numeric' }) })
+      : '';
+    return [how, together(f, prefix), last].filter(Boolean).join(' · ');
+  }
+
+  // Your friends, each with Remove (the page asks first).
   function friendRows(friends) {
     return friends.map((f) => {
-      const last = f.lastTogetherAt
-        ? t('friends.lastTogether', { date: new Date(f.lastTogetherAt).toLocaleDateString(LOCALE, { month: 'short', day: 'numeric', year: 'numeric' }) })
-        : '';
-      return personRow(f.person, [together(f, 'friends'), last].filter(Boolean).join(' · '));
+      const p = f.person;
+      return '<li class="person" data-id="' + esc(p.id) + '">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div>'
+        + '<div class="sub">' + esc(friendSub(f, 'friends', true)) + '</div></div>'
+        + '<button type="button" class="small-btn secondary" data-action="remove-friend" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Remove</button></li>';
     }).join('');
+  }
+
+  // Your friend link: the QR code (drawn by the server, lib/qr.js, and
+  // passed in as `qr`, an SVG), the link, Copy, Share and Reset. `d` is
+  // { link: { url, code } }.
+  function friendLinkSection(d, qr) {
+    const url = d.link.url;
+    let h = '<section class="card" id="friendLink" data-section="friend-link"><h2>' + tx('friends.linkHeading') + '</h2>';
+    h += '<p>' + tx('friends.linkHint') + '</p>';
+    if (qr) h += '<div class="qr">' + qr + '</div>';
+    h += '<input type="text" class="link-field" id="friendLinkUrl" readonly value="' + esc(url) + '" aria-label="' + tx('friends.linkHeading') + '" data-action="select">';
+    h += '<div class="button-row">'
+      + '<button type="button" data-action="share-link" data-url="' + esc(url) + '">Share</button>'
+      + '<button type="button" class="secondary" data-action="copy-link" data-url="' + esc(url) + '">Copy</button></div>';
+    h += '<div class="notice" id="linkNotice" role="status"></div><div class="error" id="linkError" role="alert"></div>';
+    h += '<button type="button" class="link-btn quiet reset-link" data-action="reset-link">' + tx('friends.reset') + '</button>';
+    return h + '</section>';
+  }
+
+  // The person a lookup on the friends page found: "Add friend", or that
+  // they already are one.
+  function friendFound(p, isFriend) {
+    return '<ul class="people found"><li class="person">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div></div>'
+      + (isFriend ? '<span class="tag">' + tx('friends.alreadyTag') + '</span>'
+        : '<button type="button" class="small-btn" data-action="add-found" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Add friend</button>')
+      + '</li></ul>';
+  }
+
+  // The friends page: your link, adding by phone or Instagram, and your
+  // list. `d` is { me, link, friends, nextCursor, links }; `o.qr` the QR
+  // code's SVG.
+  function friendsPage(d, o) {
+    let h = friendLinkSection(d, (o || {}).qr);
+    h += lookupSection(d, 'friends');
+    h += '<section class="card" id="friends" data-section="friends"><h2>' + tx('friends.heading') + '</h2>';
+    h += '<p>' + tx('friends.hint') + '</p>';
+    h += '<div class="error" id="friendsError" role="alert"></div>';
+    h += '<ul class="people" id="friendList">' + friendRows(d.friends) + '</ul>';
+    h += '<p class="empty' + (d.friends.length ? ' hidden' : '') + '" id="noFriends" style="margin:0">' + tx('friends.empty') + '</p>';
+    if (d.nextCursor) h += '<button type="button" class="secondary more" data-action="more">' + tx('common.showMore') + '</button>';
+    return h + '</section>';
+  }
+
+  // Someone's friend link, /f/<code>: who it is, and what you can do.
+  // `d` is { me, person, viewer, links: { quickSignUp, signIn } }.
+  function friendLinkPage(d) {
+    const p = d.person;
+    const first = p.firstName || fullName(p);
+    let h = '<section class="card center friend-card" id="friendInvite">' + avatar(p, 'big');
+    if (!d.me) {
+      const links = d.links || {};
+      h += '<h1>' + tx('friendLink.signedOutHeading', { name: fullName(p) }) + '</h1>';
+      h += '<p class="center">' + tx('friendLink.signedOutHint', { first }) + '</p>';
+      h += '<a class="button" href="' + esc(links.quickSignUp) + '">' + tx('friendLink.signUp', { first }) + '</a>';
+      h += '<p class="cta-sub"><a class="link-btn" href="' + esc(links.signIn) + '">' + tx('friendLink.signIn') + '</a></p>';
+      return h + '</section>';
+    }
+    const v = d.viewer || {};
+    if (v.isYou) {
+      h += '<h1>' + tx('friendLink.yoursHeading') + '</h1><p class="center">' + tx('friendLink.yoursHint') + '</p>';
+      return h + '<a class="button secondary" href="/friends">' + tx('friendLink.toFriends') + '</a></section>';
+    }
+    if (v.isFriend) {
+      h += '<h1>' + tx('friendLink.alreadyHeading', { first }) + '</h1>';
+      return h + '<a class="button secondary" href="/friends">' + tx('friendLink.toFriends') + '</a></section>';
+    }
+    h += '<h1>' + tx('friendLink.confirm', { name: fullName(p) }) + '</h1>';
+    h += '<p class="center">' + tx('friendLink.confirmHint', { first }) + '</p>';
+    h += '<div class="error" id="acceptError" role="alert"></div>';
+    h += '<button type="button" id="acceptBtn" data-action="accept">Add friend</button>';
+    return h + '</section>';
   }
 
   // What someone already on the list said, as a tag.
@@ -1323,7 +1408,7 @@
   function inviteRow(f, onList) {
     const p = f.person;
     const status = onList[p.id];
-    const sub = together(f, 'invite');
+    const sub = friendSub(f, 'invite');
     const right = status ? statusTag(status) : '<input type="checkbox" value="' + esc(p.id) + '" aria-label="' + esc(fullName(p)) + '">';
     return '<li class="person' + (status ? ' on-list' : '') + '" data-name="' + esc(fullName(p).toLowerCase()) + '">'
       + '<label style="display:contents">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div><div class="sub">' + esc(sub) + '</div></div>' + right + '</label></li>';
@@ -1332,17 +1417,19 @@
   // Finding someone by their phone number or Instagram username: one
   // field, an exact match (the account service's lookup, through POST
   // /api/v1/people/lookup), and the person it finds, a name and a photo,
-  // offered with "Invite". Only for verified people (the API's rule);
-  // anyone else is told how to get it.
-  function lookupSection(d) {
-    let h = '<section class="card" id="lookup" data-section="lookup"><h3>' + tx('invite.lookupHeading') + '</h3>';
+  // offered with "Invite" (the invite page) or "Add friend" (the friends
+  // page; `prefix` 'friends' picks its words). Only for verified people
+  // (the API's rule); anyone else is told how to get it.
+  function lookupSection(d, prefix) {
+    prefix = prefix || 'invite';
+    let h = '<section class="card" id="lookup" data-section="lookup"><h3>' + tx(prefix + '.lookupHeading') + '</h3>';
     if (!d.me || !d.me.emailVerified) {
       const verify = d.links && safeUrl(d.links.verify);
-      return h + '<p style="margin:0">' + (verify ? '<a href="' + esc(verify) + '">' + tx('invite.lookupVerify') + '</a>' : tx('invite.lookupVerify')) + '</p></section>';
+      return h + '<p style="margin:0">' + (verify ? '<a href="' + esc(verify) + '">' + tx(prefix + '.lookupVerify') + '</a>' : tx(prefix + '.lookupVerify')) + '</p></section>';
     }
-    h += '<p>' + tx('invite.lookupHint') + '</p>';
+    h += '<p>' + tx(prefix + '.lookupHint') + '</p>';
     h += '<form class="lookup-row" id="lookupForm" novalidate>'
-      + '<input type="text" id="lookupQuery" placeholder="' + tx('invite.lookupPlaceholder') + '" aria-label="' + tx('invite.lookupHeading') + '" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="64">'
+      + '<input type="text" id="lookupQuery" placeholder="' + tx('invite.lookupPlaceholder') + '" aria-label="' + tx(prefix + '.lookupHeading') + '" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="64">'
       + '<button type="submit" id="lookupBtn">Find</button></form>';
     h += '<div id="lookupResult"></div><div class="notice" id="lookupNotice" role="status"></div><div class="error" id="lookupError" role="alert"></div>';
     return h + '</section>';
@@ -1396,7 +1483,7 @@
       ? '<span class="tag off">' + tx(role === 'creator' ? 'status.hosting' : 'status.cohosting') + '</span>'
       : '<button type="button" class="small-btn" data-action="add-cohost" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Add</button>';
     return '<li class="person" data-id="' + esc(p.id) + '" data-name="' + esc(fullName(p).toLowerCase()) + '">' + avatar(p)
-      + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div><div class="sub">' + esc(together(f, 'invite')) + '</div></div>' + right + '</li>';
+      + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div><div class="sub">' + esc(friendSub(f, 'invite')) + '</div></div>' + right + '</li>';
   }
 
   // The creator picks co-hosts from their friends, the same way as
@@ -1659,7 +1746,7 @@
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
-    eventRow, homeLists, homeList, friendRows, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
+    eventRow, homeLists, homeList, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED
   };
 });
