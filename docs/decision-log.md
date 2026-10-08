@@ -898,3 +898,184 @@ waitlist, host moderation and lookup, plus one API fix, built on branch
   work with touch everywhere; no library. · `themeField`,
   views/editor.html.
 
+## Security review (both services)
+
+The review found no critical or high issues. Fixes are in progress
+(account service on main; events on `fix/review`):
+
+- **Reversed: unverified accounts are no longer findable by lookup.** A
+  quick account (nothing proven) could claim your phone or Instagram
+  and your name, and become the only match, so a host invites the
+  impostor. Now only verified accounts match. · That raises the cost to
+  owning an email inbox. It's not a full fix: SMS phone verification
+  would be. · The account service's lookup query.
+- Changing your email no longer reveals whether the new address has an
+  account. Every try is counted first, and the refusal comes only at
+  the code step. · One passkey reauth allowed unlimited existence
+  checks. · n/a
+- When a code proves an unverified account's email (the takeover), the
+  squatter's phone, Instagram, Venmo, Cash App and photo are cleared
+  too. · Otherwise lookups and payments would still point at their
+  details. Kept: everything they did on events under that id. · n/a
+- HEIC covers: decoder memory is freed and decoding moves off the main
+  thread. · Each upload leaked about 14 MB and froze the server for
+  about 0.7 s. · n/a
+- Removing or uninviting someone deletes their notifications for that
+  event, and the inbox only shows an event's link to people still on
+  it. · Otherwise the inbox handed a removed guest the new link. · n/a
+- Plus: JSON errors for malformed requests, limits on making new
+  sessions, web photo uploads that can't be cleaned are refused, and
+  the invited count goes to hosts only.
+
+## Events web: friendlier design
+
+- **(You)** Larger fonts everywhere and a friendlier feel. Event covers
+  are first class: a 3:2 hero with a fade at the bottom.
+- Assumed: the type scale is roughly iOS sized (17px body, 15px minimum
+  for secondary text, 28–34px event titles). Events without a cover get
+  a generated green mesh at the same 3:2, so every event page has the
+  same hero. The 3:2 crop is display-only (the stored cover keeps its
+  full frame). Lists show the cover at 3:2 too. · CSS custom properties
+  in events.css.
+- This applies to the events pages only. The account service's pages
+  (sign-in, quick sign-up, profile) keep their smaller type for now. ·
+  To be decided by you: quick sign-up is the first page a guest sees
+  after events.
+- **(You)** Hosts pick each event's background colour with a slider
+  across the whole rainbow, at the same relative darkness.
+- Assumed: `themeHue` on the event, 0–359, or null for the default
+  Canopy green. The mesh is defined in OKLCH with lightness and chroma
+  fixed and only the hue varying, so every hue has the same perceived
+  darkness and text contrast holds. The slider lives in the editor with
+  a live preview and a "Canopy green" reset, and the hue themes the
+  event page (including the signed-out page and the no-cover hero).
+  Other pages stay green. The iOS app will read the same field. ·
+  docs/api.md says how the colours are derived, so the app can match.
+- **(You)** The date and time are much more prominent (Partiful-style).
+- Assumed: on the event page the when comes right after the title, on
+  the cover fade: the day and date large, the time almost as large, and
+  a relative pill ("Tomorrow", "This Saturday", "Happening now"). The
+  place comes after it, smaller. List rows lead with a bold accent
+  line, e.g. "SAT, OCT 10 · 7:30 PM", above the title. The signed-out
+  page gets the same treatment.
+- Account review fixes are on main (0e32e7f..8247337, then e5968a9):
+  - Changing to an address that already has an account sends that
+    address a "someone tried to move their account here" notice in
+    place of the code, so both cases answer identically. The refusal
+    (409) comes only at the code step. Also a new limit of 5 new
+    addresses per person per hour.
+  - After a takeover, the owner lands on their profile with a banner
+    saying what was cleared, so they can fix the name the squatter typed.
+  - New sessions are limited to 100 per address and 1,000 overall per
+    hour. · A carrier that puts many phones behind one address could
+    hit this; the README says so.
+  - Apps keep the `bad_photo` reason for unreadable photos, while the web
+    gets `bad_image`. · The iOS contract already documents `bad_photo`.
+  - A contested phone or handle stays unfindable even if the other claim
+    is an unverified account. · Cost: an unverified squatter can now
+    hide you. The verify banner now says unconfirmed people can't be
+    found.
+
+## Contact data security (queued, low priority, not merged tonight)
+
+- **(You)** Queued items 1–5: lookup by POST, per-site field scopes on
+  `/api/session`, encryption of contact fields with keyed-hash lookup,
+  self-serve account deletion, and a lookup audit log. They're on
+  `feat/data-security` in both repos, for your review. Their judgment
+  calls get logged on that branch.
+
+## Events review fixes
+
+Fixes for the security review's events findings (branch `fix/review`).
+
+- **The whole cover conversion runs in one worker thread**
+  (`lib/coverWorker.js`), not just the HEIC decode, one upload at a time
+  in a queue. · The WebAssembly decoder is synchronous (100 ms to most of
+  a second per photo), and sharp's raw-pixel copies are big; a single
+  worker keeps peak memory to one decode. Covers are rare, so a queue
+  costs little. · Make `toCoverJpeg` call `convert` directly.
+- The worker is **stopped after 30 s idle, after any failed job, and
+  after a job that runs past 30 s** (refused as 400 `bad_image`, "took
+  too long to read"). · A WebAssembly heap only grows while its worker
+  lives, and heic-decode doesn't free its decoder when a file won't
+  parse (that's inside the library); replacing the worker after a
+  failure means a stream of broken files can't build up a leak. The
+  cost is starting a worker (about half a second) on the next upload. ·
+  `IDLE_MS`, `JOB_TIMEOUT_MS` and `finish()` in lib/coverImage.js.
+- **HEIC is capped at 25 megapixels** (other formats stay at 50). ·
+  HEIC is decoded whole into memory, about 10 bytes a pixel twice over,
+  so a 48 MP "HEIF Max" photo needed several hundred MB at once. 25 MP
+  takes the 12 and 24 MP photos iPhones save by default; Safari sends
+  the web page a JPEG anyway, and the app can shrink first. ·
+  `MAX_HEIC_PIXELS` in lib/coverImage.js.
+- The HEIC fixtures were made with macOS `sips`: `cover-2mp.heic`
+  (657 KB of noise, so it's slow to decode like a real photo and a leak
+  shows) and `cover-26mp.heic` (14 KB, plain, just over the cap). · The
+  489-byte `cover.heic` leaks too little to measure. · n/a
+- The leak test checks the **libheif WebAssembly heap size**
+  (`HEAPU8.length`) to within 2 MB, and RSS through the worker only
+  loosely (under 80 MB growth over 20). · RSS moves a lot with GC and
+  allocator timing; the heap size is exact (17 MB steady after the fix,
+  +12 MB over 12 conversions without it). The /healthz test calibrates
+  itself: no /healthz may take half as long as the upload (4 ms vs a
+  133 ms upload after the fix; 100 ms of 126 ms before). · n/a
+- **Removing or uninviting someone deletes all their notifications about
+  that event**, in the same transaction (lib/store/rsvps.js
+  `removeGuest`, `uninvite`). Undoing a removal doesn't bring them
+  back. · Every entry carries the event's link. · Drop
+  `forgetNotifications`.
+- **The inbox's `event` is null** (not "title only") for anyone not on
+  the event now: not a host, and no invited-or-answered row that isn't
+  `removed` (`store.isOnEvent`). · Null was already allowed by the spec,
+  so apps need no new shape, and it gives away nothing; a title-only
+  object would have been a new schema with optional `id`. · lib/views.js
+  `notificationViews`.
+- That rule also covers **someone who answered without an invitation
+  and took the answer back**: their old entries stay but lose the
+  event. · They're off the list, the same as an uninvited person, and a
+  host may have made a new link with them in mind. The cost is an inbox
+  line they can't open; answering again at the link brings it back. ·
+  Count a deleted answer as "on" (needs a record of it).
+- **The push payload follows the same rule** (`eventId` and
+  `eventTitle` null for someone not on the event), checked when it's
+  queued. Everyone notified today is on the event, so this changes
+  nothing now; it's a guard for later triggers. There's no persistent
+  push queue (`push.queue` sends on the next tick), so there was no
+  queued push to delete. · n/a
+- **The other places that give out the current link were checked and
+  left alone**: `/me/events/*` lists only events you host or have a
+  non-removed row on; the wall, the guest list, cover URLs, friends and
+  `/me` don't carry an event's id; every `/events/{id}` route needs the
+  current link to begin with. · n/a
+- **A cover upload that isn't a well-formed form is 400 `bad_image`**,
+  not a new `bad_upload`. · multer's own errors (wrong field, too many
+  files) were already `bad_image`, and apps branch on one reason for "the
+  upload was wrong". Every non-multer error from the form parser counts,
+  since memory storage can't fail on our side. · routes/covers.js
+  `receive`.
+- **The error handler honours a 4xx `err.status`**: under `/api/` it's
+  that status with reason `bad_request` (`too_large` for 413) and our own
+  sentence, never `err.message`. `bad_request` is new, and `400` was
+  added to the five operations that didn't list one (`getEvent`,
+  `deleteWallEntry`, `deleteCover`, `newLink`,
+  `markAllNotificationsRead`), which a broken `%` escape or a broken
+  JSON body can reach. · Express already marks undecodable params as
+  400; a 404 would have needed no spec change but would claim the URL
+  was well-formed. · server.js.
+- **For a page URL** (`/e/%E0%A4%A`) it's the existing "nothing here"
+  page (`pages.notFound`, a 404) for a browser asking for HTML, and a
+  plain-text 400 otherwise. No view or `lib/render.js` change. · The
+  page machinery offers only that page; a 404 says the same thing to a
+  person. · server.js.
+- A GET to a path that only has other methods (`GET
+  /api/v1/events/{id}/wall/%zz`) is a 400 too, not the catch-all 404,
+  because Express decodes params while matching a path before checking
+  the method. · Harmless, and not worth a special case. · n/a
+- **`counts.invited` is null for non-hosts** (signed out included), on
+  the event, in every list, and on `/guests`; the key stays, so `Counts`
+  keeps the same required fields. · The spec models "not yours to see"
+  as null elsewhere (`viewer`, `locationAddress`, `spotsLeft`), and a
+  missing key would break apps that decode `Counts` strictly. The pages
+  only showed it to hosts, so nothing visible changes (that's true of
+  `feat/web-features`' `public/ui.js` too, checked at the time). ·
+  lib/views.js `countsView`.

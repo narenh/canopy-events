@@ -604,6 +604,9 @@ test('pages: the features, as everyone who might look', async (t) => {
     const d = pageData(r.text);
     assert.deepEqual(d.wall, (await ben.get(`/api/v1/events/${party.id}/wall?limit=20`)).data);
     assert.equal(d.removed, null);
+    // How many are invited is the hosts' business: null, and not drawn.
+    assert.equal(d.event.counts.invited, null);
+    assert.ok(!section(r.body, 'details').includes('invited'));
   });
 
   await t.test('waitlisted: their place, and no "it\'s full" warning; someone new gets the warning', async () => {

@@ -234,9 +234,12 @@ no cap).
 
 `PUT /api/v1/events/{id}/cover` (hosts) uploads one, as
 `multipart/form-data` with the image in a field named `cover`: JPEG, PNG,
-WebP or HEIC, up to 15 MB. Send the photo as it is: the server turns it
-upright, shrinks it to fit 1600 px, and stores a JPEG with **no EXIF**,
-so where it was taken never leaves the phone. `DELETE` removes it.
+WebP or HEIC, up to 15 MB and 50 megapixels (**HEIC up to 25
+megapixels**: the 12 and 24 megapixel photos iPhones take by default are
+fine, but shrink a 48-megapixel "HEIF Max" one, or send it as a JPEG).
+Send the photo as it is: the server turns it upright, shrinks it to fit
+1600 px, and stores a JPEG with **no EXIF**, so where it was taken never
+leaves the phone. `DELETE` removes it.
 
 ```bash
 curl -s "${auth[@]}" -X PUT -F cover=@IMG_0001.HEIC $API/events/4fQ9xKpL2mZa/cover
@@ -313,6 +316,10 @@ numbers in `counts` are people. `counts.guests` is their plus-ones, and
 "6 going" on a screen is `total.going`; "4 people (+2)" is `going` and
 `guests.going`.
 
+`invited` (invited, no answer yet) is **for hosts only**: it's null for
+everyone else, signed out included, the same way only hosts see who's
+invited on the guest list.
+
 **When the host lowers `guestsAllowed`**, answers that already bring more
 are kept as they are: nobody's plus-one disappears without them knowing.
 They're flagged `guestsOverLimit: true`, on your own `viewer.rsvp` and on
@@ -350,7 +357,8 @@ can answer like anyone else.
 
 ## The guest list, and who sees it
 
-`GET /api/v1/events/{id}/guests` (signed in). **Counts are always there.**
+`GET /api/v1/events/{id}/guests` (signed in). **Counts are always there**
+(`invited` only for hosts, null for anyone else).
 Names depend on the host's `guestListVisibility`:
 
 | You are | `everyone` | `responded` |
@@ -426,7 +434,8 @@ host): their status becomes `removed`.
   `viewer.rsvp.status: "removed"` so the app can say so. The link is the
   event, and hiding it from them alone would hide nothing: they could
   sign out and look. If that's not enough, make a new link (below).
-- Nobody is notified.
+- Nobody is notified, and their own notifications about the event are
+  deleted (so their inbox can't hand them a new link).
 - You can remove someone before they've answered, or been invited.
 
 `DELETE /api/v1/events/{id}/removed/{personId}` undoes it: they're left
@@ -490,6 +499,12 @@ and `count`. Word them in the app:
   newest, it moves to the top) instead of making another, and only the
   first one of a batch pushes. Once it's read, the next answer starts a
   new one. A change of plus-ones alone isn't news.
+- **`event` can be null**: once you're no longer on the event (a host
+  took your invitation back or removed you, or you took back an answer
+  you gave without being invited), the inbox stops giving you its link,
+  because a host may have made a new one to keep you out. Show the line
+  without a way to open it. Being removed or uninvited also deletes your
+  notifications about that event.
 - The push carries the same `type`, the notification's id, the event's id
   and title, and `badge` (the unread count). The senders will turn it into
   a localized alert (`loc-key` and its arguments) for the app to word.
@@ -573,7 +588,7 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |
