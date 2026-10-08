@@ -138,3 +138,17 @@ Format: decision · why · how to reverse.
   RSVPs including plus-ones and the waitlist, the wall, invites and the
   inbox. All of it lives in memory behind protocols shaped like the API,
   and a fresh launch resets to the seed data.
+- **(You)** The app has three tabs: **Events** (going and maybe),
+  **Invites** (invited but not answered, with a link at the top to
+  declined events) and **Profile** (your own info). There's no Friends
+  or Inbox tab.
+- Assumed: Events also lists events you **host** (with a Hosting badge)
+  and **waitlisted** ones (with a Waitlist badge), and has a "+" to
+  create an event and a "Past events" link at the top. · Hosts don't
+  RSVP in the API, but they're obviously going. · iOS EventsTab.
+- Assumed: friends appear only in the invite picker and as "friends
+  going" on an event. Notifications get no screen for now; push covers
+  them later. · They have nowhere else to go with three tabs.
+- The API will need `GET /api/v1/me/events/declined` (not_going) for the
+  Declined list. Noted for the next API pass. The mock app doesn't
+  need it tonight.
