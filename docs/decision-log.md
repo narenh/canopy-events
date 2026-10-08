@@ -1653,3 +1653,9 @@ Fixes for the security review's events findings (branch `fix/review`).
   gone). · The menu uses the same keyboard and Escape behaviour as the
   host ⋯ menu. · lib/render.js `header()`, public/events.js
   `accountMenu`.
+- **Reversed the edge fade** (cf7c6a6): fading the fixed mesh to base
+  near the edges left a vignette that content visibly scrolled through.
+  **(You) okayed instead:** phones (under 700px) get a flat background in
+  the event's base colour, with no glows and no grain, so it matches
+  Safari's flat status-bar and toolbar strips exactly. The cover and the
+  glass cards carry the colour. Desktop keeps the glowing mesh.
