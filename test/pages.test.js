@@ -337,8 +337,15 @@ test('pages', async (t) => {
     assert.ok(section(host, 'list-hosting').includes('Rooftop dinner'));
     assert.ok(section(host, 'list-past').includes('Picnic before'));
     assert.ok(host.includes('aria-current="page">Your events<'));
-    assert.ok(host.includes(`href="${server.fake.base}/profile"`), 'your photo goes to your profile');
-    assert.ok(host.includes(`${server.fake.base}/signout?return=`), 'sign out');
+    // Your photo opens the account menu: your name (to your Canopy
+    // profile), then Sign out, which appears nowhere else on the page.
+    const menu = host.slice(host.indexOf('id="accountMenu"'), host.indexOf('</div>', host.indexOf('id="accountMenu"')));
+    assert.ok(host.includes('id="accountMenuBtn" aria-haspopup="menu" aria-expanded="false"'), 'the photo is a menu button');
+    assert.ok(menu.includes(`href="${server.fake.base}/profile"`) && menu.includes('>Ana Lima<'), 'first, your name, to your profile');
+    assert.ok(menu.indexOf('Ana Lima') < menu.indexOf('Sign out'), 'name first, then Sign out');
+    assert.ok(menu.includes(`${server.fake.base}/signout?return=`), 'sign out, in the menu');
+    assert.equal(host.split('/signout?return=').length - 1, 1, 'Sign out appears only once, in the menu');
+    assert.ok(!host.includes('class="foot"'), 'no foot with Sign out');
     const guest = (await page(server, dee, '/')).body;
     const invitations = section(guest, 'list-invitations');
     assert.ok(invitations.includes('Rooftop dinner') && invitations.includes('data-action="reply" data-status="going"'));

@@ -44,6 +44,43 @@ function refreshRelative(){
 refreshRelative();
 setInterval(refreshRelative, 60000);
 
+// The account menu under your photo in the header: opens under it,
+// arrow keys move through it, Escape (or a tap anywhere else) shuts it and
+// puts focus back on the photo. Its items are plain links.
+(function accountMenu(){
+  const btn = document.getElementById('accountMenuBtn');
+  const menu = document.getElementById('accountMenu');
+  if (!btn || !menu) return;
+  const items = () => Array.from(menu.querySelectorAll('[role=menuitem]'));
+  function close(focusButton){
+    if (menu.hidden) return;
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    if (focusButton) btn.focus();
+  }
+  function open(){
+    menu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    items()[0].focus();
+  }
+  btn.addEventListener('click', () => (menu.hidden ? open() : close(true)));
+  document.addEventListener('click', (e) => {
+    if (menu.hidden || e.target.closest('#accountMenuBtn') || e.target.closest('#accountMenu')) return;
+    close(false);
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (menu.hidden) return;
+    const list = items();
+    const at = list.indexOf(document.activeElement);
+    if (e.key === 'Escape'){ e.preventDefault(); close(true); }
+    else if (e.key === 'ArrowDown'){ e.preventDefault(); list[(at + 1) % list.length].focus(); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); list[(at - 1 + list.length) % list.length].focus(); }
+    else if (e.key === 'Home'){ e.preventDefault(); list[0].focus(); }
+    else if (e.key === 'End'){ e.preventDefault(); list[list.length - 1].focus(); }
+    else if (e.key === 'Tab') close(false);
+  });
+})();
+
 // A photo that won't load (signed out, the account service only gives
 // photos to a Canopy session) becomes the person's initials.
 document.addEventListener('error', (e) => {

@@ -22,6 +22,7 @@ const COPY = {
     signIn: 'Sign in',
     signOut: 'Sign out',
     yourAccount: 'Your Canopy account',
+    canopyAccount: 'Canopy account',
     // Can't be closed. Unverified people (a quick sign-up) can answer
     // and be invited, but can't make events.
     verifyBanner: "Confirm your email. Until you do, you can answer invitations but you can't make your own events.",
