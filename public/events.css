@@ -1059,3 +1059,12 @@ textarea.address-input{min-height:0;margin-top:8px;}
    as "+ New event" (a square), in the same glass and plain white. */
 .home-actions .nav-btn, .home-actions .icon-btn{height:var(--tap);min-height:var(--tap);box-sizing:border-box;border-radius:12px;}
 .home-actions .icon-btn{width:var(--tap);color:var(--text);}
+
+/* Picking friends to invite: the list is the card's full width (the
+   editor's date fields also use .pick, which made it inline-block and
+   shrank it to its content), and each row lights up on hover edge to
+   edge across the card, its checkbox or status at the right edge. */
+.people.pick{display:block;max-width:none;border-radius:0;}
+.people.pick .person{margin:0 -20px;padding:12px 20px;transition:background-color .12s ease;}
+.people.pick .person:hover{background:var(--secondary);}
+.people.pick .person:has(input:focus-visible){background:var(--secondary);}
