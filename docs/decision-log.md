@@ -2252,3 +2252,15 @@ and that answering updates the same entry. The rest:
   copying it. · `UI.calendarCard`, views/home.html.
 - **Visual check** at 375 px against the fake account service: the card,
   and the switch turning the setting off (the API agreed).
+- **(You)** When an event's colour is greyscale (and only then), the
+  host can pick the accent separately: buttons, pill, icons, links. It's
+  a second "Accent" slider (grey → hue wheel) that appears only in the
+  grey stretch. API `accentHue` (0–359 or null = grey accents) is refused
+  unless themeGrayscale is on, and cleared when an event leaves
+  greyscale. Queued after friends and calendar invitations (schema
+  order).
+- **(You)** Refinement: the accent is never grey. A greyscale event's
+  accent is **white** (the default, `accentHue: null`) or a hue, so a
+  black-and-white event's buttons don't look disabled. The Accent slider
+  runs from white through the hue wheel. Existing grey events switch from
+  today's grey accent to white.
