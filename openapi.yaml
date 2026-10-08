@@ -1222,7 +1222,9 @@ components:
 
     Counts:
       description: |
-        How many of each status. Always shown, to everyone. Hosts aren't
+        How many of each status. Always shown, to everyone, except
+        `invited`, which is the hosts' alone (null for anyone else, signed
+        out included), like the names of who's invited. Hosts aren't
         counted. The top-level numbers are **people**; `guests` is the
         plus-ones those people bring, and `total` is the two together
         (people + plus-ones), for the answers that bring anyone.
@@ -1233,7 +1235,10 @@ components:
         going: { type: integer, minimum: 0 }
         maybe: { type: integer, minimum: 0 }
         notGoing: { type: integer, minimum: 0 }
-        invited: { type: integer, minimum: 0 }
+        invited:
+          type: [integer, 'null']
+          minimum: 0
+          description: Invited and not answered yet. Hosts only; null for everyone else.
         waitlisted: { type: integer, minimum: 0 }
         guests: { $ref: '#/components/schemas/GuestCounts' }
         total: { $ref: '#/components/schemas/GuestCounts' }

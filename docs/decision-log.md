@@ -783,3 +783,11 @@ Fixes for the security review's events findings (branch `fix/review`).
   /api/v1/events/{id}/wall/%zz`) is a 400 too, not the catch-all 404,
   because Express decodes params while matching a path before checking
   the method. · Harmless, and not worth a special case. · n/a
+- **`counts.invited` is null for non-hosts** (signed out included), on
+  the event, in every list, and on `/guests`; the key stays, so `Counts`
+  keeps the same required fields. · The spec models "not yours to see"
+  as null elsewhere (`viewer`, `locationAddress`, `spotsLeft`), and a
+  missing key would break apps that decode `Counts` strictly. The pages
+  only showed it to hosts, so nothing visible changes (that's true of
+  `feat/web-features`' `public/ui.js` too, checked at the time). ·
+  lib/views.js `countsView`.

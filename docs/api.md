@@ -271,6 +271,10 @@ numbers in `counts` are people. `counts.guests` is their plus-ones, and
 "6 going" on a screen is `total.going`; "4 people (+2)" is `going` and
 `guests.going`.
 
+`invited` (invited, no answer yet) is **for hosts only**: it's null for
+everyone else, signed out included, the same way only hosts see who's
+invited on the guest list.
+
 **When the host lowers `guestsAllowed`**, answers that already bring more
 are kept as they are: nobody's plus-one disappears without them knowing.
 They're flagged `guestsOverLimit: true`, on your own `viewer.rsvp` and on
@@ -308,7 +312,8 @@ can answer like anyone else.
 
 ## The guest list, and who sees it
 
-`GET /api/v1/events/{id}/guests` (signed in). **Counts are always there.**
+`GET /api/v1/events/{id}/guests` (signed in). **Counts are always there**
+(`invited` only for hosts, null for anyone else).
 Names depend on the host's `guestListVisibility`:
 
 | You are | `everyone` | `responded` |
