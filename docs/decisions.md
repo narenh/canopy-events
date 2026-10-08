@@ -68,6 +68,25 @@ prefix or fuzzy search, so it can't list people), rate-limited. Events
 only lets verified hosts use it. Invites are therefore keyed by **person
 id** from day one.
 
+**Contact details never leak. This is a hard rule, starting now.**
+Finding someone is one-way: you have to already know their number or
+handle to find their account. An account never gives up its contact
+details to anyone else:
+
+- Nothing in events, neither a page nor any API response, ever shows
+  one person another person's email, phone, Instagram, Venmo or Cash
+  App. Other people are only ever `{id, firstName, lastName, shortName,
+  photoUrl}` (what `/api/people` gives). Hosts get no more about their
+  guests than that. Only your own details come back, from `/api/v1/me`.
+- A lookup answers with that same public shape and nothing else. A
+  phone lookup doesn't return their Instagram, and the reverse holds
+  too. A miss says "no one found", with no hints.
+- Phone numbers can be enumerated (a whole area code is only 10M
+  numbers), so lookups get tight limits per host, per address and
+  overall, like the code limits in the account service.
+- Tests assert it: they walk every events API response and fail if a
+  contact field for someone other than the caller shows up.
+
 ## Events: product rules
 
 - **Visibility: anyone with the link.** An event's id is random and
