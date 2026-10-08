@@ -157,3 +157,52 @@ Format: decision · why · how to reverse.
 - The API will need `GET /api/v1/me/events/declined` (not_going) for the
   Declined list. Noted for the next API pass. The mock app doesn't
   need it tonight.
+
+## Accounts: native sign-in (canopy-account-service, `/api/native/v1`)
+
+- **(You)** Built tonight instead of later, because both apps ship
+  before launch.
+- Every web handler is a named function, and the native routes mount
+  the same functions. · The rules and limit counters are the same by
+  construction, not by copy. · n/a
+- A sign-in or sign-up starts with `POST auth/begin`, which returns a
+  `ceremony` value. Every later step sends it as the bearer token. ·
+  It's one uniform rule for the Origin exemption. · n/a
+- The token is **rotated** at sign-in (the ceremony value never becomes
+  the signed-in token). · The same rule as the web: a value seen before
+  sign-in never becomes a signed-in one. · Cost: if the last answer is
+  lost on the network, the app signs in again.
+- The Origin exemption is narrow: only `/api/native/v1` requests with
+  `Authorization: Bearer` (and `auth/begin` with a JSON body). A bearer
+  header on a web route skips nothing. Native routes never read the
+  cookie. · n/a
+- Ceremony steps refuse a signed-in token (409 `signed_in`). "One token
+  per install" is enforced by signing out first. · n/a
+- Passkey origins accepted for apps: Canopy origins (including
+  `https://canopysf.com`) plus Android hashes from
+  `ANDROID_APK_KEY_HASHES`. The web still accepts Canopy origins only.
+  · **The iOS origin (`https://canopysf.com`) rests on an Apple
+  engineer's forum answer, not formal docs, and hasn't been tried on a
+  real phone.** Android's is confirmed in Android's docs. · lib/domain.js.
+- Sessions record which client they are (web, ios or android) and a
+  name ("Safari on iPhone", "Canopy Events on iPhone"). The profile
+  gains a "Signed in on" list with sign out for each, and a new **sign
+  out everywhere**. · Apps make many sessions, and people need to cut
+  one off. · Schema v7.
+- App photo uploads must be JPEG, and EXIF/XMP metadata (location
+  included) is now stripped server side from **every** JPEG upload. ·
+  App uploads don't go through the browser's canvas, and the README
+  promises no location data. · lib/photoStore.js `withoutMetadata`.
+- `/photo/:id` accepts a bearer token. · Otherwise apps couldn't show
+  photos. · n/a
+- Errors that had no `reason` gained one (`names_required`,
+  `not_found`, `no_passkeys`, `too_large`, `bad_upload`, `bad_json`). ·
+  Apps need machine-readable reasons. · Additive.
+- The admin pages, setup password, recovery and setup links stay
+  web-only. · n/a
+- `assetlinks.json` has placeholders: package `com.canopysf.events` and
+  an all-zero fingerprint. **To do (you):** copy
+  `docs/well-known/apple-app-site-association` (filled in with
+  `UC3Y84QJ83.com.canopysf.CanopyEvents`) to the canopysf.com site, with
+  a `Content-Type: application/json` header rule. Fill in assetlinks
+  when the Android app exists.

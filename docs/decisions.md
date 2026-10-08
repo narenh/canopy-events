@@ -54,8 +54,9 @@ uses it):
     `Authorization: Bearer <token>`, where the token is a `canopy_session`
     value (43 chars, base64url). It's passed to `/api/session` the same
     way as the cookie. Nothing is sent back as `Set-Cookie` for a bearer
-    request. Native apps get a token from a sign-in flow that **will be
-    built later** in the account service. Events only has to accept one.
+    request. Native apps get a token from the account service's
+    `/api/native/v1` sign-in (built 2026-10-08; see its
+    `docs/native-api.md`). Photos (`/photo/:id`) accept the bearer too.
   - `requireSignIn` for an unverified person on a site that doesn't
     allow them: pages redirect to `verifyUrl`, and API calls get
     `403 {"error": …, "reason": "email_unverified", "verify": url}`.
