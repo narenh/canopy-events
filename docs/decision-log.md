@@ -2201,3 +2201,10 @@ events together) and that it's one way, like following. The rest:
   every hue and grey: dark text on the accent ≥ 6.8:1, links on the base
   ≥ 14.5:1, accent vs base ≥ 7:1. Other pages stay green. · public/ui.js
   themeStyle. The iOS app should match (accent from the same turn).
+- **(You)** When an event's colour is greyscale (and only then), the
+  host can pick the accent separately: buttons, pill, icons, links. It's
+  a second "Accent" slider (grey → hue wheel) that appears only in the
+  grey stretch. API `accentHue` (0–359 or null = grey accents) is refused
+  unless themeGrayscale is on, and cleared when an event leaves
+  greyscale. Queued after friends and calendar invitations (schema
+  order).
