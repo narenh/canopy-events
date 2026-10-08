@@ -11,8 +11,9 @@
 <!-- Making an event (/new, verified people) or editing one (/e/<id>/edit,
      hosts). The form is public/ui.js's editorForm, drawn like the event
      page; this sends it to POST or PATCH /api/v1/events, then the cover
-     (PUT or DELETE .../cover), and shows what the API refuses next to
-     the field it's about. -->
+     (PUT or DELETE .../cover, or PUT .../cover/background for one of the
+     curated backgrounds), and shows what the API refuses next to the
+     field it's about. -->
 <body class="mesh-bg">
 <!-- PAGE:HEADER -->
 <main class="wrap">
@@ -322,7 +323,9 @@ const MAX_COVER = 15 * 1024 * 1024;
 const coverFile = $('coverFile');
 const coverPreview = $('coverPreview');
 const head = $('details');
-let coverChange = null; // null: as it was; a File: upload it; 'remove'
+// null: as it was; a File: upload it; { background }: one of the curated
+// backgrounds; 'remove'.
+let coverChange = null;
 let previewUrl = null;
 const hadCover = editing && !!UI.coverUrl(data.event);
 
@@ -371,6 +374,7 @@ coverFile.addEventListener('change', () => {
   coverChange = file;
   previewUrl = URL.createObjectURL(file);
   drawCover(previewUrl);
+  markBackground(null);
   photoKey = null;
   matchPicked(previewUrl);
 });
@@ -381,10 +385,80 @@ onActions({
     coverFile.value = '';
     coverChange = hadCover ? 'remove' : null;
     drawCover(null);
+    markBackground(null);
     forgetPhotoMatch();
     coverFile.focus();
   }
 });
+
+// ---------------- Backgrounds ----------------
+//
+// The curated backgrounds (from TMDB), when there are any: the second
+// button on the photo opens a sheet of them. Picking one shows it as the
+// hero at once (TMDB's own 780 px copy), jumps the colour slider to the
+// hue the server worked out for it, and on Save makes it the cover (PUT
+// .../cover/background), exactly as a picked photo is uploaded.
+const backgroundList = data.backgrounds || [];
+const backgroundPanel = $('backgroundPanel');
+const backgroundOpen = $('backgroundOpen');
+
+// The chosen one ticked in the sheet (none: null).
+function markBackground(id){
+  if (!backgroundPanel) return;
+  backgroundPanel.querySelectorAll('.bg-pick').forEach((b) => b.setAttribute('aria-pressed', b.getAttribute('data-id') === id ? 'true' : 'false'));
+}
+
+function openBackgrounds(){
+  $('backgroundBackdrop').hidden = false;
+  backgroundPanel.hidden = false;
+  form.classList.add('menu-open');
+  document.body.classList.add('sheet-open');
+  backgroundOpen.setAttribute('aria-expanded', 'true');
+  const on = backgroundPanel.querySelector('.bg-pick[aria-pressed="true"]') || backgroundPanel.querySelector('.bg-pick');
+  if (on){ on.focus({ preventScroll: true }); on.scrollIntoView({ block: 'nearest' }); }
+}
+function closeBackgrounds(){
+  if (!backgroundPanel || backgroundPanel.hidden) return;
+  backgroundPanel.hidden = true;
+  $('backgroundBackdrop').hidden = true;
+  form.classList.remove('menu-open');
+  document.body.classList.remove('sheet-open');
+  backgroundOpen.setAttribute('aria-expanded', 'false');
+  backgroundOpen.focus();
+}
+
+function pickBackground(id){
+  const b = backgroundList.find((x) => x.id === id);
+  if (!b) return;
+  $('coverError').textContent = '';
+  coverFile.value = '';
+  coverChange = { background: b };
+  drawCover(b.previewUrl || b.thumbUrl);
+  markBackground(b.id);
+  photoKey = b.grayscale ? 'grey' : (UI.isHue(b.hue) ? b.hue : null);
+  if (photoKey !== null) setTheme(photoKey);
+  else showTheme();
+  closeBackgrounds();
+}
+
+if (backgroundPanel){
+  onActions({
+    'open-backgrounds': openBackgrounds,
+    'close-backgrounds': closeBackgrounds,
+    'pick-background': (el) => pickBackground(el.getAttribute('data-id'))
+  });
+  $('backgroundBackdrop').addEventListener('click', closeBackgrounds);
+  // Escape closes it; Tab stays inside while it's open.
+  document.addEventListener('keydown', (e) => {
+    if (backgroundPanel.hidden) return;
+    if (e.key === 'Escape'){ e.preventDefault(); closeBackgrounds(); return; }
+    if (e.key !== 'Tab') return;
+    const inside = Array.from(backgroundPanel.querySelectorAll('button'));
+    const i = inside.indexOf(document.activeElement);
+    if (e.shiftKey && i <= 0){ e.preventDefault(); inside[inside.length - 1].focus(); }
+    else if (!e.shiftKey && i === inside.length - 1){ e.preventDefault(); inside[0].focus(); }
+  });
+}
 
 // Sends the cover change, if there is one, for the event `id`. Answers
 // null when it worked (or there was nothing to send), or the refusal's
@@ -394,6 +468,7 @@ async function saveCover(id){
   const path = '/events/' + encodeURIComponent(id) + '/cover';
   let answer;
   if (coverChange === 'remove') answer = await api('DELETE', path);
+  else if (coverChange.background) answer = await api('PUT', path + '/background', { backgroundId: coverChange.background.id });
   else {
     const body = new FormData();
     body.append('cover', coverChange, coverChange.name || 'cover');

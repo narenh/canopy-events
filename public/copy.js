@@ -28,6 +28,10 @@ const COPY = {
     verifyBanner: "Confirm your email. Until you do, you can answer invitations but you can't make your own events.",
     verifyButton: 'Confirm email',
     unreachable: "Couldn't reach the server. Try again.",
+    // TMDB's required attribution, with its logo, wherever its
+    // backgrounds are offered (the picker, and the foot of Your Events).
+    // Their wording: keep it as it is.
+    tmdbCredit: 'This product uses the TMDB API but is not endorsed or certified by TMDB.',
     accountsDown: "Canopy Accounts can't be reached right now. Try again in a minute.",
     failed: 'Something went wrong. Try again.',
     showMore: 'Show more',
@@ -339,6 +343,15 @@ const COPY = {
     coverRemove: 'Remove cover photo',
     coverNoPreview: "This photo can't be previewed here. It will show once it's saved.",
     coverNotSaved: "The event is saved, but its cover didn't upload.",
+    // The curated backgrounds (from TMDB): the second button on the
+    // photo, and the sheet it opens.
+    backgroundChoose: 'Choose a background',
+    backgroundClose: 'Close',
+    // A background's button: its title (and year), and which of the
+    // title's backgrounds it is when there's more than one.
+    backgroundLabel: '{title}',
+    backgroundLabelYear: '{title} ({year})',
+    backgroundOf: '{label}, {n} of {count}',
     // The event's colour.
     theme: 'Color',
     themeDefault: 'Canopy green',
@@ -375,7 +388,9 @@ const COPY = {
     coverErrors: {
       too_large: 'That photo is too big. A cover can be up to 15 MB.',
       bad_image: "That file isn't a photo we can use. Try a JPEG, PNG, WebP or HEIC.",
-      rate_limited: "That's a lot of covers for one day. Try again tomorrow."
+      rate_limited: "That's a lot of covers for one day. Try again tomorrow.",
+      bad_background: "That background isn't available any more. Pick another.",
+      background_unreachable: "That background couldn't be fetched just now. Try again in a minute."
     }
   },
 

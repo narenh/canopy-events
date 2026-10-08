@@ -15,7 +15,8 @@ info:
     strings. Errors are `{"error": "<a sentence>", "reason": "<snake_case>"}`
     with the right status: branch on `reason`, show `error` if you like.
     Lists take `?cursor=&limit=` and answer with `nextCursor` (null at the
-    end). Every answer is `Cache-Control: no-store`.
+    end). Every answer is `Cache-Control: no-store`, except `GET
+    /api/v1/backgrounds`, which is the same for everyone.
 
     **Other people** are only ever `Person`: id, first and last name, short
     name and photo. Nobody's email, phone, Instagram, Venmo or Cash App is
@@ -50,6 +51,8 @@ tags:
     description: Your friends, adding and taking people out, and your friend link.
   - name: Guest menu
     description: "A guest's own controls on an event: mute it, leave it, and opt out of a host's invitations."
+  - name: Backgrounds
+    description: Curated film and TV backdrops from TMDB a host can choose as a cover.
   - name: Docs
     description: This document.
   - name: Site to site
@@ -616,6 +619,85 @@ paths:
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/cover/background:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    put:
+      tags: [Backgrounds]
+      operationId: setCoverBackground
+      summary: Make a curated background the cover
+      description: |
+        Hosts only. One of `GET /api/v1/backgrounds` by its `id`. The
+        server downloads it from TMDB's image CDN and makes it the cover
+        exactly as an upload: the same sizes (`coverImages`), no EXIF,
+        `coverHue` / `coverGrayscale` worked out from it, and the same
+        answer. From then on it's an ordinary cover (`DELETE
+        .../cover` removes it). It counts against the same daily limit as
+        uploads (30 a day per person).
+
+        An id that isn't in the current set (it was dropped since you
+        fetched the list, or the feature is off) is 400 `bad_background`:
+        fetch the list again. TMDB not answering is 502
+        `background_unreachable`: try again in a minute.
+
+        **The event's colour doesn't change** (`themeHue`): offer the
+        background's `hue` (or `coverHue` after) to the host, as for an
+        upload.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [backgroundId]
+              properties:
+                backgroundId: { type: string, description: A background's `id`, from `GET /api/v1/backgrounds`. }
+            example: { backgroundId: L2NnRlY3NjF3eE50UHhmVnNFVlNBTTV4RWtjRy5qcGc }
+      responses:
+        '200':
+          description: The event, with its new `coverImageUrl` and `coverImages`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/BackgroundUnreachable' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/backgrounds:
+    get:
+      tags: [Backgrounds]
+      operationId: listBackgrounds
+      summary: The curated backgrounds
+      description: |
+        Film and TV backdrops from TMDB, picked by Canopy, that a host can
+        make an event's cover (`PUT /api/v1/events/{id}/cover/background`).
+        In display order, a title's backgrounds next to each other: group
+        consecutive ones with the same `title` and `year`.
+
+        `enabled: false` (with none) means the feature is off, or nothing
+        could be loaded yet: show no picker. The set changes at most daily;
+        this answer says `Cache-Control: private, max-age=3600` (the only
+        one that isn't `no-store`).
+
+        Show the thumbnails straight from `thumbUrl` (TMDB's public image
+        CDN, 300 px wide), and `previewUrl` (780 px) as the hero while the
+        host decides. Wherever you show them, show TMDB's attribution:
+        their logo and "This product uses the TMDB API but is not endorsed
+        or certified by TMDB."
+      responses:
+        '200':
+          description: The set.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Backgrounds' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/events/{id}/removed/{personId}:
@@ -1545,7 +1627,8 @@ components:
         `bad_detail_label`, `bad_detail_value`, `bad_detail_url`,
         `bad_detail_phone`, `detail_too_long` (a label over 60
         characters or a value over 500);
-        `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
+        `bad_image`, `bad_background` (not one of the current
+        backgrounds), `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
         `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_settings`,
         `unknown_setting`, `bad_calendar_invites`; and
         `bad_request` on any route for a request that can't be read at
@@ -1619,8 +1702,54 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+    BackgroundUnreachable:
+      description: TMDB's image CDN couldn't give the background just now (`background_unreachable`). Try again in a minute.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+    Backgrounds:
+      type: object
+      additionalProperties: false
+      required: [enabled, backgrounds]
+      properties:
+        enabled: { type: boolean, description: 'False: no picker (the feature is off, or nothing has loaded yet).' }
+        backgrounds:
+          type: array
+          items: { $ref: '#/components/schemas/Background' }
+      example:
+        enabled: true
+        backgrounds:
+          - id: L2NnRlY3NjF3eE50UHhmVnNFVlNBTTV4RWtjRy5qcGc
+            title: Mean Girls
+            year: null
+            thumbUrl: https://image.tmdb.org/t/p/w300/cgFV761wxNtPxfVsEVSAM5xEkcG.jpg
+            previewUrl: https://image.tmdb.org/t/p/w780/cgFV761wxNtPxfVsEVSAM5xEkcG.jpg
+            width: 300
+            height: 169
+            hue: 352
+            grayscale: false
+
+    Background:
+      type: object
+      additionalProperties: false
+      required: [id, title, year, thumbUrl, previewUrl, width, height, hue, grayscale]
+      properties:
+        id: { type: string, description: 'Opaque: send it back to choose this one. Not stable forever: when it drops out of the set, choosing it is 400 `bad_background`.' }
+        title: { type: string, description: The film's or show's name. }
+        year: { type: [integer, 'null'], description: 'Its year, when known.' }
+        thumbUrl: { type: string, format: uri, description: "TMDB's 300 px wide copy, for the grid. Load it straight from there (TMDB's public CDN)." }
+        previewUrl: { type: string, format: uri, description: "TMDB's 780 px wide copy, to show as the hero while the host decides." }
+        width: { type: integer, minimum: 1, description: "The thumbnail's width in pixels (with `height`, its shape)." }
+        height: { type: integer, minimum: 1 }
+        hue:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 359
+          description: 'The hue that matches it, worked out as `coverHue` is; null when `grayscale`. Jump the colour slider here when the host picks it.'
+        grayscale: { type: boolean, description: 'Essentially grey: suggest no colour.' }
+
     Error:
       type: object
       additionalProperties: false

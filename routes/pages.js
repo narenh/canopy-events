@@ -104,6 +104,17 @@ module.exports = function pagesRoutes(ctx) {
     return r.data;
   }
 
+  // The curated backgrounds (GET /backgrounds), or [] when the feature is
+  // off or the API couldn't say: the pages work without them.
+  async function backgroundsFor(req) {
+    try {
+      const r = await apiGet(req, '/backgrounds');
+      return r.status === 200 && r.data && r.data.enabled ? r.data.backgrounds : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   // Async page routes: a rejected promise goes to failed(), never takes
   // the process down.
   function pageRoute(fn) {
@@ -176,7 +187,7 @@ module.exports = function pagesRoutes(ctx) {
     // switching tabs in the browser needs no request.
     const tab = UI.homeTabOf(req.query.tab);
     const sizes = { all: LIST_SHOWN, invitations: LIST_SHOWN, declined: LIST_SHOWN, hosting: LIST_SHOWN, past: PAST_SHOWN };
-    const [settings, ...answers] = await Promise.all([apiGet(req, '/me/settings')]
+    const [backgrounds, settings, ...answers] = await Promise.all([backgroundsFor(req), apiGet(req, '/me/settings')]
       .concat(UI.HOME_LOADS.map((name) => apiGet(req, `/me/events/${name}?limit=${sizes[name]}`))));
     const lists = {};
     UI.HOME_LOADS.forEach((name, i) => { lists[name] = want(answers[i]); });
@@ -194,6 +205,9 @@ module.exports = function pagesRoutes(ctx) {
     }
     main += '<div id="lists" class="home-lists">' + UI.homeLists(data, { viewerZone: render.viewerZone(req) }) + '</div>';
     main += UI.calendarCard(calendar);
+    // TMDB's attribution, small at the foot, while its backgrounds are
+    // offered in the editor.
+    if (backgrounds.length) main += UI.tmdbCredit('home-credit');
     render.page(req, res, 'home.html', { current: 'home', main, data });
   }));
 
@@ -242,7 +256,7 @@ module.exports = function pagesRoutes(ctx) {
 
   // Making events is for verified people. Anyone else signed in gets
   // what to do about it rather than a form that would only be refused.
-  router.get('/new', attach, signedIn, (req, res) => {
+  router.get('/new', attach, signedIn, pageRoute(async (req, res) => {
     if (!isVerified(req.person)) {
       return render.message(req, res, 403, {
         heading: t('editor.verifyHeading'),
@@ -250,9 +264,9 @@ module.exports = function pagesRoutes(ctx) {
         button: { href: canopy.verifyUrl(req, render.hereUrl(req)), label: t('common.verifyButton') }
       });
     }
-    const data = { me: meView(req.person), event: null };
+    const data = { me: meView(req.person), event: null, backgrounds: await backgroundsFor(req) };
     render.page(req, res, 'editor.html', { title: t('editor.newHeading'), main: UI.editorForm(data, { zone: render.viewerZone(req), viewerZone: render.viewerZone(req) }), data });
-  });
+  }));
 
   router.get('/e/:id/edit', attach, signedIn, pageRoute(async (req, res) => {
     const event = await loadEvent(req, res);
@@ -261,7 +275,7 @@ module.exports = function pagesRoutes(ctx) {
     // ?coverError=<reason>: a new event was made, and its cover didn't
     // upload (views/editor.html sends them here to try again).
     const coverError = /^[a-z_]{1,40}$/.test(String(req.query.coverError || '')) ? req.query.coverError : null;
-    const data = { me: meView(req.person), event, coverError };
+    const data = { me: meView(req.person), event, coverError, backgrounds: await backgroundsFor(req) };
     render.page(req, res, 'editor.html', { title: t('editor.editHeading'), main: UI.editorForm(data, { viewerZone: render.viewerZone(req) }), data, theme: UI.themeKeyOf(event), accent: UI.accentKeyOf(event) });
   }));
 

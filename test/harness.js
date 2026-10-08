@@ -19,6 +19,7 @@ const net = require('net');
 const Database = require('better-sqlite3');
 const { startFakeAccount } = require('./fakeAccount');
 const { checkResponse } = require('./openapi');
+const { TOKEN: TMDB_TOKEN } = require('./fakeTmdb');
 
 const CONTACT_FIELDS = ['email', 'phone', 'instagram', 'venmo', 'cashapp'];
 
@@ -72,6 +73,10 @@ const CHECKS = [
   // The answer is what openapi.yaml says it is (test/openapi.js).
   function matchesSpec(r) {
     checkResponse(r);
+  },
+  // TMDB's token (the fake's, test/fakeTmdb.js) is never in an answer.
+  function noTmdbToken(r) {
+    if (r.text.includes(TMDB_TOKEN)) throw new Error(`the TMDB token is in ${r.method} ${r.url}`);
   }
 ];
 
@@ -98,6 +103,12 @@ async function startServer(extraEnv = {}) {
     CANOPY_ACCOUNT_KEY: fake.key,
     CANOPY_CALENDAR_SECRET: CALENDAR_SECRET,
     PUBLIC_URL: '',
+    // No curated backgrounds unless a test asks (test/backgrounds.test.js
+    // and its fake TMDB): never config/backgrounds.json, whose images are
+    // on the real TMDB.
+    BACKGROUNDS_FILE: '',
+    TMDB_TOKEN: '',
+    TMDB_LIST_ID: '',
     ...extraEnv
   };
   let child;

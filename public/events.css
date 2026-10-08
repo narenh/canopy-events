@@ -744,7 +744,7 @@ select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(
 .hero-btn svg{width:24px;height:24px;display:block;}
 .hero-btn[hidden]{display:none;}
 .hero-btn.file-btn:focus-within, .hero-btn:focus-visible{outline:2px solid #fff;outline-offset:3px;}
-.hero-note{position:absolute;z-index:2;top:12px;left:max(12px, env(safe-area-inset-left));right:130px;margin:0;padding:8px 12px;border-radius:12px;background:rgba(0,0,0,.6);color:#fff;font-size:var(--fs-small);line-height:1.35;}
+.hero-note{position:absolute;z-index:2;top:12px;left:max(12px, env(safe-area-inset-left));right:190px;margin:0;padding:8px 12px;border-radius:12px;background:rgba(0,0,0,.6);color:#fff;font-size:var(--fs-small);line-height:1.35;}
 /* The title, typed where it shows and as big: a textarea that grows. */
 textarea.title-input{
   display:block;width:100%;min-height:0;margin:0;padding:0;resize:none;overflow:hidden;
@@ -827,6 +827,39 @@ textarea.title-input:focus{outline:none;box-shadow:inset 0 -2px 0 var(--accent);
 .zone-row-name{min-width:0;}
 .zone-row-city{display:block;font-size:var(--fs-small);font-weight:400;color:var(--muted);}
 .zone-none{margin:14px 12px;font-size:var(--fs-small);}
+/* The curated backgrounds: a sheet over the page, like the zone search,
+   of 3:2 thumbnails grouped by title (the title small under each group),
+   scrolling between its heading and TMDB's credit. */
+.sheet-backdrop{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.55);}
+.bg-panel{
+  position:fixed;z-index:31;display:flex;flex-direction:column;
+  left:max(12px, env(safe-area-inset-left));right:max(12px, env(safe-area-inset-right));
+  top:max(12px, env(safe-area-inset-top));bottom:max(12px, env(safe-area-inset-bottom));
+  background:var(--theme-card-solid, #03200b);border:1px solid var(--glass-edge);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.5);
+}
+.sheet-backdrop[hidden], .bg-panel[hidden]{display:none;}
+body.sheet-open{overflow:hidden;}
+.bg-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 12px 10px 16px;border-bottom:1px solid var(--line);}
+.bg-head h2{margin:0;font-size:var(--fs-body);font-weight:800;color:var(--text);}
+.bg-head .round-btn{width:40px;height:40px;}
+.bg-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px 12px 4px;}
+.bg-group{margin:0 0 14px;}
+.bg-grid{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px;}
+.bg-pick{
+  position:relative;display:block;width:100%;min-height:0;aspect-ratio:3 / 2;padding:0;overflow:hidden;cursor:pointer;
+  border:none;border-radius:10px;background:var(--secondary);
+}
+.bg-pick img{display:block;width:100%;height:100%;object-fit:cover;}
+.bg-pick:hover img{opacity:.88;}
+.bg-pick:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.bg-pick[aria-pressed="true"]{box-shadow:0 0 0 3px var(--accent);}
+.bg-title{margin:6px 2px 0;font-size:var(--fs-small);color:var(--muted);line-height:1.3;}
+/* TMDB's credit: their logo and their sentence, small. */
+.tmdb-credit{display:flex;align-items:center;gap:10px;margin:0;font-size:12px;line-height:1.35;color:var(--muted);}
+.tmdb-logo{flex:0 0 auto;width:72px;height:auto;display:block;}
+.bg-credit{padding:10px 16px 12px;border-top:1px solid var(--line);}
+.home-credit{margin:8px 4px 0;color:var(--on-bg);opacity:.75;}
+.home-credit .tmdb-logo{width:60px;}
 /* The place and the description, in the card: quieter fields. */
 .details-card .soft{background:rgba(255,255,255,.04);border:1.5px dashed rgba(255,255,255,.3);padding:10px 12px;min-height:0;}
 .details-card .soft:focus{border-style:solid;border-color:var(--accent);outline:none;}
@@ -980,6 +1013,9 @@ textarea.address-input{min-height:0;margin-top:8px;}
   .hero-note{top:14px;left:14px;}
   /* The zone search: a centred sheet, not the whole width. */
   .zone-panel{left:50%;right:auto;width:460px;transform:translateX(-50%);top:8vh;max-height:80vh;}
+  /* The backgrounds: a centred sheet, three to a row. */
+  .bg-panel{left:50%;right:auto;width:600px;transform:translateX(-50%);top:6vh;bottom:6vh;}
+  .bg-grid{grid-template-columns:repeat(3, minmax(0, 1fr));}
   .event-row .thumb{width:168px;}
 }
 

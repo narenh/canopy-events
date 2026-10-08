@@ -17,6 +17,11 @@
 //
 // Uploads are multipart/form-data with the image in a field named
 // `cover`: JPEG, PNG, WebP or HEIC, up to MAX_UPLOAD.
+//
+// Or a host chooses one of the curated backgrounds (lib/backgrounds.js)
+// by its id: the server downloads it from TMDB's image CDN, and it goes
+// through exactly what an upload does, under the same limits. From then
+// on it's an ordinary cover.
 
 const express = require('express');
 const multer = require('multer');
@@ -26,6 +31,7 @@ const { isHost } = require('../lib/rules');
 const { newEventId } = require('../lib/ids');
 const { eventView } = require('../lib/views');
 const { toCover, BadImage } = require('../lib/coverImage');
+const { BackgroundUnavailable } = require('../lib/backgrounds');
 const coverStore = require('../lib/coverStore');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -49,7 +55,7 @@ const upload = multer({
 }).single('cover');
 
 module.exports = function coverRoutes(ctx) {
-  const { store, auth } = ctx;
+  const { store, auth, backgrounds } = ctx;
   const router = express.Router();
   const withEvent = loadEvent(store);
 
@@ -72,15 +78,46 @@ module.exports = function coverRoutes(ctx) {
     });
   }
 
-  router.put('/events/:id/cover', auth.requirePerson, withEvent, hostsOnly, receive, handle(async (req, res) => {
-    if (!req.file) return fail(res, 400, 'bad_image', "send one image, in a form field named 'cover'");
+  // Over today's limit: answers 429 and true. Otherwise counts this one.
+  function overLimit(req, res) {
     if (uploadLimits.blocked(req, req.person.id)) {
-      return fail(res, 429, 'rate_limited', "that's a lot of covers for one day -- try again tomorrow");
+      fail(res, 429, 'rate_limited', "that's a lot of covers for one day -- try again tomorrow");
+      return true;
     }
     uploadLimits.hit(req, req.person.id);
+    return false;
+  }
+
+  router.put('/events/:id/cover', auth.requirePerson, withEvent, hostsOnly, receive, handle(async (req, res) => {
+    if (!req.file) return fail(res, 400, 'bad_image', "send one image, in a form field named 'cover'");
+    if (overLimit(req, res)) return;
+    await saveCover(req, res, req.file.buffer);
+  }));
+
+  // One of the curated backgrounds, by its id from GET /backgrounds. Only
+  // an id in the current set is fetched, from the URL the set builds,
+  // never one a request sent.
+  router.put('/events/:id/cover/background', auth.requirePerson, withEvent, hostsOnly, handle(async (req, res) => {
+    const id = req.body && req.body.backgroundId;
+    const background = typeof id === 'string' ? await backgrounds.find(id) : null;
+    if (!background) return fail(res, 400, 'bad_background', "that isn't one of the backgrounds: pick one from the list again");
+    if (overLimit(req, res)) return;
+    let buf;
+    try {
+      buf = await backgrounds.download(background);
+    } catch (err) {
+      if (err instanceof BackgroundUnavailable) return fail(res, 502, 'background_unreachable', "that background couldn't be fetched just now -- try again in a minute");
+      throw err;
+    }
+    await saveCover(req, res, buf);
+  }));
+
+  // Makes `buf` the event's cover and answers with the event: what an
+  // upload and a chosen background both do.
+  async function saveCover(req, res, buf) {
     let cover;
     try {
-      cover = await toCover(req.file.buffer);
+      cover = await toCover(buf);
     } catch (err) {
       if (err instanceof BadImage) return fail(res, 400, 'bad_image', err.message);
       throw err;
@@ -93,7 +130,7 @@ module.exports = function coverRoutes(ctx) {
     // never does.
     const event = store.setCover(req.event.id, key, { hue: cover.hue, grayscale: cover.grayscale, sizes: cover.sizes });
     res.json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });
-  }));
+  }
 
   router.delete('/events/:id/cover', auth.requirePerson, withEvent, hostsOnly, handle(async (req, res) => {
     const event = store.setCover(req.event.id, null);

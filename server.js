@@ -9,6 +9,8 @@ const { isCanopyOrigin } = require('./lib/domain');
 const { isVerified } = require('./lib/people');
 const { createPush } = require('./lib/push');
 const { createNotifier } = require('./lib/notify');
+const { createBackgrounds, settingsFrom: backgroundSettings } = require('./lib/backgrounds');
+const { measureThumb } = require('./lib/coverImage');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -97,7 +99,12 @@ app.use((req, res, next) => {
 // one call).
 
 const notify = createNotifier({ store, push: createPush({ store }) });
-const ctx = { store, canopy, auth, notify };
+// The curated backgrounds from TMDB (lib/backgrounds.js): off unless
+// config/backgrounds.json has entries, or TMDB_TOKEN and TMDB_LIST_ID are
+// set. The manifest is checked here, at startup; loading starts once the
+// server is listening.
+const backgrounds = createBackgrounds({ ...backgroundSettings(process.env), measure: measureThumb });
+const ctx = { store, canopy, auth, notify, backgrounds };
 const docsRouter = require('./routes/docs')();
 const apiRouters = [
   require('./routes/events'),
@@ -105,6 +112,7 @@ const apiRouters = [
   require('./routes/hosts'),
   require('./routes/wall'),
   require('./routes/covers'),
+  require('./routes/backgrounds'),
   require('./routes/notifications'),
   require('./routes/moderation'),
   require('./routes/people'),
@@ -214,6 +222,8 @@ if (require.main === module) {
     // Covers from before there were sizes get theirs, in the background
     // (lib/coverBackfill.js).
     require('./lib/coverBackfill').backfillCoverSizes(store).catch((err) => console.error(`[canopy-events] cover sizes: ${err.message}`));
+    // The curated backgrounds, loaded in the background.
+    backgrounds.start();
   });
 }
 

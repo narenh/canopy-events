@@ -100,6 +100,7 @@ test('every endpoint, every caller: other people are the five public fields and 
     await call(who, 'get', `/api/v1/friend-links/${anaLink.code}`);
     await call(who, 'get', '/api/v1/me/friend-link');
     await call(who, 'get', '/api/v1/me/settings');
+    await call(who, 'get', '/api/v1/backgrounds');
     await call(who, 'get', `/api/v1/events/${e.id}`);
     await call(who, 'get', `/api/v1/events/${e.id}/guests`);
     await call(who, 'get', '/api/v1/me');

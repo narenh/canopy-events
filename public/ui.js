@@ -1906,11 +1906,27 @@
     + '<circle cx="8.5" cy="9.5" r="1.9" fill="currentColor"/><path fill="currentColor" d="M4 18.5l5.2-5.6 3.3 3.4 3.2-4.1L20 18.5z"/></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
 
+  // A gallery: four tiles.
+  const ICON_GALLERY = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2" fill="currentColor"/><rect x="13" y="3" width="8" height="8" rx="2" fill="currentColor"/>'
+    + '<rect x="3" y="13" width="8" height="8" rx="2" fill="currentColor"/><rect x="13" y="13" width="8" height="8" rx="2" fill="currentColor"/></svg>';
+  // TMDB's logo (the "blue short" one from themoviedb.org/about/logos-attribution),
+  // as their SVG has it: one path, in their gradient.
+  const TMDB_LOGO = '<svg class="tmdb-logo" viewBox="0 0 273.42 35.52" role="img" aria-label="TMDB"><defs><linearGradient id="tmdbLogoGradient" y1="17.76" x2="273.42" y2="17.76" gradientUnits="userSpaceOnUse">'
+    + '<stop offset="0" stop-color="#90cea1"/><stop offset="0.56" stop-color="#3cbec9"/><stop offset="1" stop-color="#00b3e5"/></linearGradient></defs>'
+    + '<path fill="url(#tmdbLogoGradient)" d="M191.85,35.37h63.9A17.67,17.67,0,0,0,273.42,17.7h0A17.67,17.67,0,0,0,255.75,0h-63.9A17.67,17.67,0,0,0,174.18,17.7h0A17.67,17.67,0,0,0,191.85,35.37ZM10.1,35.42h7.8V6.92H28V0H0v6.9H10.1Zm28.1,0H46V8.25h.1L55.05,35.4h6L70.3,8.25h.1V35.4h7.8V0H66.45l-8.2,23.1h-.1L50,0H38.2ZM89.14.12h11.7a33.56,33.56,0,0,1,8.08,1,18.52,18.52,0,0,1,6.67,3.08,15.09,15.09,0,0,1,4.53,5.52,18.5,18.5,0,0,1,1.67,8.25,16.91,16.91,0,0,1-1.62,7.58,16.3,16.3,0,0,1-4.38,5.5,19.24,19.24,0,0,1-6.35,3.37,24.53,24.53,0,0,1-7.55,1.15H89.14Zm7.8,28.2h4a21.66,21.66,0,0,0,5-.55A10.58,10.58,0,0,0,110,26a8.73,8.73,0,0,0,2.68-3.35,11.9,11.9,0,0,0,1-5.08,9.87,9.87,0,0,0-1-4.52,9.17,9.17,0,0,0-2.63-3.18A11.61,11.61,0,0,0,106.22,8a17.06,17.06,0,0,0-4.68-.63h-4.6ZM133.09.12h13.2a32.87,32.87,0,0,1,4.63.33,12.66,12.66,0,0,1,4.17,1.3,7.94,7.94,0,0,1,3,2.72,8.34,8.34,0,0,1,1.15,4.65,7.48,7.48,0,0,1-1.67,5,9.13,9.13,0,0,1-4.43,2.82V17a10.28,10.28,0,0,1,3.18,1,8.51,8.51,0,0,1,2.45,1.85,7.79,7.79,0,0,1,1.57,2.62,9.16,9.16,0,0,1,.55,3.2,8.52,8.52,0,0,1-1.2,4.68,9.32,9.32,0,0,1-3.1,3A13.38,13.38,0,0,1,152.32,35a22.5,22.5,0,0,1-4.73.5h-14.5Zm7.8,14.15h5.65a7.65,7.65,0,0,0,1.78-.2,4.78,4.78,0,0,0,1.57-.65,3.43,3.43,0,0,0,1.13-1.2,3.63,3.63,0,0,0,.42-1.8A3.3,3.3,0,0,0,151,8.6a3.42,3.42,0,0,0-1.23-1.13A6.07,6.07,0,0,0,148,6.9a9.9,9.9,0,0,0-1.85-.18h-5.3Zm0,14.65h7a8.27,8.27,0,0,0,1.83-.2,4.67,4.67,0,0,0,1.67-.7,3.93,3.93,0,0,0,1.23-1.3,3.8,3.8,0,0,0,.47-1.95,3.16,3.16,0,0,0-.62-2,4,4,0,0,0-1.58-1.18,8.23,8.23,0,0,0-2-.55,15.12,15.12,0,0,0-2.05-.15h-5.9Z"/></svg>';
+
+  // TMDB's attribution: their logo and their sentence.
+  function tmdbCredit(cls) {
+    return '<p class="tmdb-credit' + (cls ? ' ' + cls : '') + '">' + TMDB_LOGO + '<span>' + tx('common.tmdbCredit') + '</span></p>';
+  }
+
   // The cover, as the hero: the photo (or, with none, the generated
   // picture in the event's colour), and on it, top right, a button to
-  // pick a photo and, when there's one, a × to take it off. Nothing is
-  // sent until the form is saved (views/editor.html).
-  function coverHero(e) {
+  // pick a photo, one to choose a background when there are any
+  // (`backgrounds`, from GET /api/v1/backgrounds), and, when there's a
+  // cover, a × to take it off. Nothing is sent until the form is saved
+  // (views/editor.html).
+  function coverHero(e, backgrounds) {
     const url = coverUrl(e);
     return '<div class="hero" id="coverHero">' + coverArt(e, '', ' id="coverArt"')
       + (coverImg(e, 'hero', 'cover', ' id="coverPreview"') || '<img class="cover" id="coverPreview" alt="" decoding="async">')
@@ -1918,8 +1934,52 @@
       + '<div class="hero-tools">'
       + '<label class="hero-btn file-btn" title="' + tx(url ? 'editor.coverChange' : 'editor.coverAdd') + '">' + ICON_CAMERA
       + '<input type="file" id="coverFile" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" aria-label="' + tx(url ? 'editor.coverChange' : 'editor.coverAdd') + '"></label>'
+      + (backgrounds && backgrounds.length
+        ? '<button type="button" class="hero-btn" id="backgroundOpen" data-action="open-backgrounds" aria-haspopup="dialog" aria-controls="backgroundPanel" aria-label="'
+          + tx('editor.backgroundChoose') + '" title="' + tx('editor.backgroundChoose') + '">' + ICON_GALLERY + '</button>'
+        : '')
       + '<button type="button" class="hero-btn" id="coverRemove" data-action="remove-cover" aria-label="' + tx('editor.coverRemove') + '" title="' + tx('editor.coverRemove') + '"' + (url ? '' : ' hidden') + '>' + ICON_CLOSE + '</button>'
       + '</div></div>';
+  }
+
+  // The backgrounds in groups, one per title: [[b, b, b], [b], ...]. The
+  // API keeps a title's backgrounds together.
+  function backgroundGroups(list) {
+    const groups = [];
+    (list || []).forEach((b) => {
+      const last = groups[groups.length - 1];
+      if (last && last[0].title === b.title && last[0].year === b.year) last.push(b);
+      else groups.push([b]);
+    });
+    return groups;
+  }
+
+  // The sheet the background button opens: every background as a 3:2
+  // button, grouped by title with the title small under each group, and
+  // TMDB's attribution at the foot. `chosen` is the id picked, if any.
+  function backgroundSheet(list, chosen) {
+    let h = '<div class="sheet-backdrop" id="backgroundBackdrop" hidden></div>'
+      + '<div class="bg-panel" id="backgroundPanel" role="dialog" aria-modal="true" aria-labelledby="backgroundHeading" hidden>'
+      + '<div class="bg-head"><h2 id="backgroundHeading">' + tx('editor.backgroundChoose') + '</h2>'
+      + '<button type="button" class="round-btn" data-action="close-backgrounds" aria-label="' + tx('editor.backgroundClose') + '">' + ICON_CLOSE + '</button></div>'
+      + '<div class="bg-scroll">';
+    backgroundGroups(list).forEach((group) => {
+      const first = group[0];
+      const name = first.year ? t('editor.backgroundLabelYear', { title: first.title, year: first.year }) : t('editor.backgroundLabel', { title: first.title });
+      h += '<div class="bg-group"><div class="bg-grid">';
+      group.forEach((b, i) => {
+        const label = group.length > 1 ? t('editor.backgroundOf', { label: name, n: i + 1, count: group.length }) : name;
+        const thumb = safeUrl(b.thumbUrl);
+        const preview = safeUrl(b.previewUrl);
+        h += '<button type="button" class="bg-pick" data-action="pick-background" data-id="' + esc(b.id) + '" aria-label="' + esc(label) + '" aria-pressed="' + (b.id === chosen ? 'true' : 'false') + '">'
+          + (thumb ? '<img src="' + esc(thumb) + '"' + (preview ? ' srcset="' + esc(thumb) + ' 300w, ' + esc(preview) + ' 780w" sizes="(min-width: 700px) 170px, 45vw"' : '')
+            + ' alt="" loading="lazy" decoding="async">' : '')
+          + '</button>';
+      });
+      h += '</div><p class="bg-title">' + esc(name) + '</p></div>';
+    });
+    h += '</div>' + tmdbCredit('bg-credit') + '</div>';
+    return h;
   }
 
   // One tappable piece of when: the words, big, with the browser's own
@@ -2094,7 +2154,8 @@
       + '</div><div class="error" id="detailsError" role="alert"></div></div>';
   }
 
-  // The form for making an event (d.event null) or editing one. `o` is {
+  // The form for making an event (d.event null) or editing one.
+  // d.backgrounds is the curated backgrounds (none: no picker). `o` is {
   // zone (a new event's: the viewer's), viewerZone (for the zone menu's
   // nearby list) }.
   function editorForm(d, o) {
@@ -2109,7 +2170,7 @@
 
     // The event card, as the page draws it.
     h += '<section class="event-head editor-head' + (coverUrl(e) ? ' has-cover' : '') + '" id="details">';
-    h += coverHero(e);
+    h += coverHero(e, d.backgrounds);
     h += '<div class="head-text"><div class="error" id="coverError" role="alert"></div>'
       + '<label class="sr-only" for="title">' + tx('editor.title') + '</label>'
       + '<textarea id="title" class="event-title title-input" rows="1" maxlength="120" required placeholder="' + tx('editor.titlePlaceholder') + '">' + esc(e.title || '') + '</textarea>'
@@ -2153,6 +2214,7 @@
       + (d.event ? '<a class="button secondary" href="/e/' + esc(e.id) + '">Back</a>' : '')
       + '<button type="submit" id="saveBtn">' + (d.event ? 'Save' : 'Create event') + '</button></div></div>';
     h += zoneSheet();
+    if (d.backgrounds && d.backgrounds.length) h += backgroundSheet(d.backgrounds);
     h += '</form>';
     return h;
   }
@@ -2161,6 +2223,7 @@
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
+    backgroundGroups, backgroundSheet, tmdbCredit,
     eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, HOME_LOADS, HOME_TABS, MAX_GUESTS_ALLOWED
