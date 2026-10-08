@@ -112,9 +112,16 @@ Format: decision · why · how to reverse.
 - Mock data sits behind one `EventsRepository` protocol in the
   environment, and model property names match the API's JSON. · The
   real client becomes a drop-in later. · n/a
-- The project's own settings stay as they are: Swift 5 mode, MainActor
-  default isolation, iOS 27, synchronized folders. · They're your
-  choices. · n/a
+- **(You)** The deployment target is iOS 26.6, written in the most
+  modern Swift that iOS 26 supports.
+- The app moves to the **Swift 6 language mode** (if it builds cleanly),
+  keeping MainActor default isolation and approachable concurrency. ·
+  That's what "most modern Swift" means. · SWIFT_VERSION back to 5.0.
+- Fixed the repo: `CanopyEvents/` was tracked as a gitlink (a submodule
+  entry) to a commit that exists nowhere, so the Xcode project and Swift
+  files weren't in git. They're now tracked as plain files (0e11c39,
+  pushed together with your unpushed "add xcproj"). · Otherwise every
+  commit would silently leave the code out. · n/a
 - No test target yet, since adding one means editing the project file.
   · Left for you. · n/a
 - The look uses the system's Liquid Glass tinted with Canopy green, plus
