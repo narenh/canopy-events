@@ -63,7 +63,7 @@ module.exports = function peopleRoutes(ctx) {
         return fail(res, err.status, reason, SENTENCES[reason], extra);
       }
       console.error(`[canopy-events] lookup failed: ${err && err.message}`);
-      return fail(res, 503, 'accounts_unreachable', 'Canopy accounts could not be reached. Try again in a minute.');
+      return fail(res, 503, 'accounts_unreachable', 'Canopy Accounts could not be reached. Try again in a minute.');
     }
     res.json({ person: found ? publicPerson(found) : null });
   }));

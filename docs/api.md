@@ -29,7 +29,7 @@ The web pages use exactly this API. Anything a page can do, an app can.
 
 ## Signing in
 
-Everyone is a Canopy account (`account.canopysf.com`). Events keeps no
+Everyone is a Canopy Account (`account.canopysf.com`). Events keeps no
 names, emails or photos of its own.
 
 **Apps send a bearer token**: `Authorization: Bearer <token>`. The token is
@@ -116,7 +116,7 @@ A 403 `email_unverified` always comes with a `verify` link too, so a
 
 No email, phone, Instagram, Venmo or Cash App, for anyone, ever, not even
 for a host looking at their own guests, and not even your own: events
-doesn't have them. The app reads and changes your own at Canopy accounts,
+doesn't have them. The app reads and changes your own at Canopy Accounts,
 `GET`/`PATCH /api/native/v1/me`. Don't build features that need someone
 else's.
 
@@ -249,23 +249,28 @@ statuses.
 ```
                  a host invites you
    (nothing) ─────────────────────────▶ invited
-       │                                  │  ▲
-       │ you answer                       │  │ you take your answer back
-       ▼                                  ▼  │ (you were invited)
-   going ◀──▶ maybe ◀──▶ not_going ───────────┘
-       │
-       └── you take your answer back (not invited) ──▶ (nothing)
+       │                                  │
+       │ you answer                       │ you answer
+       ▼                                  ▼
+   going ◀──▶ maybe ◀──▶ not_going
 
    invited ── the host takes the invitation back ──▶ (nothing)
 
    anything ── a host removes you ──▶ removed ── a host undoes it ──▶ invited
 ```
 
+**Answers can change, but never be withdrawn.** Once you've answered you
+can switch between `going`, `maybe` and `not_going` as often as you like,
+but nothing you can do takes you back to `invited` or to no answer.
+`not_going` is how you leave: you stay on the list as `not_going`
+(counted in `counts.notGoing`), any spot you held goes to the waitlist,
+and the event drops out of your calendar.
+
 - `PUT /api/v1/events/{id}/rsvp` with `{"status": "going"}` (or `maybe`,
   `not_going`) answers or changes the answer. Anyone signed in with the
   link may answer, invited or not.
-- `DELETE /api/v1/events/{id}/rsvp` takes it back: invited again if a host
-  invited you (`viewer.rsvp.invited` says so), otherwise nothing.
+- There's no `DELETE /api/v1/events/{id}/rsvp`: it's 404 `not_found`,
+  like any unknown route.
 - A host can take back an invitation (`DELETE
   /api/v1/events/{id}/invites/{personId}`) only while it has no answer.
 - **Refused with 409**: a cancelled event (`event_cancelled`), one that's
@@ -278,8 +283,8 @@ statuses.
   saved as `waitlisted`, and the answer has `"waitlisted": true`. Show
   "you're on the waitlist". See "Capacity and the waitlist".
 
-Both calls answer with the whole event, so the screen can redraw from the
-answer. `PUT` also says `waitlisted`.
+It answers with the whole event, so the screen can redraw from the
+answer, and `waitlisted`.
 
 ## Capacity and the waitlist
 
@@ -292,10 +297,9 @@ no cap).
 - Someone already going who asks for more plus-ones than there's room for
   gets **409 `no_room`** and keeps their spot as it was. Asking for one
   more shouldn't cost you the one you had.
-- **A freed spot goes to the waitlist at once**: someone taking their
-  answer back, changing to `maybe` or `not_going`, bringing fewer guests,
-  being removed or made a co-host, or the host raising or clearing the
-  capacity. The earliest waitlisted answer that fits, plus-ones included,
+- **A freed spot goes to the waitlist at once**: someone changing to
+  `maybe` or `not_going`, bringing fewer guests, being removed or made a
+  co-host, or the host raising or clearing the capacity. The earliest waitlisted answer that fits, plus-ones included,
   becomes `going`; then the next, until nothing fits. A big party that
   doesn't fit is passed over for a smaller one behind it, and stays first
   in line. The person promoted gets an `off_waitlist` entry on the wall.
@@ -867,7 +871,7 @@ expect:
 | 409 | `is_you`, `own_link` | adding yourself, or saying yes to your own friend link |
 | 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |
-| 503 | `accounts_unreachable` | Canopy accounts is down; retry in a minute |
+| 503 | `accounts_unreachable` | Canopy Accounts is down; retry in a minute |
 | 500 | `server_error` | our bug; retry once, then tell us |
 
 ## Limits

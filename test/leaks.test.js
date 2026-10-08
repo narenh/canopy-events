@@ -110,7 +110,7 @@ test('every endpoint, every caller: other people are the five public fields and 
   await call(ana, 'post', `/api/v1/events/${e.id}/invites`, { personIds: [P.fay.id, P.ben.id] });
   await call(ana, 'del', `/api/v1/events/${e.id}/invites/${P.fay.id}`);
   await call(ben, 'put', `/api/v1/events/${e.id}/rsvp`, { status: 'maybe' });
-  await call(benApp, 'del', `/api/v1/events/${e.id}/rsvp`);
+  await call(benApp, 'put', `/api/v1/events/${e.id}/rsvp`, { status: 'not_going' });
   await call(ana, 'post', '/api/v1/events', { title: 'New', startsAt: '2030-01-01T20:00:00Z', timeZone: 'UTC' });
   await call(ben, 'post', `/api/v1/events/${e.id}/wall`, { text: 'Again' });
   await call(ana, 'del', `/api/v1/events/${e.id}/cohosts/${P.cy.id}`);

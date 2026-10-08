@@ -55,8 +55,9 @@ test('capacity and the waitlist', async (t) => {
     assert.equal(r.data.reason, 'no_room');
     assert.equal((await ben.get(`/api/v1/events/${e.id}`)).data.event.viewer.rsvp.guests, 1);
 
-    // Cy withdraws (2 spots): Dee fits (1), Eve (3) doesn't.
-    await cy.del(`/api/v1/events/${e.id}/rsvp`);
+    // Cy can't go after all (2 spots): Dee fits (1), Eve (3) doesn't.
+    await rsvp(cy, e.id, 'not_going');
+    assert.equal(await statusOf(cy, e.id), 'not_going');
     assert.equal(await statusOf(dee, e.id), 'going');
     assert.equal(await statusOf(eve, e.id), 'waitlisted');
     const wall = (await ana.get(`/api/v1/events/${e.id}/wall`)).data.entries;
@@ -93,7 +94,7 @@ test('capacity and the waitlist', async (t) => {
     await rsvp(cy, e.id, 'going', 1);
     await rsvp(dee, e.id, 'going');
     await rsvp(cy, e.id, 'going', 0); // Cy, still first in line
-    await ben.del(`/api/v1/events/${e.id}/rsvp`);
+    await rsvp(ben, e.id, 'not_going');
     assert.equal(await statusOf(cy, e.id), 'going');
     assert.equal(await statusOf(dee, e.id), 'waitlisted');
   });
@@ -106,9 +107,9 @@ test('capacity and the waitlist', async (t) => {
     await rsvp(ben, e.id, 'going', 1); // frees 1: Dee fits, Cy doesn't
     assert.equal(await statusOf(dee, e.id), 'going');
     assert.equal(await statusOf(cy, e.id), 'waitlisted');
-    await ben.del(`/api/v1/events/${e.id}/rsvp`); // 2 free: still not Cy
+    await rsvp(ben, e.id, 'not_going'); // 2 free: still not Cy
     assert.equal(await statusOf(cy, e.id), 'waitlisted');
-    await dee.del(`/api/v1/events/${e.id}/rsvp`); // 3 free: Cy, first in line all along
+    await rsvp(dee, e.id, 'not_going'); // 3 free: Cy, first in line all along
     assert.equal(await statusOf(cy, e.id), 'going');
   });
 
@@ -142,15 +143,19 @@ test('capacity and the waitlist', async (t) => {
     assert.ok(ev.counts.total.going <= 7, JSON.stringify(ev.counts));
     assert.equal(ev.counts.going + ev.counts.waitlisted, 12);
     assert.equal(answers.filter((r) => r.data.waitlisted).length, ev.counts.waitlisted);
-    // Everyone going leaves at once, while the waitlist changes its mind.
+    // Everyone going says they can't go at once, while the waitlist
+    // changes its mind.
     const going = callers.filter((c, i) => !answers[i].data.waitlisted);
     const waiting = callers.filter((c, i) => answers[i].data.waitlisted);
     await Promise.all([
-      ...going.map((c) => c.del(`/api/v1/events/${e.id}/rsvp`)),
+      ...going.map((c) => rsvp(c, e.id, 'not_going')),
       ...waiting.map((c, i) => rsvp(c, e.id, 'going', (i + 1) % 2))
     ]);
     ev = await event(e.id);
     assert.ok(ev.counts.total.going <= 7, JSON.stringify(ev.counts));
+    // They're still on the list, as can't go.
+    assert.equal(ev.counts.notGoing, going.length, JSON.stringify(ev.counts));
+    assert.equal(ev.counts.going + ev.counts.waitlisted, waiting.length, JSON.stringify(ev.counts));
     // And nobody still waiting would fit.
     const list = (await ana.get(`/api/v1/events/${e.id}/guests?status=waitlisted`)).data.guests;
     assert.ok(list.every((g) => 1 + g.guests > ev.spotsLeft), JSON.stringify({ spotsLeft: ev.spotsLeft, list }));
@@ -173,14 +178,14 @@ test('a promotion that fails takes the whole change back with it', (t) => {
   // The wall refuses the "got a spot" entry, so promoting B fails...
   store.db.exec(`CREATE TRIGGER no_promotions BEFORE INSERT ON wall WHEN NEW.type = 'off_waitlist'
                  BEGIN SELECT RAISE(ABORT, 'refused'); END`);
-  assert.throws(() => store.withdrawAnswer('CAPCAPCAPCAP', a), /refused/);
-  // ...and A's withdrawal is undone with it: nobody lost a spot or got one
+  assert.throws(() => store.setAnswer('CAPCAPCAPCAP', a, 'not_going'), /refused/);
+  // ...and A's "can't go" is undone with it: nobody lost a spot or got one
   // without it being on the wall.
   assert.equal(store.getRsvp('CAPCAPCAPCAP', a).status, 'going');
   assert.equal(store.getRsvp('CAPCAPCAPCAP', b).status, 'waitlisted');
   assert.equal(store.listWall('CAPCAPCAPCAP', { limit: 10 }).filter((w) => w.type === 'going').length, 1);
   store.db.exec('DROP TRIGGER no_promotions');
-  assert.deepEqual(store.withdrawAnswer('CAPCAPCAPCAP', a).promoted, [b]);
+  assert.deepEqual(store.setAnswer('CAPCAPCAPCAP', a, 'not_going').promoted, [b]);
   // A third answer, with one spot and B in it: waitlisted.
   assert.equal(store.setAnswer('CAPCAPCAPCAP', c, 'going').outcome, 'waitlisted');
 });

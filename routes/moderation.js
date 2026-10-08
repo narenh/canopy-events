@@ -42,7 +42,7 @@ module.exports = function moderationRoutes(ctx) {
     // Someone with no row yet can be removed ahead of time, if they exist.
     if (!store.getRsvp(req.event.id, personId) && !store.hostRole(req.event.id, personId)) {
       const people = await loadPeople(ctx.canopy, [personId]);
-      if (!people.has(personId)) return fail(res, 404, 'person_not_found', "there's no Canopy account with that id");
+      if (!people.has(personId)) return fail(res, 404, 'person_not_found', "there's no Canopy Account with that id");
     }
     const { outcome, promoted } = store.removeGuest(req.event.id, personId);
     if (outcome === 'is_host') {

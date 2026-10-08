@@ -37,7 +37,7 @@ module.exports = function hostsRoutes(ctx) {
       return fail(res, 400, 'bad_person_id', 'personId is a person id');
     }
     const people = await loadPeople(ctx.canopy, [personId]);
-    if (!people.has(personId)) return fail(res, 404, 'person_not_found', "there's no Canopy account with that id");
+    if (!people.has(personId)) return fail(res, 404, 'person_not_found', "there's no Canopy Account with that id");
     if (personId !== req.person.id && !store.isKnownVerified(personId)) {
       return fail(res, 403, 'email_unverified',
         "they can't co-host yet: a co-host needs a verified email, and to have opened Canopy Events with it at least once");

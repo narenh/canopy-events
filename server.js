@@ -22,7 +22,7 @@ app.set('trust proxy', true);
 app.disable('x-powered-by');
 app.use(express.json({ limit: '100kb' }));
 
-// Everyone is a Canopy account. Without the account service there's no
+// Everyone is a Canopy Account. Without the account service there's no
 // one to be, so a missing setting stops the server here, with what to do,
 // rather than at the first request.
 if (!process.env.CANOPY_ACCOUNT_URL || !process.env.CANOPY_ACCOUNT_KEY) {

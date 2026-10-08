@@ -13,9 +13,9 @@ link, sign in (or quick-sign-up, below), and say **going**, **maybe** or
 (`/api/v1`, OpenAPI 3.1) so iOS and Android apps can be built on it
 later without touching the server.
 
-## Accounts: Canopy accounts, plus "quick" ones
+## Accounts: Canopy Accounts, plus "quick" ones
 
-Everyone is a Canopy account (`account.canopysf.com`, repo
+Everyone is a Canopy Account (`account.canopysf.com`, repo
 `canopy-account-service`). Events keeps no names, emails or photos of
 its own, only person ids, the same as tickets.
 
@@ -113,7 +113,10 @@ details to anyone else:
   - "friends going" called out on an event page;
   - `GET /api/v1/me/friends`, with how many events in common.
 - **RSVP**: `going`, `maybe`, `not_going`. Invited with no answer yet is
-  `invited`. A waitlist adds `waitlisted` (see capacity).
+  `invited`. A waitlist adds `waitlisted` (see capacity). Like Partiful,
+  once you've answered you can switch between the three, but you can
+  **never take the answer back** to no answer; "can't go" is how you
+  leave. See the decision log's "No taking answers back".
 - **Guest list visibility is the host's choice, per event**: `everyone`
   (anyone with the link sees names and photos) or `responded` (you see
   the names once you've RSVP'd; before that, only counts). Hosts always

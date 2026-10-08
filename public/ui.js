@@ -990,7 +990,7 @@
   }
 
   // Signed out: a big "RSVP" to the quick sign-up, and a smaller way in
-  // for people who already have a Canopy account. Both come back here.
+  // for people who already have a Canopy Account. Both come back here.
   function signedOutSection(e, d, phase) {
     const links = d.links || {};
     let h = '<section class="card" id="rsvp" data-section="rsvp">';
@@ -1026,8 +1026,9 @@
       + '<p class="small" style="margin:0">' + tx('event.removedHint') + '</p></section>';
   }
 
-  // Signed in, not hosting: going / maybe / can't go, how many guests
-  // they're bringing (when the host allows any), and taking it back.
+  // Signed in, not hosting: going / maybe / can't go, and how many guests
+  // they're bringing (when the host allows any). An answer changes but is
+  // never taken back: "can't go" is how you leave.
   function rsvpSection(e, phase, d) {
     const rsvp = e.viewer && e.viewer.rsvp;
     const status = rsvp ? rsvp.status : null;
@@ -1066,7 +1067,6 @@
     }
     if (status === 'waitlisted') h += '<p class="small" style="margin:12px 0 0">' + tx('event.waitlisted') + '</p>';
     h += '<div class="under-answers"><span class="error" id="rsvpError" role="alert"></span>';
-    if (answered) h += '<button type="button" class="link-btn" data-action="withdraw">' + tx('event.withdraw') + '</button>';
     h += '</div></section>';
     return h;
   }
@@ -1712,6 +1712,9 @@
   }
 
   const ICON_CAMERA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.2 3a2 2 0 0 0-1.7.9L6.6 5.3H5a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V8.3a3 3 0 0 0-3-3h-1.6l-.9-1.4A2 2 0 0 0 14.8 3zM12 8.2a4.6 4.6 0 1 1 0 9.2 4.6 4.6 0 0 1 0-9.2zm0 2a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2z"/></svg>';
+  // A picture: a frame, a sun and two hills (the classic image-file icon).
+  const ICON_PICTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>'
+    + '<circle cx="8.5" cy="9.5" r="1.9" fill="currentColor"/><path fill="currentColor" d="M4 18.5l5.2-5.6 3.3 3.4 3.2-4.1L20 18.5z"/></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
 
   // The cover, as the hero: the photo (or, with none, the generated
@@ -1809,10 +1812,13 @@
   function themeField(e) {
     const key = themeKeyOf(e);
     const hasMatch = e.coverGrayscale || isHue(e.coverHue);
-    return '<div class="field" id="themeField"><label class="field-label" for="themeHue">' + tx('editor.theme') + '</label>'
+    // "Match photo" is a small picture icon on the label's line, at its
+    // right edge, named for screen readers and in its tooltip.
+    return '<div class="field" id="themeField"><div class="field-head"><label class="field-label" for="themeHue">' + tx('editor.theme') + '</label>'
+      + '<button type="button" class="icon-btn" id="themeMatch" data-action="theme-match"' + (hasMatch ? '' : ' hidden')
+      + ' aria-label="' + tx('editor.themeMatch') + '" title="' + tx('editor.themeMatch') + '">' + ICON_PICTURE + '</button></div>'
       + '<div class="hue-row"><input type="range" id="themeHue" min="0" max="' + SLIDER_MAX + '" step="1" value="' + sliderOf(key) + '"'
-      + ' style="--track:' + esc(hueTrack()) + '" aria-valuetext="' + esc(themeWords(key)) + '">'
-      + '<button type="button" class="secondary small-btn" id="themeMatch" data-action="theme-match"' + (hasMatch ? '' : ' hidden') + '>' + tx('editor.themeMatch') + '</button></div>'
+      + ' style="--track:' + esc(hueTrack()) + '" aria-valuetext="' + esc(themeWords(key)) + '"></div>'
       + '<div class="error" id="themeHueError" role="alert"></div></div>'
       + accentField(e, key);
   }

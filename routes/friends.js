@@ -106,7 +106,7 @@ module.exports = function friendsRoutes(ctx) {
     if (addLimits.blocked(req, req.person.id)) return fail(res, 429, 'rate_limited', "that's a lot of friends for one day -- try again tomorrow");
     addLimits.hit(req, req.person.id);
     const people = await loadPeople(canopy, [personId]);
-    if (!people.has(personId)) return fail(res, 404, 'person_not_found', "there's no Canopy account with that id");
+    if (!people.has(personId)) return fail(res, 404, 'person_not_found', "there's no Canopy Account with that id");
     store.addFriend(req.person.id, personId);
     res.json({ friend: await oneFriend(req, personId) });
   }));

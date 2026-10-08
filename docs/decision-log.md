@@ -1648,7 +1648,7 @@ Fixes for the security review's events findings (branch `fix/review`).
   change. · Cost: slightly less glow at the top and bottom. · The first
   gradient layer of `.mesh-bg::before` in events.css and account.css.
 - **(You)** The header photo opens an account menu: your name first
-  (with "Canopy account" under it, linking to your Canopy profile), then
+  (with "Canopy Account" under it, linking to your Canopy profile), then
   Sign out. Sign out is removed everywhere else (the page footer is
   gone). · The menu uses the same keyboard and Escape behaviour as the
   host ⋯ menu. · lib/render.js `header()`, public/events.js
@@ -2426,3 +2426,67 @@ viewers like the address. The rest:
   signed in and out, adding a link row, a `javascript:` value refused
   under its row with focus on it, then fixed, a row removed, and Save
   storing the new list.
+
+## Guest menu (queued after event details)
+
+- **(You)** Guests get a ⋯ menu on the event page with: Mute event,
+  Remove me from event, Opt out of all invites from this host.
+- Assumed: mute stops wall posts, RSVP chatter and co-host news, but
+  keeps the essentials (cancelled, time or place changed). Leaving
+  deletes your row, invitation and notifications, and frees your spot
+  for the waitlist. The link still works for you as a fresh visitor, so
+  it's a deliberate exit, not the withdrawn "take back my answer".
+  Opt-out silently skips that host's future invites; the host only sees
+  a generic "couldn't invite", never why. Undo from the friends page
+  (and the app's Profile).
+
+## No taking answers back
+
+- **An answer can change but is never withdrawn.** The owner's call,
+  like Partiful: once you've answered you can switch between going,
+  maybe and can't go, but there's no going back to no answer (or to
+  `invited`). "Can't go" is how you leave: you stay on the list as
+  `not_going` (counted in `counts.notGoing`), your spot goes to the
+  waitlist through the same `setAnswer` path as any change, your "going"
+  leaves the wall, and the event drops out of your calendar. · As
+  asked. · routes/rsvps.js, lib/store/rsvps.js.
+- **Removed:** `DELETE /api/v1/events/{id}/rsvp` and `withdrawAnswer`
+  (with its `backToInvited` statement; `remove` stays for uninviting),
+  openapi.yaml's `withdrawRsvp`, the "Take back my answer" button
+  (`event.withdraw` in public/copy.js, its markup in public/ui.js, its
+  handler in views/event.html; `answer()` there now always PUTs), and
+  the CSS that left room for it under the answer buttons. Earlier
+  entries in this log that mention withdrawing describe how it was. ·
+  n/a
+- **A DELETE to that path is 404 `not_found`**, JSON with a reason, from
+  the API's catch-all for unknown routes, not a 405. · Nothing else in
+  the API answers 405 for a known path with the wrong method; one
+  special case would be the only one. · server.js.
+- **What stays:** a host can still take back an invitation nobody has
+  answered (`DELETE .../invites/{personId}`, 409 `already_responded`
+  once answered), and remove a guest. Removing someone and then undoing
+  it still leaves them `invited` with no answer: that's the host's
+  doing, not a way for a guest to take an answer back. A host inviting
+  someone who already answered marks them invited and keeps the answer.
+- **Inbox guard test:** test/inbox-links.test.js used withdraw as the
+  one way a guest leaves the list while keeping their notifications.
+  No route does that now (removing and uninviting clear the inbox), so
+  the test checks that a can't-go guest still sees the event, then
+  deletes the row behind the API's back to keep the "no event for
+  people off the list" guard covered. · n/a
+- **The queued guest menu's "Remove me from event"** (see "Guest menu"
+  above) is a separate, deliberate exit, not this: it isn't built, and
+  until it is, a guest who has answered stays on the list. · n/a
+- **Still to do elsewhere:** the iOS app's mock still has a withdraw
+  repository method to remove (`withdrawRSVP` in
+  EventsRepository.swift and MockEventsRepository+Guests.swift, and the
+  comment in MockEventRecord.swift), and its ARCHITECTURE.md mentions
+  withdrawing. · n/a
+- **Tests:** the DELETE route answers 404 for someone with an answer and
+  someone without, a removed guest included; nothing a guest can do
+  (PUT `invited`, a host inviting again, a host uninviting) gets an
+  answered guest back to invited or no answer; tests that withdrew to
+  free a spot (capacity, wall, calendar) now say can't go and check the
+  person stays on as `not_going`; the concurrency test has everyone
+  going say can't go at once; the store-level rollback test uses
+  `setAnswer(..., 'not_going')`; the event page has no withdraw button.

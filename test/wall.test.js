@@ -90,8 +90,8 @@ test('the activity wall', async (t) => {
     // Ben changes his mind and back: still one going entry, the newest.
     await rsvp(ben, e.id, 'maybe');
     await rsvp(ben, e.id, 'going');
-    // Cy takes his answer back: his entry goes.
-    await cy.del(`/api/v1/events/${e.id}/rsvp`);
+    // Cy can't go after all: his entry goes.
+    await rsvp(cy, e.id, 'not_going');
     await ana.patch(`/api/v1/events/${e.id}`, { startsAt: '2031-03-01T20:00:00-08:00', endsAt: '2031-03-01T23:00:00-08:00' });
     await ana.patch(`/api/v1/events/${e.id}`, { locationName: 'The park', locationAddress: 'Dolores Park' });
     // An edit that doesn't move it, or change the place, says nothing.

@@ -19,7 +19,7 @@ info:
 
     **Other people** are only ever `Person`: id, first and last name, short
     name and photo. Nobody's email, phone, Instagram, Venmo or Cash App is
-    ever in an answer, not even your own: those come from Canopy accounts
+    ever in an answer, not even your own: those come from Canopy Accounts
     (`GET /api/native/v1/me`).
   license:
     name: Private
@@ -52,7 +52,7 @@ tags:
     description: This document.
   - name: Site to site
     description: |
-      Not for apps or pages. Asked by the Canopy account service, server
+      Not for apps or pages. Asked by the Canopy Account service, server
       to server, signed with events' calendar secret.
 security:
   - bearerAuth: []
@@ -238,6 +238,11 @@ paths:
         spots for the waitlist. `guests` (plus-
         ones) is up to the event's `guestsAllowed` (400 `too_many_guests`),
         0 if left out, and always 0 for `not_going`.
+
+        An answer can change but is never taken back: there's no way from
+        an answer to `invited` or to no answer (no `DELETE` here; it's 404
+        `not_found` like any unknown route). `not_going` is how you leave;
+        it keeps you on the list as `not_going`.
       requestBody:
         required: true
         content:
@@ -259,27 +264,6 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RsvpResult' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/SignInRequired' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/EventNotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/Unavailable' }
-    delete:
-      tags: [Guests]
-      operationId: withdrawRsvp
-      summary: Take your answer back
-      description: |
-        If a host invited you, you're left invited with no answer;
-        otherwise you're off the list. With no answer to take back it does
-        nothing and still answers 200. The same 409s as answering. A spot
-        you free goes to the waitlist.
-      responses:
-        '200':
-          description: The event after; `viewer.rsvp` is `invited` or null.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EventEnvelope' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -330,7 +314,7 @@ paths:
       summary: Invite people
       description: |
         Hosts only. By person id: the web page offers your friends
-        (`GET /api/v1/me/friends`), but any Canopy account's id works.
+        (`GET /api/v1/me/friends`), but any Canopy Account's id works.
         Each id ends up in `invited`, or in `skipped` with why:
         `already_on_list` (invited before, or already answered),
         `is_host`, or `not_found` (no such account). 1 to 100 ids a
@@ -401,7 +385,7 @@ paths:
         people; only the creator manages co-hosts, cancels, and makes a
         new link. At most 10 co-hosts (409 `too_many_cohosts`).
 
-        **The co-host has to be verified too.** Canopy accounts doesn't
+        **The co-host has to be verified too.** Canopy Accounts doesn't
         tell sites whether someone else is, so it goes by what events saw
         the last time they used it: someone who hasn't opened Canopy
         Events signed in with a verified email gets a 403
@@ -733,7 +717,7 @@ paths:
         miss is `{"person": null}` with no hint why (no such person, or
         they don't let themselves be found, or two accounts claim it).
 
-        Limited tightly by Canopy accounts, per person, per network
+        Limited tightly by Canopy Accounts, per person, per network
         address and overall (429 `rate_limited`): don't look up as
         someone types. 403 `lookup_not_allowed` means it isn't switched on
         for this site.
@@ -780,7 +764,7 @@ paths:
         You: your id, name, photo, whether your email is proven and whether
         people can find you. No answer here has an email, phone,
         Instagram, Venmo or Cash App in it, yours included; the app gets
-        and changes your own at Canopy accounts (`GET /api/native/v1/me`).
+        and changes your own at Canopy Accounts (`GET /api/native/v1/me`).
         When
         `person.emailVerified` is false (a quick account), show the
         verify-your-email banner, which can't be dismissed, linking to
@@ -1278,7 +1262,7 @@ paths:
       operationId: calendarEntries
       summary: Someone's events, for their Canopy calendar feed (site to site, not for apps)
       description: |
-        **Not for apps.** The Canopy account service asks this, server to
+        **Not for apps.** The Canopy Account service asks this, server to
         server, for each person's calendar feed
         (`account.canopysf.com/cal/<secret>.ics`), and merges it with
         every other site's answer. Apps get the feed's link from the
@@ -1466,7 +1450,7 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     Unavailable:
-      description: Canopy accounts couldn't be reached (`accounts_unreachable`). Try again in a minute.
+      description: Canopy Accounts couldn't be reached (`accounts_unreachable`). Try again in a minute.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

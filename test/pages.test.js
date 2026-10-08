@@ -143,7 +143,7 @@ test('pages', async (t) => {
     const here = encodeURIComponent(`${server.base}/e/${party.id}`);
     const rsvp = section(html, 'rsvp');
     assert.ok(rsvp.includes(`href="${server.fake.base}/?quick=1&amp;return=${here}">RSVP</a>`), rsvp);
-    assert.ok(rsvp.includes(`href="${server.fake.base}/?return=${here}">I have a Canopy account, sign in</a>`));
+    assert.ok(rsvp.includes(`href="${server.fake.base}/?return=${here}">I have a Canopy Account, sign in</a>`));
     // Attending, signed out: the heading and counts, no faces, no list.
     const attend = section(html, 'guests');
     assert.ok(attend.includes('>Attending</h2>'));
@@ -196,7 +196,7 @@ test('pages', async (t) => {
     const rsvp = section(html, 'rsvp');
     assert.ok(rsvp.includes('data-status="going" aria-pressed="true"'), rsvp);
     assert.ok(rsvp.includes('data-status="maybe" aria-pressed="false"'));
-    assert.ok(rsvp.includes('Take back my answer'));
+    assert.ok(!rsvp.includes('data-action="withdraw"') && !rsvp.includes('Take back my answer'), 'an answer changes, never goes');
     assert.equal(section(html, 'host'), null, 'no host tools');
     const guests = section(html, 'guests');
     assert.ok(guests.includes('Going · 1') && guests.includes('Ben Okafor'));
@@ -226,7 +226,7 @@ test('pages', async (t) => {
     assert.ok(!guests.includes('avatar-row') && !guests.includes('View all'), 'no faces, no list');
     assert.ok(guests.includes('The host shows who&#39;s coming to people who&#39;ve answered.'));
     assert.ok(!html.includes('Ben Okafor') && !html.includes('Ben O<'), 'no names anywhere');
-    assert.ok(section(html, 'rsvp').includes('You&#39;re invited. Are you going?'));
+    assert.ok(section(html, 'rsvp').includes('>RSVP<'));
   });
 
   await t.test('the host: share, invite, edit and cancel, and everyone on the list', async () => {
@@ -474,7 +474,7 @@ test('pages', async (t) => {
   });
 });
 
-test('pages when Canopy accounts can\'t be reached: a page that says so', async (t) => {
+test('pages when Canopy Accounts can\'t be reached: a page that says so', async (t) => {
   const server = await startServer();
   t.after(() => server.stop());
   const ana = client(server, 'ana');
@@ -483,11 +483,11 @@ test('pages when Canopy accounts can\'t be reached: a page that says so', async 
   // Signed out needs no session check, but the hosts' names do.
   const out = await page(server, null, `/e/${e.id}`);
   assert.equal(out.status, 503);
-  assert.ok(out.body.includes("Canopy accounts can&#39;t be reached right now."));
+  assert.ok(out.body.includes("Canopy Accounts can&#39;t be reached right now."));
   // Signed in with a session the server hasn't seen: the session check.
   const r = await page(server, 'ben', '/');
   assert.equal(r.status, 503);
-  assert.ok(r.body.includes("Canopy accounts can&#39;t be reached right now."));
+  assert.ok(r.body.includes("Canopy Accounts can&#39;t be reached right now."));
 });
 
 // ---------------- The features: covers, capacity and plus-ones, co-hosts,
@@ -574,10 +574,10 @@ test('ui.js: the features, drawn', async (t) => {
 
   await t.test('the editor offers "Match photo" only once there\'s a photo whose colour is known', () => {
     const base = { id: 'AAAAAAAAAAAA', title: 'T', startsAt: '2030-01-01T20:00:00.000Z', timeZone: 'UTC', guestListVisibility: 'everyone' };
-    assert.match(UI.editorForm({ event: { ...base, coverHue: 200, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match">/);
-    assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: true } }), /id="themeMatch" data-action="theme-match">/);
-    assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match" hidden>/);
-    assert.match(UI.editorForm({ event: { ...base, themeGrayscale: true } }), new RegExp(`id="themeHue"[^>]*value="${UI.sliderOf('grey')}"[^>]*aria-valuetext="No colour"`));
+    assert.match(UI.editorForm({ event: { ...base, coverHue: 200, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match" aria-label="Match photo"/);
+    assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: true } }), /id="themeMatch" data-action="theme-match" aria-label="Match photo"/);
+    assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match" hidden aria-label="Match photo"/);
+    assert.match(UI.editorForm({ event: { ...base, themeGrayscale: true } }), new RegExp(`id="themeHue"[^>]*value="${UI.sliderOf('grey')}"[^>]*aria-valuetext="No color"`));
   });
 
   await t.test('time zones by friendly name', () => {
@@ -915,7 +915,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     await fay.del(`/api/v1/events/${e.id}/cohosts/${P.fay.id}`);
     const html = (await page(server, fay, `/e/${e.id}`)).body;
     assert.equal(section(html, 'host'), null);
-    assert.ok(section(html, 'rsvp').includes('You&#39;re invited. Are you going?'));
+    assert.ok(section(html, 'rsvp').includes('>RSVP<'));
   });
 
   await t.test('the editor: the cover, plus-ones and capacity', async () => {
@@ -991,7 +991,9 @@ test('pages: the features, as everyone who might look', async (t) => {
     const edit = await page(server, ana, `/e/${purple.id}/edit`);
     assert.ok(edit.text.includes(`<html lang="en" style="${style}">`));
     assert.match(edit.body, new RegExp(`<input type="range" id="themeHue" min="0" max="${UI.SLIDER_MAX}" step="1" value="${UI.sliderOf(300)}"`));
-    assert.match((await page(server, ana, "/new")).body, new RegExp(`id="themeHue"[^>]*value="${UI.sliderOf(null)}"[^>]*aria-valuetext="Canopy green"[\\s\\S]*id="themeMatch" data-action="theme-match" hidden`));
+    const fresh = (await page(server, ana, "/new")).body;
+    assert.match(fresh, new RegExp(`id="themeHue"[^>]*value="${UI.sliderOf(null)}"[^>]*aria-valuetext="Canopy green"`));
+    assert.match(fresh, /id="themeMatch" data-action="theme-match" hidden/);
     const home = await page(server, ana, '/');
     assert.ok(home.text.includes('<html lang="en">'), 'home stays green');
     assert.match(section(home.body, 'list-hosting'), /<a class="event-row card" href="\/e\/[^"]+" style="--card:rgba\(\d+,\d+,\d+,0\.45\)">/);
