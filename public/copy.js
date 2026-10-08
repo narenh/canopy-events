@@ -255,8 +255,10 @@ const COPY = {
     coverNotSaved: "The event is saved, but its cover didn't upload.",
     // The event's colour.
     theme: 'Background colour',
-    themeHint: "Slide to colour this event's page, for everyone who opens it. This page shows how it will look.",
+    themeHint: "Slide to colour this event's page, for everyone who opens it, or all the way left for no colour. This page shows how it will look.",
     themeDefault: 'Canopy green',
+    themeGrey: 'No colour',
+    themeMatch: 'Match photo',
     // Plus-ones and capacity.
     guestsAllowed: 'Guests each person can bring',
     guestsAllowedHint: 'Plus-ones. Lowering it later keeps the answers people already gave.',
@@ -279,7 +281,8 @@ const COPY = {
       rate_limited: "That's a lot of events for one day. Try again tomorrow.",
       bad_guests_allowed: 'Pick from 0 to 10 guests.',
       bad_capacity: 'Capacity is a whole number from 1 to 10,000, or empty for no limit.',
-      bad_theme_hue: 'Pick a colour on the slider, or Canopy green.'
+      bad_theme_hue: 'Pick a colour on the slider.',
+      bad_theme_grayscale: 'Pick a colour on the slider.'
     },
     // The cover's own refusals, by the API's `reason`.
     coverErrors: {

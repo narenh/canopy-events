@@ -896,7 +896,74 @@ waitlist, host moderation and lookup, plus one API fix, built on branch
   it repaints the editor page itself. "Canopy green" sets null and is
   disabled while it is. Nothing is saved until Save. · Native ranges
   work with touch everywhere; no library. · `themeField`,
-  views/editor.html.
+  views/editor.html. (Superseded below: the reset button went.)
+
+### Cover geometry, a photo's colour, and no colour (schema version 8)
+
+- **The frame**: 3:2, its top 16:9 the clear picture, the band below
+  (width × 0.1042) the fade, and the title's top at the band's top. The
+  overlap is `-10.4167cqw` on `.event-head`, a size container as wide as
+  the frame, so it's exact at every width; on phones the whole head is
+  full-bleed (its text and card put the gutter back). No rounding at the
+  bottom ever; top corners only, from 700px. The how-soon pill sits
+  inside the 16:9, 10px above the band, on the left. · The owner's
+  geometry. · `.event-head`, `.hero`, `.head-text` in public/events.css.
+- **The fade starts above the band**: clear to 62% of the frame's
+  height, 72% at the band's top (84.375%), 92% at 93%, solid at 100%,
+  then a mask melts the last 6% into the mesh. So the lowest ~quarter of
+  the 16:9 darkens gently. · Starting the fade only at the band would
+  put the title's first line on bare photo: white on a white sky would
+  be 1:1. At 72% base under the title's top it's about 8:1 over pure
+  white, at any hue (the fade is the hue-turned base). · The gradient
+  stops in `.hero::after`.
+- **The editor's preview is the same frame**: 3:2, top corners rounded,
+  with the band under the 16:9 dimmed (42% black) below a dashed guide
+  line. · "Lightly show where the safe area ends." · `.safe-guide`.
+- List thumbnails stay plain 3:2, no fade (at 116px a fade only muddies
+  them). · n/a
+- **`coverHue` is worked out by one function in `public/ui.js`**
+  (`hueFromPixels`), run by the cover worker on a 64×64 copy of the
+  stored JPEG, and by the editor in the browser on a photo just picked
+  (a canvas). Pixels go to OKLCH; near-grey (C < 0.04), dark (L < 0.2)
+  and light (L > 0.93) ones are skipped; the rest add their chroma to
+  one-degree hue bins; the best ±12° window wins, refined to its
+  chroma-weighted circular mean. Under 4% of pixels counting is grey. ·
+  One function means the slider's jump and the stored suggestion agree.
+  The thresholds were picked on synthetic photos (tests: mostly red →
+  ~27°, sky over field → whichever is bigger, grey with a 2% speck of
+  red → grey, dark and pastel ignored). · Tune the constants in
+  `hueFromPixels`.
+- **The editor still sends the cover on Save**, so "right after an
+  upload" is right after the photo is picked: the browser works out the
+  same hue and the slider jumps there (unless the browser can't draw the
+  photo, e.g. HEIC outside Safari: then no jump, and the server's
+  `coverHue` is there next time). "Match photo" shows only when the
+  photo's colour is known (a stored cover's `coverHue`/`coverGrayscale`,
+  or the picked one's), and re-applies it. · Uploading on pick would
+  change the live page before Save, which the editor otherwise never
+  does. · views/editor.html `matchPicked`.
+- A failure working out the hue never fails the upload: the cover is
+  stored with no suggestion. · It's a suggestion. · lib/coverWorker.js.
+- **No colour: `themeGrayscale: true`**, a second field beside
+  `themeHue`, not a magic hue. While true, `themeHue` is ignored but
+  kept, so turning grey off goes back to the old hue. Grey keeps every
+  colour's L and sets C to 0 (neutral greys exactly as light, so the
+  contrast holds; a test checks white on a card over the brightest glow
+  is still ≥ 9:1). The generated picture and the card tints go grey too.
+  · The orchestrator's suggested shape; a `theme` object would have
+  meant changing `themeHue`, which the iOS app already reads. · n/a
+- **`coverGrayscale` sits beside `coverHue`**, because "no hue" means
+  two things: a grey photo, or not known (a cover from before version
+  8, or none). Both are null/false with no cover. · Without it, every
+  old cover would read as grey. · n/a
+- Buttons and links stay Canopy green on grey too. · Same reasons as
+  for hues; it's the one bit of colour left, and it says Canopy. · n/a
+- **The slider**: 0–389, the first 30 steps grey (about 8% of the
+  track, drawn as a grey stretch at the rainbow's lightness), then the
+  hues 0–359. An untouched new event's slider sits on Canopy green's
+  hue and saves null; "Canopy green" (the reset) is gone, as asked;
+  dragging back to 161 looks the same as null. · n/a · `SLIDER_GREY`,
+  `sliderOf`, `keyOfSlider` in public/ui.js.
 
 ## Security review (both services)
 

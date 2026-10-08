@@ -163,6 +163,20 @@ test('events', async (t) => {
     assert.equal((await ana.post('/api/v1/events', eventBody({ themeHue: 400 }))).data.reason, 'bad_theme_hue');
   });
 
+  await t.test('no colour at all: themeGrayscale, which outranks the hue', async () => {
+    assert.equal(event.themeGrayscale, false);
+    const grey = await makeEvent(ana, { title: 'Grey party', themeHue: 30, themeGrayscale: true });
+    assert.equal(grey.themeGrayscale, true);
+    assert.equal(grey.themeHue, 30, 'kept, but ignored while grey');
+    assert.equal((await anon.get(`/api/v1/events/${grey.id}`)).data.event.themeGrayscale, true);
+    const back = (await ana.patch(`/api/v1/events/${grey.id}`, { themeGrayscale: false })).data.event;
+    assert.deepEqual([back.themeGrayscale, back.themeHue], [false, 30]);
+    for (const bad of [1, 'true', null]) {
+      const r = await ana.patch(`/api/v1/events/${grey.id}`, { themeGrayscale: bad });
+      assert.equal(r.data.reason, 'bad_theme_grayscale', String(bad));
+    }
+  });
+
   await t.test('a body that is not JSON is a 400, and an unknown endpoint a 404', async () => {
     const r = await ana.post('/api/v1/events', '{"title": ');
     assert.equal(r.status, 400);

@@ -300,29 +300,49 @@ a{color:var(--accent-text);}
 
 /* ---------------- The event page ---------------- */
 
-/* The hero: the cover (or the generated picture) at 3:2, edge to edge on
-   a phone, fading into the page at the bottom, with the title on the
-   fade. The fade is the page's base colour, from clear at 55% of the
-   way down to 70% at 80% and solid at the foot; the title only starts
-   below 80%, so a white title over the whitest photo is still on at
-   least 70% #03120C (8:1 or better, the text-shadow on top), and over a
-   dark photo it's the same as on the page. The very bottom also melts
-   away (a mask), so no edge shows against the mesh's glows. */
-.event-head{display:flex;flex-direction:column;}
+/* The hero's geometry. The frame is 3:2 (height = width x 2/3). Its top
+   16:9 (height = width x 9/16, 84.375% of the frame) is the picture,
+   shown clearly ("semi-safe": the how-soon pill sits low on its left).
+   The band under it, the last 15.625% of the frame (width x 0.1042), is
+   where the picture fades into the page's own base colour (hue and all),
+   and where the title starts: its top is the band's top, so it overlaps
+   the bottom of the frame and runs on below it, never over the middle of
+   the photo. On a phone it's all edge to edge with no rounding; from
+   700px it sits in the column with only its top corners rounded.
+
+   Legibility over any photo, at any hue: the fade is the page's base
+   colour (#03120C turned to the event's hue, L 0.165), clear down to 62%
+   of the frame, 72% at the band's top, 92% at 93% and solid at the
+   foot, so wherever the title sits it's on at least 72% base: white
+   over a pure white photo there is about 8:1 (more on any real photo),
+   with a soft shadow in the base colour on top. The last 6% also melts
+   into the mesh (a mask), so no edge shows against its glows.
+
+   The head (.event-head) is a size container as wide as the frame, so
+   the title's overlap is 10.4167cqw: the band's height, whatever the
+   width. */
+.event-head{
+  display:flex;flex-direction:column;container-type:inline-size;
+  margin:-4px calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
+}
+.event-head > .head-text, .event-head > .details-card{margin-left:max(16px, env(safe-area-inset-left));margin-right:max(16px, env(safe-area-inset-right));width:auto;}
 .hero{
-  position:relative;aspect-ratio:3 / 2;overflow:hidden;
-  margin:0 calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
-  margin-top:-4px;
-  -webkit-mask-image:linear-gradient(to bottom, #000 88%, transparent 100%);
-  mask-image:linear-gradient(to bottom, #000 88%, transparent 100%);
+  position:relative;aspect-ratio:3 / 2;overflow:hidden;border-radius:0;
+  -webkit-mask-image:linear-gradient(to bottom, #000 94%, transparent 100%);
+  mask-image:linear-gradient(to bottom, #000 94%, transparent 100%);
 }
 .hero .cover, .hero .cover-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
 .hero::after{
   content:"";position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(to bottom, rgba(var(--theme-base-rgb, 3,18,12),0) 55%, rgba(var(--theme-base-rgb, 3,18,12),.7) 80%, var(--mesh-base, #03120c) 100%);
+  background:linear-gradient(to bottom,
+    rgba(var(--theme-base-rgb, 3,18,12),0) 62%,
+    rgba(var(--theme-base-rgb, 3,18,12),.72) 84.375%,
+    rgba(var(--theme-base-rgb, 3,18,12),.92) 93%,
+    var(--mesh-base, #03120c) 100%);
 }
-.head-text{position:relative;z-index:1;margin:-64px 0 14px;padding:0 2px;}
-.head-text .tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+/* How soon: low on the left, inside the 16:9, above the band. */
+.hero .tags{position:absolute;z-index:1;left:max(16px, env(safe-area-inset-left));bottom:calc(15.625% + 10px);display:flex;gap:6px;}
+.head-text{position:relative;z-index:1;margin-top:-10.4167cqw;margin-bottom:14px;padding:0 2px;}
 .event-title{
   font-size:var(--fs-title);line-height:1.12;font-weight:800;letter-spacing:-.01em;margin:0;overflow-wrap:anywhere;
   color:var(--on-bg);text-shadow:0 2px 14px rgba(var(--theme-base-rgb, 3,18,12),.85), 0 1px 2px rgba(var(--theme-base-rgb, 3,18,12),.6);
@@ -490,8 +510,13 @@ select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(
 
 /* The cover in the editor: the preview at 3:2, cropped exactly as the
    event page shows it. */
-.cover-pick .cover-preview{display:none;width:100%;aspect-ratio:3 / 2;object-fit:cover;border-radius:12px;border:1px solid var(--line);margin-bottom:12px;}
-.cover-pick.has-cover .cover-preview{display:block;}
+/* The editor's preview is the page's frame: 3:2, top corners rounded,
+   and the band under the top 16:9 (where the fade and the title go)
+   dimmed below a guide line, so the host sees what stays clear. */
+.cover-frame{display:none;position:relative;width:100%;aspect-ratio:3 / 2;overflow:hidden;border-radius:12px 12px 0 0;border:1px solid var(--line);margin-bottom:12px;}
+.cover-pick.has-cover .cover-frame{display:block;}
+.cover-frame .cover-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+.safe-guide{position:absolute;left:0;right:0;top:84.375%;bottom:0;background:rgba(0,0,0,.42);border-top:1px dashed rgba(255,255,255,.7);pointer-events:none;}
 .cover-buttons{display:flex;gap:10px;}
 .cover-buttons > *{flex:1;}
 .cover-buttons button[hidden]{display:none;}
@@ -545,7 +570,10 @@ select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(
   .wrap, .top, .foot{max-width:680px;}
   .field-row{display:flex;gap:14px;}
   .field-row .field{flex:1;min-width:0;}
-  .hero{margin:0;border-radius:20px;}
-  .head-text{margin-top:-80px;padding:0 24px;}
+  .event-head{margin:0;}
+  .event-head > .head-text{margin-left:0;margin-right:0;padding:0 24px;}
+  .event-head > .details-card{margin-left:0;margin-right:0;}
+  .hero{border-radius:20px 20px 0 0;}
+  .hero .tags{left:24px;}
   .event-row .thumb{width:168px;}
 }

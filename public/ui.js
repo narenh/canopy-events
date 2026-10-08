@@ -372,33 +372,50 @@
     return Number.isInteger(hue) && hue >= 0 && hue <= 359;
   }
 
-  // Any Canopy-green colour (#rrggbb) turned to `hue` the same way: its
-  // offset from Canopy green's hue kept, L kept, C fitted to sRGB.
-  function turnHex(hex, hue) {
-    if (!isHue(hue)) return hex;
-    const [L, C, h] = rgbToOklch(hex);
-    return hexOf(oklchToRgb(L, C, (hue + h - THEME_DEFAULT_HUE + 360) % 360));
+  // An event's colour as one value: 'grey' (themeGrayscale: no colour at
+  // all), a hue (themeHue), or null for Canopy green. Everything below
+  // takes this "theme key".
+  const GREY = 'grey';
+  function themeKeyOf(e) {
+    if (!e) return null;
+    if (e.themeGrayscale) return GREY;
+    return isHue(e.themeHue) ? e.themeHue : null;
   }
 
-  // The mesh's colours for `hue`: { base, m1...m5, card } as [r, g, b].
+  // One OKLCH colour [L, C, hue] for a theme key: grey keeps L and drops
+  // C to 0 (a neutral grey exactly as light); a hue keeps L and C.
+  function themed(L, C, hue, key) {
+    return key === GREY ? oklchToRgb(L, 0, 0) : oklchToRgb(L, C, (hue + 360) % 360);
+  }
+
+  // Any Canopy-green colour (#rrggbb) turned the same way: its offset from
+  // Canopy green's hue kept, L kept, C fitted to sRGB (or 0, for grey).
+  function turnHex(hex, key) {
+    if (key !== GREY && !isHue(key)) return hex;
+    const [L, C, h] = rgbToOklch(hex);
+    return hexOf(themed(L, C, (key === GREY ? 0 : key) + h - THEME_DEFAULT_HUE, key));
+  }
+
+  // The mesh's colours for a theme key: { base, m1...m5, card } as
+  // [r, g, b], or null for Canopy green.
   const themeCache = {};
-  function themeColors(hue) {
-    if (!isHue(hue)) return null;
-    if (!themeCache[hue]) {
+  function themeColors(key) {
+    if (key !== GREY && !isHue(key)) return null;
+    if (!themeCache[key]) {
       const out = {};
       Object.keys(THEME_MESH).forEach((k) => {
         const [L, C, off] = THEME_MESH[k];
-        out[k] = oklchToRgb(L, C, (hue + off + 360) % 360);
+        out[k] = themed(L, C, (key === GREY ? 0 : key) + off, key);
       });
-      themeCache[hue] = out;
+      themeCache[key] = out;
     }
-    return themeCache[hue];
+    return themeCache[key];
   }
 
-  // The CSS custom properties that turn a page to `hue` (events.css reads
-  // them, falling back to Canopy green), or '' for the default.
-  function themeStyle(hue) {
-    const c = themeColors(hue);
+  // The CSS custom properties that turn a page to a theme key (events.css
+  // reads them, falling back to Canopy green), or '' for the default.
+  function themeStyle(key) {
+    const c = themeColors(key);
     if (!c) return '';
     return '--theme-base:' + hexOf(c.base) + ';--theme-base-rgb:' + c.base.join(',')
       + ';--theme-1:' + hexOf(c.m1) + ';--theme-2:' + hexOf(c.m2) + ';--theme-3:' + hexOf(c.m3)
@@ -406,11 +423,79 @@
       + ';--theme-card:rgba(' + c.card.join(',') + ',0.30)';
   }
 
-  // The slider's rainbow: the wheel at a lightness you can see on a dark
-  // page (the mesh itself is too dark to tell hues apart on a thin track).
+  // The hue that matches a photo: the server works it out when a cover is
+  // uploaded (lib/coverImage.js, as `coverHue`) and the editor does the
+  // same for a photo just picked, with this one function, so they agree.
+  //
+  // `data` is RGB or RGBA bytes (`channels` 3 or 4) of the photo shrunk to
+  // about 64×64. Each pixel goes to OKLCH; near-greys (C < 0.04), and very
+  // dark (L < 0.2) or very light (L > 0.93) ones, are left out. The rest
+  // vote for their hue, weighted by chroma, into 360 one-degree bins,
+  // smoothed over ±12°; the peak wins, refined to the chroma-weighted mean
+  // hue within 12° of it. Fewer than 4% of pixels voting is a greyscale
+  // photo: null.
+  function hueFromPixels(data, channels) {
+    const bins = new Float64Array(360);
+    let voters = 0;
+    const n = Math.floor(data.length / channels);
+    const lin = (b) => { const c = b / 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    for (let i = 0; i < n; i++) {
+      const r = lin(data[i * channels]);
+      const g = lin(data[i * channels + 1]);
+      const b = lin(data[i * channels + 2]);
+      const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+      const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+      const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+      const L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+      const A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+      const B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+      const C = Math.hypot(A, B);
+      if (C < 0.04 || L < 0.2 || L > 0.93) continue;
+      bins[Math.floor((Math.atan2(B, A) * 180 / Math.PI + 360) % 360)] += C;
+      voters++;
+    }
+    if (!n || voters / n < 0.04) return null;
+    const W = 12;
+    let best = -1;
+    let bestSum = -1;
+    for (let h = 0; h < 360; h++) {
+      let sum = 0;
+      for (let d = -W; d <= W; d++) sum += bins[(h + d + 360) % 360];
+      if (sum > bestSum) { bestSum = sum; best = h; }
+    }
+    let x = 0;
+    let y = 0;
+    for (let d = -W; d <= W; d++) {
+      const h = (best + d + 360) % 360;
+      x += bins[h] * Math.cos((h + 0.5) * Math.PI / 180);
+      y += bins[h] * Math.sin((h + 0.5) * Math.PI / 180);
+    }
+    return Math.round((Math.atan2(y, x) * 180 / Math.PI + 360) % 360) % 360;
+  }
+
+  // The editor's colour slider runs 0 to SLIDER_MAX: the first SLIDER_GREY
+  // steps are grey (no colour), then the hues 0 to 359. A theme key to a
+  // slider position and back; untouched, a new event's slider sits on
+  // Canopy green's hue.
+  const SLIDER_GREY = 30;
+  const SLIDER_MAX = SLIDER_GREY + 359;
+  function sliderOf(key) {
+    if (key === GREY) return Math.floor(SLIDER_GREY / 2);
+    return SLIDER_GREY + (isHue(key) ? key : THEME_DEFAULT_HUE);
+  }
+  function keyOfSlider(value) {
+    const v = Math.round(Number(value));
+    return v < SLIDER_GREY ? GREY : Math.min(359, v - SLIDER_GREY);
+  }
+
+  // The slider's track: grey, then the wheel at a lightness you can see
+  // on a dark page (the mesh itself is too dark to tell hues apart on a
+  // thin track). The grey is exactly as light as the colours.
   function hueTrack() {
-    const stops = [];
-    for (let h = 0; h <= 360; h += 30) stops.push(hexOf(oklchToRgb(0.68, 0.15, h % 360)));
+    const grey = hexOf(oklchToRgb(0.68, 0, 0));
+    const at = (v) => (v / SLIDER_MAX * 100).toFixed(2) + '%';
+    const stops = [grey + ' 0%', grey + ' ' + at(SLIDER_GREY - 1)];
+    for (let h = 0; h <= 360; h += 30) stops.push(hexOf(oklchToRgb(0.68, 0.15, h % 360)) + ' ' + at(SLIDER_GREY + Math.min(h, 359)));
     return 'linear-gradient(to right, ' + stops.join(', ') + ')';
   }
 
@@ -437,8 +522,9 @@
     const h = seedOf(e && e.id);
     const part = (n, shift) => (h >>> shift) % n;
     // In the event's colour, when it has one.
-    const [c1, c2, c3] = ART_GREENS[part(ART_GREENS.length, 0)].map((hex) => turnHex(hex, e && e.themeHue));
-    const style = '--c0:' + turnHex('#03120c', e && e.themeHue) + ';--c1:' + c1 + ';--c2:' + c2 + ';--c3:' + c3
+    const key = themeKeyOf(e);
+    const [c1, c2, c3] = ART_GREENS[part(ART_GREENS.length, 0)].map((hex) => turnHex(hex, key));
+    const style = '--c0:' + turnHex('#03120c', key) + ';--c1:' + c1 + ';--c2:' + c2 + ';--c3:' + c3
       + ';--x1:' + (8 + part(45, 3)) + '%;--y1:' + (10 + part(40, 9)) + '%'
       + ';--x2:' + (50 + part(45, 14)) + '%;--y2:' + (35 + part(50, 20)) + '%'
       + ';--a:' + (90 + part(180, 25)) + 'deg';
@@ -492,10 +578,12 @@
     const w = whenHead(e, o.viewerZone);
     const tag = phase === 'cancelled' ? '<span class="tag danger">' + tx('status.cancelled') + '</span>' : relativePill(e);
     let h = '<section class="event-head' + (phase === 'cancelled' ? ' is-cancelled' : '') + (coverUrl(e) ? ' has-cover' : '') + '" id="details" data-section="details">';
-    h += '<div class="hero">' + coverMedia(e) + '</div>';
+    // The 3:2 frame: the picture, its fade, and how soon, low on the left
+    // inside the top 16:9 (events.css has the geometry).
+    h += '<div class="hero">' + coverMedia(e) + (tag ? '<div class="tags">' + tag + '</div>' : '') + '</div>';
     // The title on the fade, then when: the two things a guest opening
     // the link needs at once. The place comes after, in the card.
-    h += '<div class="head-text">' + (tag ? '<div class="tags">' + tag + '</div>' : '') + '<h1 class="event-title">' + esc(e.title) + '</h1>'
+    h += '<div class="head-text"><h1 class="event-title">' + esc(e.title) + '</h1>'
       + '<div class="when-big"><div class="when-date">' + esc(w.date) + '</div><div class="when-time">' + esc(w.time) + '</div>'
       + (w.zoneNote ? '<div class="zone-note">' + esc(w.zoneNote) + '</div>' : '') + '</div></div>';
     h += '<div class="card details-card">';
@@ -835,7 +923,7 @@
     // The cover (or the generated picture) as a 3:2 thumbnail; then when,
     // in a bold line above the title, as calendars do; the title; where.
     // An event with its own colour tints its card's glass with it.
-    const theme = themeColors(e.themeHue);
+    const theme = themeColors(themeKeyOf(e));
     const tint = theme ? ' style="--card:rgba(' + theme.card.join(',') + ',0.45)"' : '';
     return '<a class="event-row' + (asCard ? ' card' : '') + (phase === 'cancelled' ? ' is-cancelled' : '') + '" href="/e/' + esc(e.id) + '"' + (asCard ? tint : '') + '>'
       + '<span class="thumb">' + coverMedia(e, ' loading="lazy"') + '</span>'
@@ -1043,7 +1131,10 @@
   function coverField(url) {
     return '<div class="field" id="coverField"><span class="field-label">' + tx('editor.cover') + '</span>'
       + '<div class="cover-pick' + (url ? ' has-cover' : '') + '">'
-      + '<img class="cover-preview" id="coverPreview" alt=""' + (url ? ' src="' + esc(url) + '"' : '') + '>'
+      // The page's frame: 3:2, with the band under the top 16:9 (where
+      // the fade and the title go) dimmed below a guide line.
+      + '<div class="cover-frame"><img class="cover-preview" id="coverPreview" alt=""' + (url ? ' src="' + esc(url) + '"' : '') + '>'
+      + '<span class="safe-guide" aria-hidden="true"></span></div>'
       + '<p class="field-hint hidden" id="coverNoPreview">' + tx('editor.coverNoPreview') + '</p>'
       + '<div class="cover-buttons">'
       + '<label class="button secondary file-btn"><span id="coverPickLabel">' + (url ? 'Replace' : 'Choose photo') + '</span>'
@@ -1054,17 +1145,25 @@
       + '<div class="error" id="coverError" role="alert"></div></div>';
   }
 
-  // The event's colour: a slider round the wheel (dragging it turns this
-  // page, views/editor.html), and "Canopy green" to go back to the
-  // default. The slider sits on Canopy green's hue while there's none.
-  function themeField(hue) {
-    const set = isHue(hue);
+  // The event's colour: a slider from grey round the wheel (dragging it
+  // repaints this page, views/editor.html), sitting on Canopy green's hue
+  // for a new event. "Match photo" sets it to the cover's hue (or grey),
+  // and is there only once there's a photo to match.
+  function themeField(e) {
+    const key = themeKeyOf(e);
+    const hasMatch = e.coverGrayscale || isHue(e.coverHue);
     return '<div class="field" id="themeField"><label class="field-label" for="themeHue">' + tx('editor.theme') + '</label>'
-      + '<div class="hue-row"><input type="range" id="themeHue" min="0" max="359" step="1" value="' + (set ? hue : THEME_DEFAULT_HUE) + '"'
-      + ' data-set="' + (set ? '1' : '') + '" style="--track:' + esc(hueTrack()) + '" aria-valuetext="' + (set ? esc(hue + '°') : tx('editor.themeDefault')) + '">'
-      + '<button type="button" class="secondary small-btn" id="themeReset" data-action="theme-reset"' + (set ? '' : ' disabled') + '>' + tx('editor.themeDefault') + '</button></div>'
+      + '<div class="hue-row"><input type="range" id="themeHue" min="0" max="' + SLIDER_MAX + '" step="1" value="' + sliderOf(key) + '"'
+      + ' style="--track:' + esc(hueTrack()) + '" aria-valuetext="' + esc(themeWords(key)) + '">'
+      + '<button type="button" class="secondary small-btn" id="themeMatch" data-action="theme-match"' + (hasMatch ? '' : ' hidden') + '>' + tx('editor.themeMatch') + '</button></div>'
       + '<p class="field-hint">' + tx('editor.themeHint') + '</p>'
       + '<div class="error" id="themeHueError" role="alert"></div></div>';
+  }
+
+  // The slider's position, said aloud.
+  function themeWords(key) {
+    if (key === GREY) return t('editor.themeGrey');
+    return isHue(key) ? key + '°' : t('editor.themeDefault');
   }
 
   // The form for making an event (d.event null) or editing one, in
@@ -1084,7 +1183,7 @@
     h += field('title', 'editor.title', '<input type="text" id="title" maxlength="120" required value="' + esc(e.title || '') + '">');
     h += field('description', 'editor.description', '<textarea id="description" maxlength="5000" placeholder="' + tx('editor.descriptionPlaceholder') + '">' + esc(e.description || '') + '</textarea>');
     h += coverField(coverUrl(e));
-    h += themeField(e.themeHue);
+    h += themeField(e);
     h += '</fieldset>';
 
     h += '<fieldset><legend>' + tx('editor.when') + '</legend>';
@@ -1130,7 +1229,7 @@
 
   return {
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, coverField, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
-    fullName, initials, avatar, personRow, coverUrl, coverArt, plusGuests, themeStyle, themeColors, turnHex, isHue, THEME_DEFAULT_HUE, spotsLine, countsLine, guestsShown,
+    fullName, initials, avatar, personRow, coverUrl, coverArt, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, friendRows, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED

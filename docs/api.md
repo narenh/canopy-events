@@ -251,20 +251,55 @@ Slack) fetch it without anyone's session. The URL is random and isn't the
 event's link, and every upload makes a new one (the old one stops
 working), so cache by URL. `null` is no cover.
 
-The web shows the cover at **3:2**, `object-fit: cover` style (centred,
-cropped to fill), as a full-width hero fading into the background at the
-bottom. The crop is display-only: the stored image is the whole photo.
-An event with no cover gets a generated picture on the web (soft glows
-in its colours); draw your own, or use the event's colours below.
+**How the web draws it.** A frame of **3:2** (height = width × 2/3),
+the photo filling it `object-fit: cover` style (centred, cropped). The
+frame's top **16:9** (height = width × 9/16) is where the photo shows
+clearly; the band below it (the last width × 0.104) is where it fades
+into the page's base colour (clear at 62% of the frame's height, 72% at
+the band's top, 92% at 93%, solid at the bottom), and the **title
+starts at the top of that band**, running on below the frame. The "how
+soon" pill sits low on the left inside the 16:9. Phones: edge to edge, no
+rounded corners; wider: in the column, top corners rounded only. The
+crop is display-only: the stored image is the whole photo. An event with
+no cover gets a generated picture in the same frame (soft glows in its
+colours); draw your own, or use the event's colours below.
+
+**The colour that matches the photo.** Every upload works out
+`coverHue` (0–359), the hue that suits the photo, or says
+`coverGrayscale: true` for an essentially grey one (then `coverHue` is
+null). Both are null/false with no cover, and for covers uploaded before
+this existed. **An upload never changes the event's colour**
+(`themeHue`, `themeGrayscale`): it's a suggestion. The web editor jumps
+its colour slider to it when a photo is picked and has a "Match photo"
+button; nothing is saved until the host saves. Do the same in the app:
+offer it, and PATCH `themeHue` (or `themeGrayscale: true`) only if the
+host takes it.
+
+How it's worked out, if you want to suggest one before uploading: shrink
+the photo to fit 64×64; turn each pixel into OKLCH; skip near-greys (C <
+0.04), very dark (L < 0.2) and very light (L > 0.93) pixels; add each
+other pixel's chroma C into its hue's one-degree bin (360 bins); find
+the bin whose ±12° window has the most; the answer is the
+chroma-weighted circular mean of the bins in that window, rounded. If
+fewer than 4% of the pixels counted, the photo is grey. The code is
+`hueFromPixels` in `public/ui.js`.
 
 ## Event colours
 
-Every event has `themeHue`: the hue, in degrees (0–359), its page's
-background is turned to, or `null` for Canopy's own green, which is the
-default. Any host sets it, co-hosts included, on `POST /events` or
-`PATCH /events/{id}` (`null` goes back to green; anything else outside
-0–359 is 400 `bad_theme_hue`). It's on every event, signed out too, since
-the page a guest opens from a text is drawn in it.
+Every event has two fields for its colour:
+
+- `themeHue`: the hue, in degrees (0–359), its page's background is
+  turned to, or `null` for Canopy's own green, which is the default.
+- `themeGrayscale`: `true` for **no colour at all**, a neutral grey page.
+  While it's true, `themeHue` is ignored (and kept, so turning grey off
+  goes back to it).
+
+Any host sets them, co-hosts included, on `POST /events` or `PATCH
+/events/{id}` (400 `bad_theme_hue` for a hue outside 0–359 or not a
+whole number, `bad_theme_grayscale` for anything but true or false).
+They're on every event, signed out too, since the page a guest opens from
+a text is drawn in them. The web's slider is grey at its left end, then
+the wheel; an event nobody has coloured sits on Canopy green's hue.
 
 The background is the dark Canopy mesh: a base colour with five soft
 glows, and cards of 30% tinted glass over it. Each colour is defined in
@@ -281,6 +316,10 @@ colour keeps its lightness and chroma and takes the hue *H + offset*:
 | glow 5 | the middle (50% 45%, to 60%) | 0.3122 | 0.0590 | +1.9 | `#0c3a28` |
 | card | glass tint, at 30% opacity | 0.2150 | 0.0537 | −11.2 | `#03200b` |
 
+**Grey** (`themeGrayscale: true`): the same lightness L, chroma 0. Every
+colour becomes a neutral grey exactly as light as its green, so contrast
+is the same as for any hue.
+
 Hues wrap at 360. Convert with the standard OKLCH → OKLab → linear sRGB
 → sRGB maths (Björn Ottosson's matrices, as in CSS Color 4). If a
 colour falls outside sRGB, **lower its chroma** (keep L and hue) until
@@ -292,7 +331,7 @@ Because only the hue turns, every hue is as dark as the green, so white
 and light text keep their contrast over it (round the whole wheel, white
 on a card over the brightest glow stays at least 9.3:1). Buttons, links
 and grey text stay Canopy green (`#2ec44f` with `#03190a` on it, links
-`#b6f5c3`) at every hue. The web's code for all of this is
+`#b6f5c3`) at every hue, and on grey. The web's code for all of this is
 `public/ui.js` (`themeColors`).
 
 ## Plus-ones

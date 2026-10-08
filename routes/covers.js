@@ -23,7 +23,7 @@ const { guessLimits } = require('../lib/limits');
 const { isHost } = require('../lib/rules');
 const { newEventId } = require('../lib/ids');
 const { eventView } = require('../lib/views');
-const { toCoverJpeg, BadImage } = require('../lib/coverImage');
+const { toCover, BadImage } = require('../lib/coverImage');
 const coverStore = require('../lib/coverStore');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -72,17 +72,20 @@ module.exports = function coverRoutes(ctx) {
       return fail(res, 429, 'rate_limited', "that's a lot of covers for one day -- try again tomorrow");
     }
     uploadLimits.hit(req, req.person.id);
-    let jpeg;
+    let cover;
     try {
-      jpeg = await toCoverJpeg(req.file.buffer);
+      cover = await toCover(req.file.buffer);
     } catch (err) {
       if (err instanceof BadImage) return fail(res, 400, 'bad_image', err.message);
       throw err;
     }
     let key = newEventId();
     while (store.getEventByCoverKey(key)) key = newEventId();
-    coverStore.save(req.event.id, jpeg);
-    const event = store.setCover(req.event.id, key);
+    coverStore.save(req.event.id, cover.jpeg);
+    // The hue that matches it is only a suggestion (`coverHue`): the
+    // event's own colour (themeHue) is the host's to change, and an upload
+    // never does.
+    const event = store.setCover(req.event.id, key, { hue: cover.hue, grayscale: cover.grayscale });
     res.json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });
   }));
 

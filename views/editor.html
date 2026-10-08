@@ -55,7 +55,7 @@ const FIELD_FOR = {
   bad_title: 'title', bad_description: 'description', bad_starts_at: 'startsAt', bad_ends_at: 'endsAt',
   ends_before_start: 'endsAt', bad_time_zone: 'timeZone', bad_location_name: 'locationName',
   bad_location_address: 'locationAddress', bad_guest_list_visibility: 'guestListVisibility',
-  bad_guests_allowed: 'guestsAllowed', bad_capacity: 'capacity', bad_theme_hue: 'themeHue'
+  bad_guests_allowed: 'guestsAllowed', bad_capacity: 'capacity', bad_theme_hue: 'themeHue', bad_theme_grayscale: 'themeHue'
 };
 function showRefusal(d){
   const words = COPY.editor.errors[d.reason] || sentence(d.error);
@@ -122,6 +122,8 @@ coverFile.addEventListener('change', () => {
   coverChange = file;
   previewUrl = URL.createObjectURL(file);
   drawCover(previewUrl);
+  photoKey = null;
+  matchPicked(previewUrl);
 });
 
 onActions({
@@ -130,6 +132,7 @@ onActions({
     coverFile.value = '';
     coverChange = hadCover ? 'remove' : null;
     drawCover(null);
+    forgetPhotoMatch();
   }
 });
 
@@ -153,35 +156,79 @@ async function saveCover(id){
 
 // ---------------- The colour ----------------
 //
-// Dragging the slider turns this page's own background to that hue as it
-// moves, so the host sees the event's page while choosing. "Canopy
-// green" goes back to the default (null), as does never touching it.
+// The slider runs from grey (no colour) round the wheel, and dragging it
+// turns this page's own background as it moves, so the host sees the
+// event's page while choosing. Untouched, a new event stays Canopy green
+// (null). "Match photo" sets it to the photo's colour (or grey, for a
+// grey photo): the stored cover's coverHue, or, for a photo just picked,
+// the same hueFromPixels the server runs, on the preview. Picking a photo
+// jumps the slider there. Nothing is saved until Save.
 const hueInput = $('themeHue');
-let themeHue = UI.isHue(editing ? data.event.themeHue : null) ? data.event.themeHue : null;
+let themeKey = editing ? UI.themeKeyOf(data.event) : null;
+// The colour that matches the photo now shown: a theme key, or null for
+// none known.
+let photoKey = !editing ? null : (data.event.coverGrayscale ? 'grey' : (UI.isHue(data.event.coverHue) ? data.event.coverHue : null));
 
 function showTheme(){
-  const style = UI.themeStyle(themeHue);
+  const style = UI.themeStyle(themeKey);
   if (style) document.documentElement.setAttribute('style', style);
   else document.documentElement.removeAttribute('style');
   const meta = document.querySelector('meta[name="theme-color"]');
-  const c = UI.themeColors(themeHue);
+  const c = UI.themeColors(themeKey);
   if (meta) meta.setAttribute('content', c ? '#' + c.base.map((x) => x.toString(16).padStart(2, '0')).join('') : '#03120c');
-  $('themeReset').disabled = themeHue === null;
-  hueInput.setAttribute('aria-valuetext', themeHue === null ? t('editor.themeDefault') : themeHue + '°');
+  hueInput.setAttribute('aria-valuetext', UI.themeWords(themeKey));
+  $('themeMatch').hidden = photoKey === null;
+}
+
+function setTheme(key){
+  themeKey = key;
+  hueInput.value = String(UI.sliderOf(key));
+  showTheme();
 }
 
 hueInput.addEventListener('input', () => {
-  themeHue = Number(hueInput.value);
+  themeKey = UI.keyOfSlider(hueInput.value);
   showTheme();
 });
 
+// The colour of a photo the browser can draw: shrunk to 64×64 on a
+// canvas, then the server's own hueFromPixels. A photo it can't draw
+// (HEIC, outside Safari) gets no suggestion here; the server still works
+// one out on Save, for next time.
+function matchPicked(url){
+  const img = new Image();
+  img.onload = () => {
+    try{
+      const scale = 64 / Math.max(img.naturalWidth, img.naturalHeight);
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const g = canvas.getContext('2d');
+      g.drawImage(img, 0, 0, w, h);
+      const hue = UI.hueFromPixels(g.getImageData(0, 0, w, h).data, 4);
+      photoKey = hue === null ? 'grey' : hue;
+      setTheme(photoKey);
+    }catch(e){}
+  };
+  img.src = url;
+}
+
+function forgetPhotoMatch(){
+  photoKey = null;
+  showTheme();
+}
+
 onActions({
-  'theme-reset': () => {
-    themeHue = null;
-    hueInput.value = String(UI.THEME_DEFAULT_HUE);
-    showTheme();
-  }
+  'theme-match': () => { if (photoKey !== null) setTheme(photoKey); }
 });
+
+// What Save sends: grey, a hue, or Canopy green.
+function themeFields(){
+  if (themeKey === 'grey') return { themeGrayscale: true, themeHue: null };
+  return { themeGrayscale: false, themeHue: UI.isHue(themeKey) ? themeKey : null };
+}
 
 // A new event whose cover didn't upload lands here, to try again.
 if (data.coverError){
@@ -214,7 +261,7 @@ form.addEventListener('submit', (e) => {
     // Empty is no limit. Anything else goes as typed; the API says if
     // it isn't a whole number in range.
     capacity: capacity.value.trim() === '' ? null : Number(capacity.value),
-    themeHue
+    ...themeFields()
   };
   // An empty end: none (and, editing, clear the one there was).
   if (ends) body.endsAt = ends;

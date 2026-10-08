@@ -541,8 +541,12 @@ paths:
         save by default; shrink a 48-megapixel one first). The server
         turns it the right way up, shrinks it to fit 1600 px, and stores
         it as a JPEG **with no EXIF** (no location). The event's
-        `coverImageUrl` changes with every upload. 30 uploads a day per
-        person.
+        `coverImageUrl` changes with every upload, and `coverHue` /
+        `coverGrayscale` say the colour that matches the photo. 30 uploads
+        a day per person.
+
+        **An upload never changes `themeHue` or `themeGrayscale`**: offer
+        the match to the host, and PATCH it if they take it.
 
         **Covers are public**: anyone with the URL can load it, signed in
         or not, so link previews can show it. The URL is random, never the
@@ -1036,7 +1040,7 @@ components:
         `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`,
         `bad_location_name`, `bad_location_address`, `bad_status`,
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
-        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`,
+        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`,
         `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
         `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`; and
         `bad_request` on any route for a request that can't be read at
@@ -1328,7 +1332,7 @@ components:
       additionalProperties: false
       required: [id, url, title, description, startsAt, endsAt, timeZone, locationName, locationAddress,
                  locationAddressHidden, guestListVisibility, guestsAllowed, capacity, spotsLeft, coverImageUrl,
-                 themeHue, status, cancelledAt, createdAt, updatedAt,
+                 themeHue, themeGrayscale, coverHue, coverGrayscale, status, cancelledAt, createdAt, updatedAt,
                  hosts, counts, viewer]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
@@ -1365,8 +1369,24 @@ components:
           description: |
             The event's colour: the page's dark mesh background rotated to
             this hue, in degrees (OKLCH), or null for Canopy's own green
-            (which is hue 161). Draw the background as docs/api.md
-            ("Event colours") says, so an app matches the web.
+            (which is hue 161). Ignored while `themeGrayscale` is true.
+            Draw the background as docs/api.md ("Event colours") says, so
+            an app matches the web.
+        themeGrayscale:
+          type: boolean
+          description: True when the host chose no colour at all; the page is neutral grey, whatever `themeHue` says.
+        coverHue:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 359
+          description: |
+            The hue that matches the cover photo, worked out when it was
+            uploaded: a suggestion for `themeHue`, which an upload never
+            changes. Null with no cover, for a grey photo (see
+            `coverGrayscale`), or for a cover uploaded before this existed.
+        coverGrayscale:
+          type: boolean
+          description: True when the cover is essentially grey, so the colour that matches it is `themeGrayscale`.
         status: { type: string, enum: [active, cancelled] }
         cancelledAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
@@ -1399,6 +1419,9 @@ components:
         spotsLeft: 14
         coverImageUrl: https://events.canopysf.com/covers/Qm7Zc2pR9xTa.jpg?v=1759870000000
         themeHue: null
+        themeGrayscale: false
+        coverHue: 24
+        coverGrayscale: false
         status: active
         cancelledAt: null
         createdAt: '2026-10-07T20:00:00.000Z'
@@ -1533,6 +1556,7 @@ components:
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, default: 0, description: Plus-ones each answer may bring. }
         capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, default: null, description: 'The most people going, plus-ones included. null: no cap.' }
         themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, default: null, description: "The page's colour as a hue in degrees; null is Canopy green (see Event)." }
+        themeGrayscale: { type: boolean, default: false, description: "True for no colour at all: a neutral grey page (themeHue is ignored)." }
 
     EventPatch:
       description: Any of the fields of EventInput, plus status. Only what's sent changes.
@@ -1549,6 +1573,7 @@ components:
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, description: Lowering it keeps answers that bring more (see guestsOverLimit). }
         capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: "null clears it. Raising it promotes from the waitlist; lowering it bumps nobody." }
         themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: "Any host, co-hosts too. null goes back to Canopy green." }
+        themeGrayscale: { type: boolean, description: "true for a grey page; false to use themeHue again." }
         status: { type: string, enum: [active, cancelled], description: 'cancelled cancels it; active takes that back. The creator only.' }
 
     RsvpInput:
@@ -1702,6 +1727,7 @@ components:
           status: active
           coverImageUrl: null
           themeHue: 300
+          themeGrayscale: false
         details: { status: going }
         count: 4
 
@@ -1709,7 +1735,7 @@ components:
       description: An event as a notification mentions it. Open it by `id` for the rest.
       type: object
       additionalProperties: false
-      required: [id, url, title, startsAt, timeZone, status, coverImageUrl, themeHue]
+      required: [id, url, title, startsAt, timeZone, status, coverImageUrl, themeHue, themeGrayscale]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
         url: { type: string, format: uri }
@@ -1719,6 +1745,7 @@ components:
         status: { type: string, enum: [active, cancelled] }
         coverImageUrl: { type: [string, 'null'], format: uri }
         themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: The event's colour (see Event). }
+        themeGrayscale: { type: boolean, description: No colour at all (see Event). }
 
     NotificationList:
       type: object

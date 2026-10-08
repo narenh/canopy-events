@@ -461,6 +461,35 @@ test('ui.js: the features, drawn', async (t) => {
     assert.notEqual(UI.coverArt({ id: 'AAAAAAAAAAAA', themeHue: 300 }), UI.coverArt({ id: 'AAAAAAAAAAAA', themeHue: null }));
   });
 
+  await t.test('no colour: every colour a neutral grey exactly as light, and the same contrast', () => {
+    assert.equal(UI.themeKeyOf({ themeHue: 30, themeGrayscale: true }), 'grey');
+    assert.equal(UI.themeKeyOf({ themeHue: 30, themeGrayscale: false }), 30);
+    assert.equal(UI.themeKeyOf({ themeHue: null, themeGrayscale: false }), null);
+    const c = UI.themeColors('grey');
+    for (const [k, rgb] of Object.entries(c)) assert.ok(rgb[0] === rgb[1] && rgb[1] === rgb[2], `${k} is neutral: ${rgb}`);
+    const lin = (b) => { const x = b / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+    const lum = (rgb) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    const overGlow = c.m3.map((x, i) => 0.7 * lin(x) + 0.3 * lin(c.card[i]));
+    assert.ok(1.05 / (lum(overGlow) + 0.05) >= 9, 'white on a card over the brightest glow');
+    // The generated picture goes grey too.
+    assert.match(UI.coverArt({ id: 'AAAAAAAAAAAA', themeGrayscale: true }), /--c1:#([0-9a-f]{2})\1\1;/);
+    // The slider: grey at the left, then the wheel; untouched, Canopy green.
+    assert.equal(UI.sliderOf(null), UI.SLIDER_GREY + 161);
+    assert.equal(UI.keyOfSlider(0), 'grey');
+    assert.equal(UI.keyOfSlider(UI.SLIDER_GREY - 1), 'grey');
+    assert.equal(UI.keyOfSlider(UI.SLIDER_GREY), 0);
+    assert.equal(UI.keyOfSlider(UI.SLIDER_MAX), 359);
+    for (const key of ['grey', 0, 161, 359]) assert.equal(UI.keyOfSlider(UI.sliderOf(key)), key);
+  });
+
+  await t.test('the editor offers "Match photo" only once there\'s a photo whose colour is known', () => {
+    const base = { id: 'AAAAAAAAAAAA', title: 'T', startsAt: '2030-01-01T20:00:00.000Z', timeZone: 'UTC', guestListVisibility: 'everyone' };
+    assert.match(UI.editorForm({ event: { ...base, coverHue: 200, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match">/);
+    assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: true } }), /id="themeMatch" data-action="theme-match">/);
+    assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match" hidden>/);
+    assert.match(UI.editorForm({ event: { ...base, themeGrayscale: true } }), /id="themeHue"[^>]*value="15"[^>]*aria-valuetext="No colour"/);
+  });
+
   await t.test('counts are people, plus the guests they bring', () => {
     const counts = { going: 4, maybe: 1, notGoing: 0, invited: 2, waitlisted: 1, guests: { going: 2, maybe: 1, waitlisted: 0 } };
     assert.equal(UI.countsLine({ counts }, false), '4 going +2 guests · 1 maybe +1 guest · 1 on the waitlist');
@@ -564,7 +593,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.equal(meta(r.text, 'twitter:card'), 'summary');
     const details = section(r.body, 'details');
     assert.ok(!details.includes('<img class="cover"'));
-    assert.match(details, /<div class="hero"><span class="cover-art" style="[^"]+" aria-hidden="true"><\/span><\/div>/);
+    assert.match(details, /<div class="hero"><span class="cover-art" style="[^"]+" aria-hidden="true"><\/span><div class="tags"><span class="tag rel"[^>]*>[^<]+<\/span><\/div><\/div>/);
     // The same event always gets the same picture, and the picture has
     // no words in it.
     assert.equal(UI.coverArt({ id: plain.id }), UI.coverArt({ id: plain.id }));
@@ -753,8 +782,8 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.ok(green.includes('<html lang="en">') && green.includes('<meta name="theme-color" content="#03120c">'));
     const edit = await page(server, ana, `/e/${purple.id}/edit`);
     assert.ok(edit.text.includes(`<html lang="en" style="${style}">`));
-    assert.match(edit.body, /<input type="range" id="themeHue" min="0" max="359" step="1" value="300" data-set="1"/);
-    assert.match((await page(server, ana, '/new')).body, /id="themeHue"[^>]*value="161" data-set=""[\s\S]*id="themeReset" data-action="theme-reset" disabled/);
+    assert.match(edit.body, /<input type="range" id="themeHue" min="0" max="389" step="1" value="330"/);
+    assert.match((await page(server, ana, "/new")).body, /id="themeHue"[^>]*value="191"[^>]*aria-valuetext="Canopy green"[\s\S]*id="themeMatch" data-action="theme-match" hidden/);
     const home = await page(server, ana, '/');
     assert.ok(home.text.includes('<html lang="en">'), 'home stays green');
     assert.match(section(home.body, 'list-hosting'), /<a class="event-row card" href="\/e\/[^"]+" style="--card:rgba\(\d+,\d+,\d+,0\.45\)">/);

@@ -116,6 +116,15 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   assert.equal(upgraded.getEvent('AAAAAAAAAAAA').themeHue, null);
   assert.equal(upgraded.updateEvent('AAAAAAAAAAAA', { themeHue: 300 }).themeHue, 300);
   assert.throws(() => upgraded.db.prepare("UPDATE events SET theme_hue = 360 WHERE id = 'AAAAAAAAAAAA'").run(), /CHECK/);
+  // Version 8: grey pages, and the colour of a cover (unknown for a cover
+  // from before).
+  assert.equal(upgraded.getEvent('AAAAAAAAAAAA').themeGrayscale, false);
+  assert.equal(upgraded.updateEvent('AAAAAAAAAAAA', { themeGrayscale: true }).themeGrayscale, true);
+  assert.deepEqual([upgraded.getEvent('AAAAAAAAAAAA').coverHue, upgraded.getEvent('AAAAAAAAAAAA').coverGrayscale], [null, false]);
+  const hued = upgraded.setCover('AAAAAAAAAAAA', 'CoverKey5678', { hue: 200 });
+  assert.deepEqual([hued.coverHue, hued.coverGrayscale], [200, false]);
+  const cleared = upgraded.setCover('AAAAAAAAAAAA', null);
+  assert.deepEqual([cleared.coverHue, cleared.coverGrayscale], [null, false]);
   // And whoever was hosting at the upgrade has hosted, from when
   // they started; nobody else has, until they host.
   assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000001'), true);
