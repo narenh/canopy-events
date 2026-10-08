@@ -178,3 +178,19 @@ waitlist, notifications, host moderation and lookup, built on branch
   read them changes meaning), and add `guests` (plus-ones) and `total`
   (people + plus-ones) for going, maybe and waitlisted. · Additive. ·
   lib/store/rsvps.js countsFor.
+
+### Two small additions for the app
+
+- `GET /api/v1/me/events/declined`: events you answered `not_going`
+  that **aren't over and aren't cancelled**, soonest first, invited or
+  not. · It sits beside invitations in the app's Invites tab, so it
+  follows the same rule; a declined event that's over or off has
+  nothing left to change your mind about. · `LISTS.declined` in
+  lib/store/events.js.
+- `GET /api/v1/me` gains `hasHosted` at the top level (beside `person`
+  and `verifyUrl`, not inside `person`, which is the account's own
+  details). It's "hosts or co-hosts any event now on record", cancelled
+  and past included. · A co-host who stepped down from their only event
+  is false again: there'd be nothing in a Hosting tab. Recording "ever"
+  exactly would need its own table. · `hasHosted` in
+  lib/store/events.js.

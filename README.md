@@ -128,7 +128,7 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `DELETE /api/v1/events/{id}/invites/{personId}` | take back an unanswered invitation (hosts) |
 | `GET /api/v1/me` | you, with your own details and `emailVerified` |
 | `GET /api/v1/me/friends` | your friends, with events in common |
-| `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/past` | your events |
+| `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/declined`, `/past` | your events |
 
 Errors are `{"error": "<a sentence>", "reason": "<snake_case_code>"}` with
 the right status. Lists are cursor-paginated (`?cursor=&limit=`, and

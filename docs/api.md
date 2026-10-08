@@ -84,9 +84,14 @@ lists. They **can't make events** (403 `email_unverified`) or be co-hosts.
 ```json
 {
   "person": { "id": "…", "email": "ana@example.com", "firstName": "Ana", "emailVerified": false, "…": "…" },
-  "verifyUrl": "https://account.canopysf.com/profile?verify=1&return=https%3A%2F%2Fevents.canopysf.com%2F"
+  "verifyUrl": "https://account.canopysf.com/profile?verify=1&return=https%3A%2F%2Fevents.canopysf.com%2F",
+  "hasHosted": false
 }
 ```
+
+`hasHosted` is true once you host or co-host any event, cancelled and past
+ones included: show the Hosting tab only then. (A co-host who steps down
+from their only event is back to false; there'd be nothing in the tab.)
 
 While `emailVerified` is false, **show a verify-your-email banner on every
 screen, and don't let it be dismissed**. It's never a hard block: the app
@@ -297,13 +302,14 @@ host a day.
 
 ## Your events
 
-Four lists, each a page at a time:
+Five lists, each a page at a time:
 
 | | What's in it | Order |
 |---|---|---|
 | `GET /api/v1/me/events/hosting` | events you host that aren't over, cancelled included | soonest first |
 | `GET /api/v1/me/events/upcoming` | not over, and you said `going` or `maybe` (or are waitlisted); cancelled stay, so they show as off | soonest first |
 | `GET /api/v1/me/events/invitations` | invited, no answer yet, not over, not cancelled | soonest first |
+| `GET /api/v1/me/events/declined` | you said `not_going`, not over, not cancelled (so you can change your mind) | soonest first |
 | `GET /api/v1/me/events/past` | over, and you hosted or said `going` or `maybe` | most recent first |
 
 Each item is a whole `Event` as you see it (with `viewer`), minus

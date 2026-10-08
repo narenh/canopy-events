@@ -406,7 +406,7 @@ paths:
         Instagram, Venmo or Cash App in it, and they're yours. When
         `person.emailVerified` is false (a quick account), show the
         verify-your-email banner, which can't be dismissed, linking to
-        `verifyUrl`.
+        `verifyUrl`. `hasHosted` says whether to show a Hosting tab.
       responses:
         '200':
           description: You.
@@ -482,6 +482,19 @@ paths:
       operationId: listInvitations
       summary: Your invitations
       description: Events you're invited to and haven't answered, that aren't over or cancelled. Soonest first.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses: *eventListResponses
+
+  /api/v1/me/events/declined:
+    get:
+      tags: [Me]
+      operationId: listDeclined
+      summary: Events you said you can't go to
+      description: |
+        Events you answered `not_going` that aren't over or cancelled, so
+        you can change your mind. Soonest first. (Invited or not.)
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -688,13 +701,19 @@ components:
     MeEnvelope:
       type: object
       additionalProperties: false
-      required: [person, verifyUrl]
+      required: [person, verifyUrl, hasHosted]
       properties:
         person: { $ref: '#/components/schemas/Me' }
         verifyUrl:
           type: [string, 'null']
           format: uri
           description: Where to prove your email, while `emailVerified` is false; null after.
+        hasHosted:
+          type: boolean
+          description: |
+            Whether you host or co-host any event, cancelled and past ones
+            included: show a Hosting tab when true. A co-host who stepped
+            down from their only event is back to false.
       example:
         person:
           id: 6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44
@@ -710,6 +729,7 @@ components:
           emailVerified: false
           findable: true
         verifyUrl: https://account.canopysf.com/profile?verify=1&return=https%3A%2F%2Fevents.canopysf.com%2F
+        hasHosted: false
 
     RsvpStatus:
       type: string

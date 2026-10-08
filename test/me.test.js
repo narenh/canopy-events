@@ -28,7 +28,8 @@ test('me', async (t) => {
         photoUrl: `${server.fake.base}/photo/${P.ana.id}?v=1`,
         phone: P.ana.phone, instagram: P.ana.instagram, venmo: P.ana.venmo, cashapp: P.ana.cashapp, emailVerified: true, findable: true
       },
-      verifyUrl: null
+      verifyUrl: null,
+      hasHosted: false
     });
   });
 
@@ -69,6 +70,10 @@ test('me', async (t) => {
     // Invitations: no answer yet, not cancelled.
     assert.deepEqual(ids(await list(ben, 'invitations')), [bensInvite.id]);
     assert.deepEqual(ids(await list(una, 'invitations')), [], "a cancelled event's invitation isn't one");
+    // Declined: can't go, not over, not cancelled.
+    const declinedToo = await makeEvent(ana, { title: 'Nope', startsAt: inDays(7) });
+    await rsvp(ben, declinedToo.id, 'not_going');
+    assert.deepEqual(ids(await list(ben, 'declined')), [declinedToo.id], "can't go only; the done one is over");
     // Past: hosted, or going/maybe; most recent first.
     assert.deepEqual(ids(await list(ana, 'past')), [done.id, longAgo.id]);
     assert.deepEqual(ids(await list(ben, 'past')), [done.id], "can't go isn't having been");
@@ -78,6 +83,25 @@ test('me', async (t) => {
     assert.equal(item.hosts[0].person.id, P.ana.id);
     assert.equal(item.friendsGoing, undefined);
     assert.equal((await anon.get('/api/v1/me/events/hosting')).status, 401);
+  });
+
+  await t.test('hasHosted: once you host or co-host anything, cancelled and past included', async () => {
+    const eve = client(server, 'eve');
+    const fay = client(server, 'fay');
+    const hasHosted = async (who) => (await who.get('/api/v1/me')).data.hasHosted;
+    assert.equal(await hasHosted(eve), false);
+    assert.equal(await hasHosted(una), false, 'answering is not hosting');
+    const e = await makeEvent(eve, { title: 'Eve hosts' });
+    await eve.patch(`/api/v1/events/${e.id}`, { status: 'cancelled' });
+    server.setTimes(e.id, { startedAgoMs: 9 * DAY, overInMs: -8 * DAY });
+    assert.equal(await hasHosted(eve), true, 'cancelled and over still counts');
+    // A co-host has hosted; stepping down from their only one takes it back.
+    await fay.get('/api/v1/me');
+    const party = await makeEvent(ana, { title: 'Co-hosted' });
+    await ana.post(`/api/v1/events/${party.id}/cohosts`, { personId: P.fay.id });
+    assert.equal(await hasHosted(fay), true);
+    await fay.del(`/api/v1/events/${party.id}/cohosts/${P.fay.id}`);
+    assert.equal(await hasHosted(fay), false);
   });
 
   await t.test('a page at a time, without repeats, however many there are', async () => {
