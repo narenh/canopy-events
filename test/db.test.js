@@ -8,7 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const Database = require('better-sqlite3');
-const { init, snapshot, SCHEMA_VERSION, SNAPSHOTS_KEPT } = require('../lib/db');
+const { init, open, prepareSchema, snapshot, SCHEMA_VERSION, SNAPSHOTS_KEPT } = require('../lib/db');
 const { newEventId, EVENT_ID_RE } = require('../lib/ids');
 
 function scratch() {
@@ -48,6 +48,68 @@ test('a database from an unknown schema version is refused, not opened', (t) => 
   o.exec('CREATE TABLE events (id TEXT)');
   o.close();
   assert.throws(() => init({ file: other, snapshots: false }), /schema version 0/);
+});
+
+// Tables, their columns (name, type, not null, default, key) and indexes:
+// what has to match between an upgraded file and a new one.
+function shape(db) {
+  const out = {};
+  for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all()) {
+    out[name] = {
+      columns: db.prepare(`SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info('${name}') ORDER BY name`).all(),
+      indexes: db.prepare(`SELECT name, "unique", partial FROM pragma_index_list('${name}') ORDER BY name`).all()
+    };
+  }
+  return out;
+}
+
+test('a version 1 file, as first shipped, is brought up to the same shape as a new one', (t) => {
+  const dir = scratch();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'events.db');
+  const old = new Database(file);
+  old.exec(fs.readFileSync(path.join(__dirname, 'fixtures', 'schema-v1.sql'), 'utf8'));
+  old.pragma('user_version = 1');
+  old.prepare("INSERT INTO events (id, title, starts_at, over_at, time_zone, created_at, updated_at) VALUES ('AAAAAAAAAAAA', 'Kept', 1, 2, 'UTC', 1, 1)").run();
+  old.close();
+
+  const upgraded = init({ file, snapshots: false });
+  const fresh = init({ file: path.join(dir, 'fresh.db'), snapshots: false });
+  assert.equal(upgraded.db.pragma('user_version', { simple: true }), SCHEMA_VERSION);
+  assert.deepEqual(shape(upgraded.db), shape(fresh.db));
+  assert.equal(upgraded.getEvent('AAAAAAAAAAAA').title, 'Kept');
+  upgraded.db.close();
+  fresh.db.close();
+});
+
+test('upgrades run one step at a time, and a failed step changes nothing', (t) => {
+  const dir = scratch();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'events.db');
+  init({ file, snapshots: false }).db.close();
+  const upgrades = {
+    1(db) { db.exec('ALTER TABLE events ADD COLUMN two TEXT'); },
+    2(db) { db.exec('ALTER TABLE events ADD COLUMN three TEXT'); }
+  };
+  const cols = (db) => db.prepare("SELECT name FROM pragma_table_info('events')").all().map((c) => c.name);
+
+  // A step that throws: the file stays at version 1, without its column.
+  let db = open(file);
+  assert.throws(() => prepareSchema(db, file, { version: 3, upgrades: { ...upgrades, 2() { throw new Error('boom'); } } }), /boom/);
+  assert.equal(db.pragma('user_version', { simple: true }), 1);
+  assert.ok(!cols(db).includes('two'));
+  // A missing step is an error, not a skip.
+  assert.throws(() => prepareSchema(db, file, { version: 3, upgrades: { 1: upgrades[1] } }), /no upgrade from schema version 2/);
+  assert.equal(db.pragma('user_version', { simple: true }), 1);
+  // Both steps: version 3, both columns.
+  prepareSchema(db, file, { version: 3, upgrades });
+  assert.equal(db.pragma('user_version', { simple: true }), 3);
+  assert.ok(cols(db).includes('two') && cols(db).includes('three'));
+  db.close();
+  // And the code at version 1 won't open it now.
+  db = open(file);
+  assert.throws(() => prepareSchema(db, file), /schema version 3/);
+  db.close();
 });
 
 test('snapshots: one a day, newest 14 kept', async (t) => {
