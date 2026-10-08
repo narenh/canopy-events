@@ -1639,3 +1639,11 @@ Fixes for the security review's events findings (branch `fix/review`).
   with the fade and title, rubber-bands down over the bottom of the
   photo. Scrolling up moves everything together as usual. The iOS repo's
   ARCHITECTURE.md records the details.
+- From the owner's iPhone screenshots: iOS 26 Safari paints the strips
+  behind its status bar and floating toolbar one flat colour (the base),
+  and the mesh's glows ran right up to them, leaving hard seams that
+  shifted as glows scrolled past. The mesh (and its grain) now fades to
+  the base colour over the top ~18% and bottom ~24% of the screen, so
+  the strips meet the same colour. The account pages got the same
+  change. · Cost: slightly less glow at the top and bottom. · The first
+  gradient layer of `.mesh-bg::before` in events.css and account.css.
