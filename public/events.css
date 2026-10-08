@@ -790,6 +790,19 @@ textarea.address-input{min-height:0;margin-top:8px;}
 .hue-row input[type="range"]:focus{outline:none;}
 .hue-row input[type="range"]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--text);outline-offset:2px;}
 .hue-row .small-btn{min-height:var(--tap);}
+/* A field's label with a small icon button at the right edge of its line
+   (the colour's "Match photo"). */
+.field-head{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.field-head .field-label{margin-bottom:0;}
+.icon-btn{
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:40px;height:40px;min-height:0;padding:0;border-radius:12px;
+  background:var(--secondary);border:1px solid var(--field-line);color:var(--accent-text);cursor:pointer;
+}
+.icon-btn svg{width:22px;height:22px;display:block;}
+.icon-btn:hover{border-color:var(--accent);}
+.icon-btn:focus-visible{outline:2px solid var(--text);outline-offset:2px;}
+.field-head [hidden]{display:none;}
 /* "Match photo" with no photo to match: buttons are display:block, which
    would otherwise beat the hidden attribute. */
 .hue-row [hidden], .field[hidden]{display:none;}

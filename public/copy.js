@@ -291,9 +291,9 @@ const COPY = {
     coverNoPreview: "This photo can't be previewed here. It will show once it's saved.",
     coverNotSaved: "The event is saved, but its cover didn't upload.",
     // The event's colour.
-    theme: 'Colour',
+    theme: 'Color',
     themeDefault: 'Canopy green',
-    themeGrey: 'No colour',
+    themeGrey: 'No color',
     themeMatch: 'Match photo',
     // A grey event's accent: white, or a hue.
     accent: 'Accent',
@@ -313,8 +313,8 @@ const COPY = {
       rate_limited: "That's a lot of events for one day. Try again tomorrow.",
       bad_guests_allowed: 'Pick from 0 to 10 guests.',
       bad_capacity: 'Capacity is a whole number from 1 to 10,000, or empty for no limit.',
-      bad_theme_hue: 'Pick a colour on the slider.',
-      bad_theme_grayscale: 'Pick a colour on the slider.'
+      bad_theme_hue: 'Pick a color on the slider.',
+      bad_theme_grayscale: 'Pick a color on the slider.'
     },
     // The cover's own refusals, by the API's `reason`.
     coverErrors: {
