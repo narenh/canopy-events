@@ -1079,3 +1079,22 @@ Fixes for the security review's events findings (branch `fix/review`).
   only showed it to hosts, so nothing visible changes (that's true of
   `feat/web-features`' `public/ui.js` too, checked at the time). ·
   lib/views.js `countsView`.
+- **(You) Partly undone:** unverified accounts are findable by
+  **Instagram** again, because on a new network most people never
+  confirm their email. Phone lookups still need a verified account,
+  since numbers can be enumerated. · The impostor case is back for
+  Instagram, but only while the real owner hasn't claimed their own
+  handle. · Account service `findPerson` (2866489 on main). The real fix is
+  proving the handle (see "Instagram ownership" below).
+- **(You)** Cover geometry: a 3:2 frame whose top 16:9 is the
+  semi-safe image area (the relative-time pill may sit there). The
+  remaining bottom band fades into the background and holds the event
+  title. Bottom corners are never rounded.
+- **(You)** Uploading a cover suggests a hue that matches the photo,
+  and the host can still change it.
+- Assumed: the server computes `coverHue` (a chroma-weighted OKLCH hue
+  histogram's peak, or null for greyscale) and stores it with the cover.
+  The web editor jumps the slider to it after an upload and offers a
+  "Match photo" button. `themeHue` only changes when the host saves, and
+  an API-only upload never changes it, so the apps decide for
+  themselves.
