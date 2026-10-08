@@ -16,6 +16,7 @@ const path = require('path');
 const net = require('net');
 const Database = require('better-sqlite3');
 const { startFakeAccount } = require('./fakeAccount');
+const { checkResponse } = require('./openapi');
 
 const CONTACT_FIELDS = ['email', 'phone', 'instagram', 'venmo', 'cashapp'];
 
@@ -47,12 +48,15 @@ function findLeaks(data, callerId, people) {
   return found;
 }
 
-// (response, request) -> throws on a problem. More are added by other
-// files (the OpenAPI check, spec.js).
+// (response, request) -> throws on a problem.
 const CHECKS = [
   function noLeaks(r, { callerId, people }) {
     const leaks = findLeaks(r.data, callerId, people);
     if (leaks.length) throw new Error(`contact details leaked in ${r.method} ${r.url}:\n  ${leaks.join('\n  ')}\n${r.text}`);
+  },
+  // The answer is what openapi.yaml says it is (test/openapi.js).
+  function matchesSpec(r) {
+    checkResponse(r);
   }
 ];
 

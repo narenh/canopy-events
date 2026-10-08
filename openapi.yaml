@@ -1,0 +1,887 @@
+openapi: 3.1.0
+info:
+  title: Canopy Events API
+  version: 1.0.0
+  summary: Events among friends, for the web page and the iOS and Android apps.
+  description: |
+    The JSON API behind `events.canopysf.com`. The web pages use it with the
+    `canopy_session` cookie; apps use it with `Authorization: Bearer <token>`,
+    where the token is a `canopy_session` value. `docs/api.md` in the repo is
+    the narrative guide: auth, the RSVP state machine, the visibility rules,
+    pagination and errors, with worked examples.
+
+    **Conventions.** JSON in and out. Times are ISO 8601 UTC strings
+    (`2026-10-31T03:00:00.000Z`); input times need `Z` or an offset. Ids are
+    strings. Errors are `{"error": "<a sentence>", "reason": "<snake_case>"}`
+    with the right status: branch on `reason`, show `error` if you like.
+    Lists take `?cursor=&limit=` and answer with `nextCursor` (null at the
+    end). Every answer is `Cache-Control: no-store`.
+
+    **Other people** are only ever `Person`: id, first and last name, short
+    name and photo. Nobody's email, phone, Instagram, Venmo or Cash App is
+    ever in an answer, except your own, from `GET /api/v1/me`.
+  license:
+    name: Private
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: https://events.canopysf.com
+    description: Production
+  - url: http://localhost:3001
+    description: Local development
+tags:
+  - name: Events
+    description: Making, reading and editing events.
+  - name: Guests
+    description: Answers (RSVPs), the guest list and invitations.
+  - name: Me
+    description: You, your friends and your events.
+  - name: Docs
+    description: This document.
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+
+paths:
+  /api/v1/openapi.yaml:
+    get:
+      tags: [Docs]
+      operationId: getOpenApi
+      summary: This document
+      security: []
+      responses:
+        '200':
+          description: The OpenAPI 3.1 document, as YAML.
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /api/v1/events:
+    post:
+      tags: [Events]
+      operationId: createEvent
+      summary: Make an event
+      description: |
+        Verified people only: an unverified (quick) account gets a 403 with
+        `reason: email_unverified` and a `verify` link. You become its
+        creator and only host. Limited to 20 a day per person (429
+        `rate_limited`). Fields left out take their defaults; fields this
+        server doesn't know are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+            examples:
+              dinner:
+                value:
+                  title: Rooftop dinner
+                  description: Bring a jacket.
+                  startsAt: '2026-10-31T19:30:00-07:00'
+                  endsAt: '2026-10-31T23:00:00-07:00'
+                  timeZone: America/Los_Angeles
+                  locationName: "Ana's place"
+                  locationAddress: 1 Market St, San Francisco
+                  guestListVisibility: responded
+      responses:
+        '201':
+          description: The new event.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Events]
+      operationId: getEvent
+      summary: One event
+      description: |
+        Anyone with the link, signed in or not. Signed out, you get the
+        public details for a link preview or a "sign in to answer" page:
+        no guest names, no street address (`locationAddress` is null and
+        `locationAddressHidden` true), `viewer` null and no `friendsGoing`.
+        Signed in, you get the address, your own part (`viewer`) and which
+        of your friends are going.
+      security:
+        - {}
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: The event, as you see it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    patch:
+      tags: [Events]
+      operationId: updateEvent
+      summary: Edit, cancel or un-cancel an event
+      description: |
+        Hosts only (403 `hosts_only`). Send only the fields to change; null
+        or "" clears an optional one. `status: cancelled` cancels it (it
+        then takes no answers or invitations), `status: active` takes that
+        back. There's no deleting: a cancelled event keeps its link and
+        its guest list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventPatch' }
+            examples:
+              cancel:
+                value: { status: cancelled }
+              move:
+                value: { startsAt: '2026-11-01T19:30:00-07:00', endsAt: null }
+      responses:
+        '200':
+          description: The event after the change.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/rsvp:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    put:
+      tags: [Guests]
+      operationId: setRsvp
+      summary: Answer, or change your answer
+      description: |
+        `going`, `maybe` or `not_going`. Anyone signed in with the link may
+        answer, invited or not, unverified accounts included. Refused with
+        409 for a cancelled event (`event_cancelled`), one that's over
+        (`event_over`), or by a host (`host_cannot_rsvp`). `guests` (plus-
+        ones) is 0 unless the host allows more (400 `too_many_guests`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RsvpInput' }
+            examples:
+              going:
+                value: { status: going }
+      responses:
+        '200':
+          description: The event after your answer; `viewer.rsvp` is it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [Guests]
+      operationId: withdrawRsvp
+      summary: Take your answer back
+      description: |
+        If a host invited you, you're left invited with no answer;
+        otherwise you're off the list. With no answer to take back it does
+        nothing and still answers 200. The same 409s as answering.
+      responses:
+        '200':
+          description: The event after; `viewer.rsvp` is `invited` or null.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/guests:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Guests]
+      operationId: listGuests
+      summary: The guest list
+      description: |
+        Signed in only. `counts` always. Names (`guestsVisible: true`) for
+        hosts always; for everyone else when the event's
+        `guestListVisibility` is `everyone`, or once you've answered (any
+        answer, `not_going` included) when it's `responded`. Otherwise
+        `guestsVisible` is false and `guests` is empty. Non-hosts see
+        answers only; hosts also see who's `invited` with no answer. In the
+        order people got their status, oldest first.
+      parameters:
+        - name: status
+          in: query
+          description: Only this status. `invited` is for hosts (403 `hosts_only` otherwise).
+          schema: { $ref: '#/components/schemas/RsvpStatus' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of the guest list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/invites:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    post:
+      tags: [Guests]
+      operationId: invite
+      summary: Invite people
+      description: |
+        Hosts only. By person id: the web page offers your friends
+        (`GET /api/v1/me/friends`), but any Canopy account's id works.
+        Each id ends up in `invited`, or in `skipped` with why:
+        `already_on_list` (invited before, or already answered),
+        `is_host`, or `not_found` (no such account). 1 to 100 ids a
+        request; 300 invitations per host a day (429 `rate_limited`). 409
+        for a cancelled event or one that's over.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteInput' }
+            examples:
+              two:
+                value:
+                  personIds: [6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44, 0b7e5a1f-9c2d-4e8b-8f3a-1d2c3b4a5e6f]
+      responses:
+        '200':
+          description: Who was invited, and who wasn't and why.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InviteResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/invites/{personId}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - name: personId
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Guests]
+      operationId: uninvite
+      summary: Take back an invitation
+      description: |
+        Hosts only, and only while it has no answer: 409
+        `already_responded` once they've answered (their answer stays), 404
+        `not_invited` if they weren't invited.
+      responses:
+        '200':
+          description: Done.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me:
+    get:
+      tags: [Me]
+      operationId: getMe
+      summary: You
+      description: |
+        Your own details: the only answer anywhere with an email, phone,
+        Instagram, Venmo or Cash App in it, and they're yours. When
+        `person.emailVerified` is false (a quick account), show the
+        verify-your-email banner, which can't be dismissed, linking to
+        `verifyUrl`.
+      responses:
+        '200':
+          description: You.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeEnvelope' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/friends:
+    get:
+      tags: [Me]
+      operationId: listFriends
+      summary: Your friends
+      description: |
+        Two people are friends once they've both been at an event: hosting
+        it, or answering `going`, on an event that has started and wasn't
+        cancelled. `maybe` doesn't count, nor does an event still to come.
+        Most events in common first. Deleted accounts are left out, so a
+        page can be short of `limit` with more to come.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of friends.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FriendList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/events/hosting:
+    get:
+      tags: [Me]
+      operationId: listHosting
+      summary: Events you host
+      description: Events you host that aren't over, cancelled ones included. Soonest first.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses: &eventListResponses
+        '200':
+          description: A page of events.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/events/upcoming:
+    get:
+      tags: [Me]
+      operationId: listUpcoming
+      summary: Events you're going to
+      description: |
+        Events you answered `going` or `maybe` (or are waitlisted for) that
+        aren't over. Cancelled ones stay, so you see they're off. Soonest
+        first.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses: *eventListResponses
+
+  /api/v1/me/events/invitations:
+    get:
+      tags: [Me]
+      operationId: listInvitations
+      summary: Your invitations
+      description: Events you're invited to and haven't answered, that aren't over or cancelled. Soonest first.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses: *eventListResponses
+
+  /api/v1/me/events/past:
+    get:
+      tags: [Me]
+      operationId: listPast
+      summary: Events you've been to
+      description: Events that are over that you hosted or answered `going` or `maybe`. Most recent first.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses: *eventListResponses
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        For apps. The token is a `canopy_session` value (43 characters,
+        base64url), from the account service's native sign-in (still to be
+        built). A request with a bearer header is signed in by it alone,
+        never by a cookie, skips the Origin check, and never gets a
+        `Set-Cookie` back. A malformed token means signed out.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: canopy_session
+      description: |
+        For the web pages. Set by `account.canopysf.com` for all of
+        `canopysf.com`. Changes (POST, PUT, PATCH, DELETE) made with it
+        must carry an `Origin` header for a Canopy page, or get 403
+        `bad_origin`.
+
+  parameters:
+    EventId:
+      name: id
+      in: path
+      required: true
+      description: The event's id, 12 characters of base62 (the last part of its link).
+      schema: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
+      example: 4fQ9xKpL2mZa
+    Cursor:
+      name: cursor
+      in: query
+      description: '`nextCursor` from the page before. Leave out (or empty) for the first page.'
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      description: How many to a page, 1 to 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    BadRequest:
+      description: |
+        Something in the request isn't right: `bad_json`, `bad_title`,
+        `bad_starts_at`, `bad_ends_at`, `ends_before_start`,
+        `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`,
+        `bad_location_name`, `bad_location_address`, `bad_status`,
+        `bad_guests`, `too_many_guests`, `bad_person_ids`, `bad_cursor`,
+        `bad_limit`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: 'an event has to end after it starts', reason: ends_before_start }
+    SignInRequired:
+      description: Not signed in (`sign_in_required`), with where to send someone.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: sign in first
+            reason: sign_in_required
+            signIn: https://account.canopysf.com/?return=https%3A%2F%2Fevents.canopysf.com%2Fe%2F4fQ9xKpL2mZa
+            quickSignUp: https://account.canopysf.com/?quick=1&return=https%3A%2F%2Fevents.canopysf.com%2Fe%2F4fQ9xKpL2mZa
+    Forbidden:
+      description: |
+        Not allowed: `hosts_only`, `email_unverified` (with a `verify`
+        link), or `bad_origin` (a change made with the cookie from a page
+        that isn't Canopy's).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: verify your email first
+            reason: email_unverified
+            verify: https://account.canopysf.com/profile?verify=1&return=https%3A%2F%2Fevents.canopysf.com%2F
+    EventNotFound:
+      description: No event at that id (`event_not_found`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: "there's no event at that link", reason: event_not_found }
+    NotFound:
+      description: '`event_not_found`, or `not_invited`.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: |
+        Not in this event's state: `event_cancelled`, `event_over`,
+        `host_cannot_rsvp`, `already_responded`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: 'this event has been cancelled', reason: event_cancelled }
+    TooLarge:
+      description: The body is over 100 KB (`too_large`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Over a limit (`rate_limited`). Try again later.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: Canopy accounts couldn't be reached (`accounts_unreachable`). Try again in a minute.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error, reason]
+      properties:
+        error: { type: string, description: A sentence a person can read. }
+        reason: { type: string, description: What happened, as a snake_case code to branch on. }
+        signIn: { type: string, format: uri, description: 'With `sign_in_required`: where to sign in and come back.' }
+        quickSignUp: { type: string, format: uri, description: 'With `sign_in_required`: the quick sign-up (name, email, passkey), for someone new to Canopy.' }
+        verify: { type: string, format: uri, description: 'With `email_unverified`: where to prove the email and come back.' }
+
+    Ok:
+      type: object
+      additionalProperties: false
+      required: [ok]
+      properties:
+        ok: { const: true }
+
+    Person:
+      description: |
+        Anyone other than you, and the only shape anyone else ever has. A
+        deleted account (a former member) is `firstName: "Former member"`,
+        `lastName: ""`, `shortName: "Former member"`, `photoUrl: null`.
+      type: object
+      additionalProperties: false
+      required: [id, firstName, lastName, shortName, photoUrl]
+      properties:
+        id: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        shortName: { type: string, description: First name and last initial, e.g. "Ana L". }
+        photoUrl:
+          type: [string, 'null']
+          format: uri
+          description: |
+            On account.canopysf.com. Served only with a Canopy session (the
+            browser's cookie); null for no photo.
+      example:
+        id: 6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44
+        firstName: Ana
+        lastName: Lima
+        shortName: Ana L
+        photoUrl: https://account.canopysf.com/photo/6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44?v=1759870000000
+
+    Me:
+      description: You, with your own details. Only ever from `GET /api/v1/me`.
+      type: object
+      additionalProperties: false
+      required: [id, email, firstName, lastName, shortName, photoUrl, phone, instagram, venmo, cashapp, emailVerified, findable]
+      properties:
+        id: { type: string }
+        email: { type: [string, 'null'] }
+        firstName: { type: string }
+        lastName: { type: string }
+        shortName: { type: string }
+        photoUrl: { type: [string, 'null'], format: uri }
+        phone: { type: [string, 'null'], description: 'E.164, e.g. +14155551234.' }
+        instagram: { type: [string, 'null'] }
+        venmo: { type: [string, 'null'] }
+        cashapp: { type: [string, 'null'] }
+        emailVerified:
+          type: boolean
+          description: False for a quick account whose email isn't proven yet. Show the verify banner.
+        findable:
+          type: [boolean, 'null']
+          description: Whether people who know your phone or Instagram can find you. Null if the account service didn't say.
+
+    MeEnvelope:
+      type: object
+      additionalProperties: false
+      required: [person, verifyUrl]
+      properties:
+        person: { $ref: '#/components/schemas/Me' }
+        verifyUrl:
+          type: [string, 'null']
+          format: uri
+          description: Where to prove your email, while `emailVerified` is false; null after.
+      example:
+        person:
+          id: 6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44
+          email: ana@example.com
+          firstName: Ana
+          lastName: Lima
+          shortName: Ana L
+          photoUrl: null
+          phone: '+14155551234'
+          instagram: ana.lima
+          venmo: ana-l
+          cashapp: AnaL
+          emailVerified: false
+          findable: true
+        verifyUrl: https://account.canopysf.com/profile?verify=1&return=https%3A%2F%2Fevents.canopysf.com%2F
+
+    RsvpStatus:
+      type: string
+      enum: [invited, going, maybe, not_going, waitlisted]
+      description: |
+        `invited` is invited with no answer yet. `waitlisted` is reserved
+        for capacity: a `going` past the cap. Nothing sets it yet, but
+        apps should expect it.
+
+    Counts:
+      description: How many of each status. Always shown, to everyone. Hosts aren't counted.
+      type: object
+      additionalProperties: false
+      required: [going, maybe, notGoing, invited, waitlisted]
+      properties:
+        going: { type: integer, minimum: 0 }
+        maybe: { type: integer, minimum: 0 }
+        notGoing: { type: integer, minimum: 0 }
+        invited: { type: integer, minimum: 0 }
+        waitlisted: { type: integer, minimum: 0 }
+
+    Host:
+      type: object
+      additionalProperties: false
+      required: [person, role]
+      properties:
+        person: { $ref: '#/components/schemas/Person' }
+        role:
+          type: string
+          enum: [creator, cohost]
+          description: The creator first. Co-hosts are coming.
+
+    Rsvp:
+      description: Your own place on an event.
+      type: object
+      additionalProperties: false
+      required: [status, guests, invited, respondedAt]
+      properties:
+        status: { $ref: '#/components/schemas/RsvpStatus' }
+        guests: { type: integer, minimum: 0, description: Plus-ones you're bringing. }
+        invited: { type: boolean, description: Whether a host invited you. }
+        respondedAt: { type: [string, 'null'], format: date-time, description: When you last answered; null while only invited. }
+
+    Viewer:
+      description: You and this event. Null when signed out.
+      type: object
+      additionalProperties: false
+      required: [role, rsvp, canEdit, canSeeGuestList]
+      properties:
+        role:
+          type: [string, 'null']
+          enum: [creator, cohost, null]
+          description: Your part in hosting it, or null.
+        rsvp:
+          oneOf:
+            - $ref: '#/components/schemas/Rsvp'
+            - type: 'null'
+        canEdit: { type: boolean }
+        canSeeGuestList: { type: boolean, description: Whether the guest list's names are shown to you. }
+
+    FriendsGoing:
+      description: |
+        Which of your friends are going. `people` is the first 12, and
+        empty when you can't see the guest list's names yet; `count` is
+        always all of them.
+      type: object
+      additionalProperties: false
+      required: [count, people]
+      properties:
+        count: { type: integer, minimum: 0 }
+        people:
+          type: array
+          items: { $ref: '#/components/schemas/Person' }
+
+    Event:
+      type: object
+      additionalProperties: false
+      required: [id, url, title, description, startsAt, endsAt, timeZone, locationName, locationAddress,
+                 locationAddressHidden, guestListVisibility, status, cancelledAt, createdAt, updatedAt,
+                 hosts, counts, viewer]
+      properties:
+        id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
+        url: { type: string, format: uri, description: The event's link, to share. }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: [string, 'null'], format: date-time }
+        timeZone: { type: string, description: 'IANA, e.g. America/Los_Angeles: show times in it.' }
+        locationName: { type: [string, 'null'] }
+        locationAddress: { type: [string, 'null'], description: Null when signed out (see locationAddressHidden). }
+        locationAddressHidden: { type: boolean, description: True when there's an address you'll see once signed in. }
+        guestListVisibility: { type: string, enum: [everyone, responded] }
+        status: { type: string, enum: [active, cancelled] }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        hosts:
+          type: array
+          items: { $ref: '#/components/schemas/Host' }
+        counts: { $ref: '#/components/schemas/Counts' }
+        viewer:
+          oneOf:
+            - $ref: '#/components/schemas/Viewer'
+            - type: 'null'
+        friendsGoing:
+          $ref: '#/components/schemas/FriendsGoing'
+          description: Only on a single event (not in lists), and only when signed in.
+      example:
+        id: 4fQ9xKpL2mZa
+        url: https://events.canopysf.com/e/4fQ9xKpL2mZa
+        title: Rooftop dinner
+        description: Bring a jacket.
+        startsAt: '2026-11-01T02:30:00.000Z'
+        endsAt: '2026-11-01T06:00:00.000Z'
+        timeZone: America/Los_Angeles
+        locationName: "Ana's place"
+        locationAddress: 1 Market St, San Francisco
+        locationAddressHidden: false
+        guestListVisibility: responded
+        status: active
+        cancelledAt: null
+        createdAt: '2026-10-07T20:00:00.000Z'
+        updatedAt: '2026-10-07T20:00:00.000Z'
+        hosts:
+          - person: { id: 6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44, firstName: Ana, lastName: Lima, shortName: Ana L, photoUrl: null }
+            role: creator
+        counts: { going: 4, maybe: 1, notGoing: 1, invited: 3, waitlisted: 0 }
+        viewer:
+          role: null
+          rsvp: { status: going, guests: 0, invited: true, respondedAt: '2026-10-08T17:12:00.000Z' }
+          canEdit: false
+          canSeeGuestList: true
+        friendsGoing:
+          count: 1
+          people:
+            - { id: 0b7e5a1f-9c2d-4e8b-8f3a-1d2c3b4a5e6f, firstName: Ben, lastName: Okafor, shortName: Ben O, photoUrl: null }
+
+    EventEnvelope:
+      type: object
+      additionalProperties: false
+      required: [event]
+      properties:
+        event: { $ref: '#/components/schemas/Event' }
+
+    EventList:
+      type: object
+      additionalProperties: false
+      required: [events, nextCursor]
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/Event' }
+        nextCursor: { $ref: '#/components/schemas/NextCursor' }
+
+    NextCursor:
+      type: [string, 'null']
+      description: Pass back as `?cursor=` for the next page; null at the end.
+
+    Guest:
+      type: object
+      additionalProperties: false
+      required: [person, status, guests, respondedAt]
+      properties:
+        person: { $ref: '#/components/schemas/Person' }
+        status: { $ref: '#/components/schemas/RsvpStatus' }
+        guests: { type: integer, minimum: 0 }
+        respondedAt: { type: [string, 'null'], format: date-time }
+
+    GuestList:
+      type: object
+      additionalProperties: false
+      required: [guestsVisible, guests, counts, nextCursor]
+      properties:
+        guestsVisible:
+          type: boolean
+          description: False when you can't see names yet; then `guests` is empty and only `counts` says anything.
+        guests:
+          type: array
+          items: { $ref: '#/components/schemas/Guest' }
+        counts: { $ref: '#/components/schemas/Counts' }
+        nextCursor: { $ref: '#/components/schemas/NextCursor' }
+      example:
+        guestsVisible: true
+        guests:
+          - person: { id: 0b7e5a1f-9c2d-4e8b-8f3a-1d2c3b4a5e6f, firstName: Ben, lastName: Okafor, shortName: Ben O, photoUrl: null }
+            status: going
+            guests: 0
+            respondedAt: '2026-10-08T17:12:00.000Z'
+        counts: { going: 1, maybe: 0, notGoing: 0, invited: 0, waitlisted: 0 }
+        nextCursor: null
+
+    Friend:
+      type: object
+      additionalProperties: false
+      required: [person, eventsInCommon, lastTogetherAt]
+      properties:
+        person: { $ref: '#/components/schemas/Person' }
+        eventsInCommon: { type: integer, minimum: 1 }
+        lastTogetherAt: { type: string, format: date-time, description: When the latest of those events started. }
+
+    FriendList:
+      type: object
+      additionalProperties: false
+      required: [friends, nextCursor]
+      properties:
+        friends:
+          type: array
+          items: { $ref: '#/components/schemas/Friend' }
+        nextCursor: { $ref: '#/components/schemas/NextCursor' }
+
+    EventInput:
+      description: A new event. Only title, startsAt and timeZone are required.
+      type: object
+      required: [title, startsAt, timeZone]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120, description: One line; whitespace is tidied. Longer is cut. }
+        description: { type: [string, 'null'], maxLength: 5000 }
+        startsAt: { type: string, format: date-time, description: 'With Z or an offset: "2026-10-31T19:30:00-07:00".' }
+        endsAt: { type: [string, 'null'], format: date-time, description: After startsAt. Without one, the event counts as over 6 hours after it starts. }
+        timeZone: { type: string, description: 'An IANA time zone, e.g. America/Los_Angeles.' }
+        locationName: { type: [string, 'null'], maxLength: 200 }
+        locationAddress: { type: [string, 'null'], maxLength: 500 }
+        guestListVisibility: { type: string, enum: [everyone, responded], default: everyone }
+
+    EventPatch:
+      description: Any of the fields of EventInput, plus status. Only what's sent changes.
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: [string, 'null'], maxLength: 5000 }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: [string, 'null'], format: date-time }
+        timeZone: { type: string }
+        locationName: { type: [string, 'null'], maxLength: 200 }
+        locationAddress: { type: [string, 'null'], maxLength: 500 }
+        guestListVisibility: { type: string, enum: [everyone, responded] }
+        status: { type: string, enum: [active, cancelled], description: cancelled cancels it; active takes that back. }
+
+    RsvpInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [going, maybe, not_going] }
+        guests: { type: integer, minimum: 0, default: 0, description: 'Plus-ones, up to what the host allows (0 for now). Ignored for not_going.' }
+
+    InviteInput:
+      type: object
+      required: [personIds]
+      properties:
+        personIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { type: string, description: A Canopy person id. }
+
+    InviteResult:
+      type: object
+      additionalProperties: false
+      required: [invited, skipped]
+      properties:
+        invited:
+          type: array
+          items: { $ref: '#/components/schemas/Person' }
+        skipped:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [personId, reason]
+            properties:
+              personId: { type: string }
+              reason: { type: string, enum: [already_on_list, is_host, not_found] }
