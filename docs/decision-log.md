@@ -1286,3 +1286,31 @@ Fixes for the security review's events findings (branch `fix/review`).
 - Measured on an event page (local, 6 guests): 1 request, 138 KB raw
   / 40 KB gzipped, 3.5 MB JS heap, 164 DOM elements, first paint about
   100 ms. Covers were the real weight.
+- **Ready for your review (not merged):** `feat/data-security`,
+  account f1a5686 (168 tests) and events 81b17eb (208 tests); both pass
+  and the events branch merges cleanly. Its full decision list is on
+  that branch. **The order matters when merging:** account first (with
+  `CONTACT_ENCRYPTION_KEYS` and `LOOKUP_HMAC_KEY` set in Coolify before
+  deploying), then events, because events' lookup becomes a POST that
+  only the new account service answers. iOS follow-up: events'
+  `/api/v1/me` stops returning your contact details, so the app's
+  profile must read them from the account service's `/api/native/v1/me`.
+- **(You)** The semi-safe area is 2:1, not 16:9, and the fade was too
+  abrupt. The fade now eases in from 45% of the frame (nine stops), 70%
+  at the band's top (75% of the frame), and solid at the foot. The title
+  overlaps by the band's height (width × 1/6). docs/api.md has the exact
+  stops for the iOS app.
+- **(You)** The editor looks like the event: the cover hero on top, an
+  upload button and a × remove in its top right, and no help text. Time
+  zones get friendly names in small text under the time, with a
+  "Change" menu listing the nearby zones first (from Pacific: Hawaii,
+  Alaska, Pacific, Mountain, Central, Eastern).
+- Assumed: "nearby" means within about ±3 h of the viewer's zone at the
+  event's date (DST-correct), one entry per friendly zone, then "Other
+  time zones…" with search. The event page uses the same friendly names.
+  The API still stores IANA ids.
+- **(You)** The cover is part of the top card. The card's outline
+  fades out going up and is fully visible from about the place row down,
+  so the photo and title have no hard border. The editor mirrors it.
+  Phone treatment is the agent's call (edge to edge, or inset), to be
+  recorded.

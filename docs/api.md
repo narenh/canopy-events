@@ -260,12 +260,13 @@ working), so cache by URL. `null` is no cover.
 
 **How the web draws it.** A frame of **3:2** (height = width × 2/3),
 the photo filling it `object-fit: cover` style (centred, cropped). The
-frame's top **16:9** (height = width × 9/16) is where the photo shows
-clearly; the band below it (the last width × 0.104) is where it fades
-into the page's base colour (clear at 62% of the frame's height, 72% at
-the band's top, 92% at 93%, solid at the bottom), and the **title
-starts at the top of that band**, running on below the frame. The "how
-soon" pill sits low on the left inside the 16:9. Phones: edge to edge, no
+frame's top **2:1** (height = width × 1/2) is where the photo shows
+clearly; the band below it (the last width × 1/6) is where it has faded
+into the page's base colour. The fade eases in from 45% of the frame's
+height (6% at 52%, 18% at 58%, 34% at 63%, 52% at 68%, 70% at the
+band's top, 84% at 82%, 94% at 90%, solid at the bottom), and the
+**title starts at the top of that band**, running on below the frame.
+The "how soon" pill sits low on the left inside the 2:1. Phones: edge to edge, no
 rounded corners; wider: in the column, top corners rounded only. The
 crop is display-only: the stored image is the whole photo. An event with
 no cover gets a generated picture in the same frame (soft glows in its

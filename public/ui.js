@@ -637,7 +637,7 @@
     const tag = phase === 'cancelled' ? '<span class="tag danger">' + tx('status.cancelled') + '</span>' : relativePill(e);
     let h = '<section class="event-head' + (phase === 'cancelled' ? ' is-cancelled' : '') + (coverUrl(e) ? ' has-cover' : '') + '" id="details" data-section="details">';
     // The 3:2 frame: the picture, its fade, and how soon, low on the left
-    // inside the top 16:9 (events.css has the geometry).
+    // inside the top 2:1 (events.css has the geometry).
     h += '<div class="hero">' + coverMedia(e, 'hero') + (tag ? '<div class="tags">' + tag + '</div>' : '') + '</div>';
     // The title on the fade, then when: the two things a guest opening
     // the link needs at once. The place comes after, in the card.
@@ -1266,7 +1266,7 @@
     const url = coverUrl(e);
     return '<div class="field" id="coverField"><span class="field-label">' + tx('editor.cover') + '</span>'
       + '<div class="cover-pick' + (url ? ' has-cover' : '') + '">'
-      // The page's frame: 3:2, with the band under the top 16:9 (where
+      // The page's frame: 3:2, with the band under the top 2:1 (where
       // the fade and the title go) dimmed below a guide line.
       + '<div class="cover-frame">' + (coverImg(e, 'editor', 'cover-preview', ' id="coverPreview"') || '<img class="cover-preview" id="coverPreview" alt="" decoding="async">')
       + '<span class="safe-guide" aria-hidden="true"></span></div>'
