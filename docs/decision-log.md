@@ -142,10 +142,15 @@ Format: decision · why · how to reverse.
   **Invites** (invited but not answered, with a link at the top to
   declined events) and **Profile** (your own info). There's no Friends
   or Inbox tab.
-- Assumed: Events also lists events you **host** (with a Hosting badge)
-  and **waitlisted** ones (with a Waitlist badge), and has a "+" to
-  create an event and a "Past events" link at the top. · Hosts don't
-  RSVP in the API, but they're obviously going. · iOS EventsTab.
+- **(You)** Hosting appears in stages. Someone who has never hosted
+  gets three tabs, with a "+" on Events. Creating a first event (or
+  being made a co-host) adds a **Hosting** tab and a quick-create
+  button in the tab bar, which replaces the "+".
+- Assumed: once a host, always a host (the tab stays even when every
+  hosted event is past or cancelled). Once Hosting exists, hosted events
+  live there, not in Events. Events keeps going, maybe and waitlisted
+  (with a badge), plus a "Past events" link. The API gets
+  `hasHosted` on `/me` to drive it.
 - Assumed: friends appear only in the invite picker and as "friends
   going" on an event. Notifications get no screen for now; push covers
   them later. · They have nowhere else to go with three tabs.
