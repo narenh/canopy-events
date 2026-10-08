@@ -106,7 +106,7 @@ const COPY = {
     yourAnswer: 'You said: {status}.',
     waitlisted: "You're on the waitlist. You'll move up if a spot opens.",
     // The host's area.
-    hostingHeading: "You're hosting",
+    hostingHeading: 'Hosting',
     copied: 'Link copied.',
     cancelConfirm: "Cancel this event? Everyone on the list will see it's off. You can bring it back later.",
     restoreConfirm: 'Bring this event back? It will show as on again for everyone.',
@@ -167,7 +167,7 @@ const COPY = {
       host_cannot_rsvp: "You're hosting this event."
     },
     // Co-hosts, in the host's area.
-    cohostingHeading: "You're co-hosting",
+    cohostingHeading: 'Co-hosting',
     cohostsHeading: 'Co-hosts',
     cohostsHint: 'Co-hosts can edit the event, invite people and see everyone.',
     removeCohostConfirm: "Take {name} off as a co-host? They'll stay invited, and can answer like anyone else.",

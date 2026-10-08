@@ -232,7 +232,7 @@ test('pages', async (t) => {
   await t.test('the host: share, invite, edit and cancel, and everyone on the list', async () => {
     const html = (await page(server, ana, `/e/${party.id}`)).body;
     const host = section(html, 'host');
-    assert.ok(host.includes('You&#39;re hosting'));
+    assert.ok(host.includes('<h3>Hosting</h3>'));
     assert.ok(host.includes(`href="/e/${party.id}/invite"`) && host.includes(`href="/e/${party.id}/edit"`));
     assert.ok(host.includes('data-action="cancel"') && host.includes('data-action="share"'));
     assert.equal(section(html, 'rsvp'), null, 'hosts don\'t answer');
@@ -240,8 +240,8 @@ test('pages', async (t) => {
     assert.ok(guests.includes("Invited, hasn&#39;t answered · 1") && guests.includes('Dee Ruiz'), guests);
     assert.ok(section(html, 'guests').includes('1 Going · 1 Maybe'));
     assert.ok(section(html, 'guests').includes('<details class="view-all" id="viewAll"><summary class="pill-btn">'), 'View all, shut');
-    // No help text under "You're hosting": the heading, then the buttons.
-    assert.match(host, /<h3>You&#39;re hosting<\/h3><div class="host-actions">/);
+    // No help text under "Hosting": the heading, then the buttons.
+    assert.match(host, /<h3>Hosting<\/h3><div class="host-actions">/);
     // ⋯ is a drawn icon (three dots on the centre line), read out as "More".
     const more = /<button [^>]*id="hostMenuBtn"[^>]*>([\s\S]*?)<\/button>/.exec(host);
     assert.ok(more, 'the ⋯ button');
@@ -991,7 +991,7 @@ test('pages: the features, as everyone who might look', async (t) => {
   await t.test('a co-host: running it, removing and undoing, stepping down, but not cancelling or relinking', async () => {
     const r = await page(server, fay, `/e/${party.id}`);
     const host = section(r.body, 'host');
-    assert.ok(host.includes('You&#39;re co-hosting'));
+    assert.ok(host.includes('<h3>Co-hosting</h3>'));
     assert.ok(host.includes(`href="/e/${party.id}/invite"`) && host.includes(`href="/e/${party.id}/edit"`));
     assert.ok(!host.includes('data-action="cancel"') && !host.includes('data-action="new-link"'));
     assert.ok(host.includes('data-action="step-down"') && !host.includes('data-action="remove-cohost"'));
@@ -1013,7 +1013,7 @@ test('pages: the features, as everyone who might look', async (t) => {
   await t.test('the creator: co-hosts, a new link, cancelling, and the removed', async () => {
     const r = await page(server, ana, `/e/${party.id}`);
     const host = section(r.body, 'host');
-    assert.ok(host.includes('You&#39;re hosting'));
+    assert.ok(host.includes('<h3>Hosting</h3>'));
     assert.ok(host.includes('data-action="new-link"') && host.includes('data-action="cancel"'));
     assert.ok(!host.includes('data-action="step-down"'));
     // Share and Invite, then Edit with the ⋯ menu: co-hosts, new link,
