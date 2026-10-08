@@ -8,7 +8,9 @@
 //     signed out sees: the event is the link, and hiding it from them
 //     alone would hide nothing (they could sign out). Not the address,
 //     the guest list, the wall or friends going. A host can undo it,
-//     which leaves them invited. Nobody is notified either way.
+//     which leaves them invited. Nobody is notified either way, and their
+//     own notifications about the event are deleted (each one carries the
+//     event's link, which a new link may be about to replace).
 //   - Making a new link (the creator only): the event gets a new id, the
 //     old one is a 404 like any wrong link, and everyone keeps their place
 //     (lib/db.js, version 6). For a link that got out.
