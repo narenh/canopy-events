@@ -391,9 +391,10 @@ Its tables are `events`, `hosts` (who hosts each event: the creator and
 any co-hosts), `rsvps` (one row per person per event: invited, or their
 answer), `wall` (the activity wall: posts, and the server's typed
 entries), `notifications` (each person's inbox), `devices` (push tokens,
-one phone each) and `verified_people` (who events has seen signed in with a
+one phone each), `verified_people` (who events has seen signed in with a
 proven email, since only they may co-host and the account service doesn't
-say so about anyone but the visitor). There are no names, emails or
+say so about anyone but the visitor) and `hosted_people` (who has ever
+hosted, for `/api/v1/me`'s `hasHosted`: once a host, always a host). There are no names, emails or
 photos: only person ids.
 Friends aren't stored at all; they're worked out from `hosts` and `rsvps`
 each time.

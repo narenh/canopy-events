@@ -1177,9 +1177,10 @@ components:
         hasHosted:
           type: boolean
           description: |
-            Whether you host or co-host any event, cancelled and past ones
-            included: show a Hosting tab when true. A co-host who stepped
-            down from their only event is back to false.
+            Whether you've ever hosted or co-hosted an event: show a
+            Hosting tab when true. Once true it stays true, even after
+            stepping down as a co-host or every event being over or
+            cancelled.
       example:
         person:
           id: 6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44

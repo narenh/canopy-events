@@ -89,9 +89,10 @@ lists. They **can't make events** (403 `email_unverified`) or be co-hosts.
 }
 ```
 
-`hasHosted` is true once you host or co-host any event, cancelled and past
-ones included: show the Hosting tab only then. (A co-host who steps down
-from their only event is back to false; there'd be nothing in the tab.)
+`hasHosted` is true once you've hosted or co-hosted any event: show the
+Hosting tab only then. Once a host, always a host: it stays true after a
+co-host steps down (or is taken off), and when every event they hosted is
+over or cancelled, so the tab doesn't come and go.
 
 While `emailVerified` is false, **show a verify-your-email banner on every
 screen, and don't let it be dismissed**. It's never a hard block: the app

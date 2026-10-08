@@ -666,3 +666,23 @@ waitlist, notifications, host moderation and lookup, built on branch
   exact matching on the fixtures' phones and handles, honouring
   "findable", and switches to make it refuse in each way the real one
   can. · n/a
+
+## Events web, features pass
+
+Web pages for co-hosts, plus-ones, the wall, covers, capacity and the
+waitlist, host moderation and lookup, plus one API fix, built on branch
+`feat/web-features`.
+
+- **`hasHosted` is "once a host, always a host"**, recorded in a new
+  `hosted_people` table (schema version 7), written in the same
+  transaction as making an event or being made a co-host, and never
+  deleted. The upgrade fills it from everyone in `hosts` at the time
+  plus everyone in a wall `cohost_added` entry (which remembers co-hosts
+  who have since stepped down), with the earliest time of either. · The
+  app's Hosting tab shouldn't vanish when a co-host steps down (the
+  earlier entry under "Two small additions" chose otherwise). · Cost: a
+  co-host who stepped down before version 7 *and* whose wall entry a
+  host deleted isn't known, and reads false until they host again. ·
+  Point `hasHosted` in lib/store/people.js back at `hosts` (and leave
+  the table).
+
