@@ -334,7 +334,8 @@ paths:
       description: |
         Hosts only, and only while it has no answer: 409
         `already_responded` once they've answered (their answer stays), 404
-        `not_invited` if they weren't invited.
+        `not_invited` if they weren't invited. Their notifications about
+        the event (the invitation) are deleted.
       responses:
         '200':
           description: Done.
@@ -600,7 +601,8 @@ paths:
         sees. Someone not on the list yet can be removed ahead of time
         (404 `person_not_found` if there's no such account). Removing
         someone already removed is fine. 409 `is_host` for a host. Nobody
-        is notified.
+        is notified, and the removed person's notifications about the
+        event are deleted.
       responses:
         '200':
           description: Removed.
@@ -1625,6 +1627,12 @@ components:
         others answered"), and only the first of a batch pushes. Nobody
         is ever notified of their own doing. Expect new types later: skip
         one you don't know.
+
+        `event` is null once you're no longer on the event (not a host,
+        and not invited or answered, or removed): it carries the event's
+        current link, which isn't yours to have any more. Show the line
+        without opening anything. Being removed or uninvited deletes your
+        notifications about that event altogether.
       type: object
       additionalProperties: false
       required: [id, type, createdAt, read, actor, event, details, count]

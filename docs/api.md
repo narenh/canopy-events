@@ -384,7 +384,8 @@ host): their status becomes `removed`.
   `viewer.rsvp.status: "removed"` so the app can say so. The link is the
   event, and hiding it from them alone would hide nothing: they could
   sign out and look. If that's not enough, make a new link (below).
-- Nobody is notified.
+- Nobody is notified, and their own notifications about the event are
+  deleted (so their inbox can't hand them a new link).
 - You can remove someone before they've answered, or been invited.
 
 `DELETE /api/v1/events/{id}/removed/{personId}` undoes it: they're left
@@ -448,6 +449,12 @@ and `count`. Word them in the app:
   newest, it moves to the top) instead of making another, and only the
   first one of a batch pushes. Once it's read, the next answer starts a
   new one. A change of plus-ones alone isn't news.
+- **`event` can be null**: once you're no longer on the event (a host
+  took your invitation back or removed you, or you took back an answer
+  you gave without being invited), the inbox stops giving you its link,
+  because a host may have made a new one to keep you out. Show the line
+  without a way to open it. Being removed or uninvited also deletes your
+  notifications about that event.
 - The push carries the same `type`, the notification's id, the event's id
   and title, and `badge` (the unread count). The senders will turn it into
   a localized alert (`loc-key` and its arguments) for the app to word.

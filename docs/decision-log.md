@@ -731,3 +731,31 @@ Fixes for the security review's events findings (branch `fix/review`).
   +12 MB over 12 conversions without it). The /healthz test calibrates
   itself: no /healthz may take half as long as the upload (4 ms vs a
   133 ms upload after the fix; 100 ms of 126 ms before). · n/a
+- **Removing or uninviting someone deletes all their notifications about
+  that event**, in the same transaction (lib/store/rsvps.js
+  `removeGuest`, `uninvite`). Undoing a removal doesn't bring them
+  back. · Every entry carries the event's link. · Drop
+  `forgetNotifications`.
+- **The inbox's `event` is null** (not "title only") for anyone not on
+  the event now: not a host, and no invited-or-answered row that isn't
+  `removed` (`store.isOnEvent`). · Null was already allowed by the spec,
+  so apps need no new shape, and it gives away nothing; a title-only
+  object would have been a new schema with optional `id`. · lib/views.js
+  `notificationViews`.
+- That rule also covers **someone who answered without an invitation
+  and took the answer back**: their old entries stay but lose the
+  event. · They're off the list, the same as an uninvited person, and a
+  host may have made a new link with them in mind. The cost is an inbox
+  line they can't open; answering again at the link brings it back. ·
+  Count a deleted answer as "on" (needs a record of it).
+- **The push payload follows the same rule** (`eventId` and
+  `eventTitle` null for someone not on the event), checked when it's
+  queued. Everyone notified today is on the event, so this changes
+  nothing now; it's a guard for later triggers. There's no persistent
+  push queue (`push.queue` sends on the next tick), so there was no
+  queued push to delete. · n/a
+- **The other places that give out the current link were checked and
+  left alone**: `/me/events/*` lists only events you host or have a
+  non-removed row on; the wall, the guest list, cover URLs, friends and
+  `/me` don't carry an event's id; every `/events/{id}` route needs the
+  current link to begin with. · n/a
