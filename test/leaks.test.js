@@ -91,7 +91,12 @@ test('every endpoint, every caller: other people are the five public fields and 
   await ben.post('/api/v1/me/friends', { personId: P.eve.id });
   const anaLink = (await ana.get('/api/v1/me/friend-link')).data;
   await una.post(`/api/v1/friend-links/${anaLink.code}/accept`);
+  // Opt-outs and a mute, so those answers have people in them too.
+  await una.put(`/api/v1/me/invite-optouts/${P.ana.id}`);
+  await ben.put(`/api/v1/me/invite-optouts/${P.cy.id}`);
+  await ben.put(`/api/v1/events/${e.id}/mute`);
   for (const who of [ana, ben, benApp, una, cy, anon]) {
+    await call(who, 'get', '/api/v1/me/invite-optouts');
     await call(who, 'get', `/api/v1/friend-links/${anaLink.code}`);
     await call(who, 'get', '/api/v1/me/friend-link');
     await call(who, 'get', '/api/v1/me/settings');

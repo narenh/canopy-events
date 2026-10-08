@@ -205,10 +205,14 @@ module.exports = function pagesRoutes(ctx) {
     const viewer = event.viewer || {};
     const removedViewer = !!(viewer.rsvp && viewer.rsvp.status === 'removed');
     const insider = !!req.person && !removedViewer;
-    const [guests, removed, wall] = await Promise.all([
+    // A guest on it (invited or answered) gets the ⋯ menu, which needs
+    // whose invitations they've opted out of.
+    const guestMenu = insider && !viewer.canEdit && !!viewer.rsvp;
+    const [guests, removed, wall, optouts] = await Promise.all([
       insider ? apiGet(req, `/events/${event.id}/guests?limit=${GUESTS_SHOWN}`).then((r) => want(r)) : null,
       insider && viewer.canEdit ? apiGet(req, `/events/${event.id}/guests?status=removed&limit=${GUESTS_SHOWN}`).then((r) => want(r)) : null,
-      insider ? apiGet(req, `/events/${event.id}/wall?limit=${WALL_SHOWN}`).then((r) => want(r)) : null
+      insider ? apiGet(req, `/events/${event.id}/wall?limit=${WALL_SHOWN}`).then((r) => want(r)) : null,
+      guestMenu ? apiGet(req, '/me/invite-optouts').then((r) => want(r)) : null
     ]);
     const data = {
       me: meView(req.person),
@@ -216,6 +220,8 @@ module.exports = function pagesRoutes(ctx) {
       guests,
       removed,
       wall,
+      // Ids only: the menu names the hosts from the event.
+      optouts: optouts ? optouts.hosts.map((p) => p.id) : null,
       links: req.person ? null : { quickSignUp: canopy.quickSignUpUrl(req, here), signIn: canopy.signInUrl(req, here) }
     };
     render.page(req, res, 'event.html', {
@@ -303,10 +309,14 @@ module.exports = function pagesRoutes(ctx) {
   // phone or Instagram, and your list. The QR code is the one thing on a
   // page the API doesn't give: it's the link, drawn.
   router.get('/friends', attach, signedIn, pageRoute(async (req, res) => {
-    const [link, friends] = await Promise.all([apiGet(req, '/me/friend-link'), apiGet(req, `/me/friends?limit=${FRIENDS_SHOWN}`)]);
+    const [link, friends, optouts] = await Promise.all([
+      apiGet(req, '/me/friend-link'), apiGet(req, `/me/friends?limit=${FRIENDS_SHOWN}`), apiGet(req, '/me/invite-optouts')
+    ]);
     const me = meView(req.person);
     const data = {
       me, link: want(link), friends: want(friends).friends, nextCursor: want(friends).nextCursor,
+      // Whose invitations they've opted out of, with Undo.
+      optouts: want(optouts).hosts,
       // Adding by phone or Instagram is for verified people.
       links: me.emailVerified ? null : { verify: canopy.verifyUrl(req, render.hereUrl(req)) }
     };

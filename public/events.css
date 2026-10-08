@@ -500,6 +500,19 @@ a{color:var(--accent-text);font-weight:var(--link-weight, inherit);text-decorati
   width:var(--host-btn);height:var(--host-btn);min-height:0;padding:0;line-height:0;
 }
 .more-btn svg{display:block;width:24px;height:24px;}
+/* A guest's ⋯ on their card's first line, at its right edge (the same
+   button as the host's, a little smaller beside a heading). Their card
+   sits above the ones after it while the menu is open, as the host's. */
+#rsvp{position:relative;z-index:6;}
+.card-head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.card-head-row > h3, .card-head-row > .state-line{flex:1;min-width:0;}
+.card-head-row .more-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:var(--tap);height:var(--tap);min-height:0;padding:0;line-height:0;margin:-8px -6px 0 0;
+}
+#guestNotice:not(:empty), #guestError:not(:empty){margin:0 0 12px;}
+/* Wide enough for "Opt out of invites from <name>" on one line. */
+#guestMenu{min-width:min(300px, calc(100vw - 32px));}
 /* The menu: a solid card under the ⋯, right-aligned to it (solid, not
    glass: it floats over other buttons, which mustn't show through). */
 .menu{

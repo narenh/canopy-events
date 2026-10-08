@@ -57,7 +57,7 @@ test('removing a guest', async (t) => {
     assert.equal(ev.locationAddressHidden, true);
     assert.equal(ev.friendsGoing, undefined);
     assert.deepEqual(ev.viewer, {
-      role: null, canEdit: false, canSeeGuestList: false, canPost: false,
+      role: null, canEdit: false, canSeeGuestList: false, canPost: false, muted: false,
       rsvp: { status: 'removed', guests: 0, guestsOverLimit: false, invited: false, respondedAt: null }
     });
     assert.deepEqual((await cy.get(`/api/v1/events/${e.id}/guests`)).data.guests, []);

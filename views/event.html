@@ -88,11 +88,15 @@ window.addEventListener('resize', () => {
   clearTimeout(resizing);
   resizing = setTimeout(() => { if (fitAvatars()) draw(); }, 150);
 });
-// The host's ⋯ menu: opens under its button, arrow keys move through it,
-// Escape (or a tap anywhere else, or picking something) shuts it and puts
-// focus back on the button.
+// The ⋯ menu (the host's, or a guest's: a page has one or the other):
+// opens under its button, arrow keys move through it, Escape (or a tap
+// anywhere else, or picking something) shuts it and puts focus back on
+// the button.
 function menuParts(){
-  return { btn: document.getElementById('hostMenuBtn'), menu: document.getElementById('hostMenu') };
+  const host = document.getElementById('hostMenuBtn');
+  return host
+    ? { btn: host, menu: document.getElementById('hostMenu') }
+    : { btn: document.getElementById('guestMenuBtn'), menu: document.getElementById('guestMenu') };
 }
 function closeMenu(focusButton){
   const { btn, menu } = menuParts();
@@ -111,7 +115,7 @@ function openMenu(){
 document.addEventListener('click', (e) => {
   const { menu } = menuParts();
   if (!menu || menu.hidden) return;
-  if (e.target.closest('#hostMenuBtn')) return;
+  if (e.target.closest('#hostMenuBtn, #guestMenuBtn')) return;
   // A tap outside, or on an item (whose own action then runs).
   closeMenu(false);
 }, true);
@@ -247,6 +251,41 @@ async function hostChange(btn, errorId, group, work, vars){
   if (words) show(errorId, words);
 }
 
+// A guest-menu change that answers with the event: drawn again, and
+// `noticeKey` said under the card's heading.
+async function guestChange(btn, work, noticeKey){
+  let words = '';
+  let done = false;
+  await busy(btn, document.getElementById('guestError'), async () => {
+    const { res, data: d } = await work();
+    if (!res.ok){ words = refusal('event', d); return; }
+    data.event = d.event;
+    draw();
+    done = true;
+  });
+  if (words) show('guestError', words);
+  if (done) show('guestNotice', t(noticeKey));
+}
+
+// Opting out of a host's invitations (PUT), or allowing them again
+// (DELETE): the visitor's own list, kept in `data.optouts`.
+async function optoutChange(btn, method){
+  const id = btn.getAttribute('data-person');
+  const name = btn.getAttribute('data-name');
+  let words = '';
+  let done = false;
+  await busy(btn, document.getElementById('guestError'), async () => {
+    const { res, data: d } = await api(method, '/me/invite-optouts/' + encodeURIComponent(id));
+    if (!res.ok){ words = refusal('event', d); return; }
+    const list = (data.optouts || []).filter((x) => x !== id);
+    data.optouts = method === 'PUT' ? list.concat([id]) : list;
+    draw();
+    done = true;
+  });
+  if (words) show('guestError', words);
+  if (done) show('guestNotice', t(method === 'PUT' ? 'event.optedOut' : 'event.optedIn', { name }));
+}
+
 async function copyLink(url){
   try{
     await navigator.clipboard.writeText(url);
@@ -283,6 +322,23 @@ onActions({
     if (btn.getAttribute('aria-expanded') === 'true') closeMenu(true);
     else openMenu();
   },
+  'guest-menu': (btn) => {
+    if (btn.getAttribute('aria-expanded') === 'true') closeMenu(true);
+    else openMenu();
+  },
+
+  // A guest's menu. Muting changes only `viewer.muted`; leaving takes
+  // them off the event, so everything is fetched again (they now see it
+  // as anyone opening the link would); opting out of a host's invites
+  // changes only their own list.
+  mute: (btn) => guestChange(btn, () => api('PUT', eventPath() + '/mute'), 'event.muted'),
+  unmute: (btn) => guestChange(btn, () => api('DELETE', eventPath() + '/mute'), 'event.unmuted'),
+  leave: (btn) => {
+    if (!confirm(t('event.leaveConfirm'))) return;
+    hostChange(btn, 'guestError', 'event', () => api('POST', eventPath() + '/leave'));
+  },
+  'optout-invites': (btn) => optoutChange(btn, 'PUT'),
+  'allow-invites': (btn) => optoutChange(btn, 'DELETE'),
 
   // The co-hosts, from the menu: shown in the host's area.
   cohosts: () => {

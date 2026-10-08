@@ -2490,3 +2490,94 @@ viewers like the address. The rest:
   person stays on as `not_going`; the concurrency test has everyone
   going say can't go at once; the store-level rollback test uses
   `setAnswer(..., 'not_going')`; the event page has no withdraw button.
+
+## Guest menu: mute, leave, opt out
+
+On `feat/guest-menu`, after event details, on top of "No taking answers
+back". **(You)** asked for a ⋯ menu for guests with Mute, Remove me and
+Opt out of a host's invites (see "Guest menu (queued after event
+details)" above for the assumptions it started from). The rest:
+
+- **Schema version 14: `event_mutes` (event_id → events ON DELETE
+  CASCADE, person_id) and `invite_optouts` (person_id, host_id, CHECK
+  they differ).** · One row per choice; no row is the default. · A step
+  that drops both.
+- **Who gets the menu: anyone with a row on the event (invited or any
+  answer) who isn't hosting and wasn't removed.** Someone who only opened
+  the link has nothing to mute or leave. The API says the same: 409
+  `is_host`, `not_on_event`, `removed` for mute and leave. · As asked. ·
+  `guestRefusal` in routes/guestMenu.js.
+- **Mute skips `wall_post`, `rsvp` and `cohost_added`; it keeps
+  `event_changed` (time or place), `event_cancelled`,
+  `event_uncancelled`, and also `waitlist_promoted` and `invited`.** The
+  last two weren't in the brief's list either way: a spot opening up and
+  being invited are about you, not chatter. · `MUTED_TYPES` in
+  lib/notify.js, filtered in `notify()` itself so no trigger can forget.
+- **A host is never muted.** Today `rsvp` only goes to hosts and
+  `cohost_added` only to the person being made one, so for a muted guest
+  the brief's "other guests' RSVPs and co-host additions" would only ever
+  bite when they become a host; a co-host silently not hearing they'd
+  been made one, or not hearing answers to an event they host, would be
+  wrong. So the filter ignores a mute row whose person hosts the event
+  (and `viewer.muted` is false for a host); stepping down brings the mute
+  back. Both types stay in MUTED_TYPES for any future fan-out to guests.
+  · `mutedOn` in lib/store/optouts.js.
+- **Mute and unmute answer `{event}`; unmute is fine for anyone, muted or
+  not; mute twice is fine.** Nothing on the guest list shows it. · n/a
+- **Leave is `POST .../leave`, answering `{event}` as a fresh visitor sees
+  it.** In one transaction: the row deleted (invitation or answer), their
+  notifications about the event deleted, the mute deleted, their
+  "going"/"off the waitlist" wall entry deleted, then the waitlist
+  promoted (the same `waitlist.promote` can't-go uses). Their own posts
+  stay (they were there and said it; removal hides posts, leaving isn't
+  removal). Friend edges made by an invitation stay (one way, and taking
+  them back would be a second, unasked-for effect). Nobody is notified
+  except whoever gets the spot. · As asked. · `leaveEvent` in
+  lib/store/rsvps.js.
+- **The web asks first** with `confirm()` (as cancelling and removing
+  do), then fetches the page's data again: they now see it as anyone
+  opening the link, with going / maybe / can't go. · n/a
+- **Opt-outs: one menu item per host of the event** ("Opt out of invites
+  from Ana", "... from Cy"), creator first, by first name (short name
+  when two hosts share one; a former member isn't offered). · A co-host
+  can invite too, so opting out of only the creator would leave the
+  co-host's invitations getting through; events have few co-hosts, so the
+  menu stays short. · `guestMenu` in public/ui.js.
+- **The vague outcome is `not_found`**, the one the invite answer already
+  uses for an id with no account, not a new `not_invitable`: a reason
+  used only for opt-outs would say exactly what it's meant to hide. If the
+  opted-out person is already on that event (or hosting it, or removed
+  from it), they get the reason anyone would (`already_on_list`, ...),
+  so the answer never stands out, and nothing about their row changes
+  (no `invited` mark, no friendship). · As asked, refined. ·
+  routes/rsvps.js.
+- **Opting out is allowed for anyone with an account, not only someone
+  who hosts something of yours**; 404 `person_not_found` otherwise, 409
+  `is_you` for yourself. PUT and DELETE are idempotent (Undo after
+  another tab already undid it just works). · The app's Profile may want
+  it outside an event. · routes/guestMenu.js.
+- **`GET /me/invite-optouts` is `{hosts: [Person]}`, oldest first, not
+  paginated.** · A short, personal list. · n/a
+- **The menu reuses the host menu's popover** (same button, same
+  keyboard handling: views/event.html's `menuParts` finds whichever is on
+  the page), at the right of the answer card's heading (or of the
+  "cancelled"/"has ended" line on a past or cancelled event, where muting
+  and leaving still make sense). What it did is said under the heading
+  ("Muted. You'll still hear if it's cancelled or moved."). · As asked.
+- **Friends page: an "Opted out of invites from" card under the friends
+  list, only when there's someone in it, each with Undo; the last Undo
+  takes the card away.** · As asked. · `optoutsSection`, views/friends.html.
+- **Tests**: test/guestMenu.test.js (notify's filter type by type; mute's
+  who-may, a wall post skipped and moved/cancelled/back-on kept, a
+  co-host never muted, unmute; leave: hosts and co-hosts refused, the row
+  gone and not counted, the waitlist promoted and told, the wall, inbox,
+  lists and calendar entry gone, rejoining as a fresh visitor, an
+  invitation left; opt-out: the vague `not_found` next to a real no-account
+  id, no invitation or friendship, `already_on_list` for someone on it,
+  other hosts unaffected, undo; the pages' menu items, toggled labels,
+  no menu for hosts, signed out or a visitor with no row, the friends
+  card); test/db.test.js (version 14); test/leaks.test.js walks the
+  opt-out list for every caller. Checked by hand at 375 px: the menu
+  opening over the answer buttons, Mute, Opt out of Ana (the item turned
+  into "Allow invites from Ana"), Remove me (the confirm, then the page as
+  a fresh visitor), and Undo on the friends page.

@@ -48,6 +48,8 @@ tags:
     description: You and your events.
   - name: Friends
     description: Your friends, adding and taking people out, and your friend link.
+  - name: Guest menu
+    description: "A guest's own controls on an event: mute it, leave it, and opt out of a host's invitations."
   - name: Docs
     description: This document.
   - name: Site to site
@@ -317,7 +319,9 @@ paths:
         (`GET /api/v1/me/friends`), but any Canopy Account's id works.
         Each id ends up in `invited`, or in `skipped` with why:
         `already_on_list` (invited before, or already answered),
-        `is_host`, or `not_found` (no such account). 1 to 100 ids a
+        `is_host`, or `not_found` (no such account, **or** someone who
+        has opted out of your invitations: deliberately the same, so it
+        never says which). 1 to 100 ids a
         request; 300 invitations per host a day (429 `rate_limited`). 409
         for a cancelled event or one that's over.
       requestBody:
@@ -691,6 +695,148 @@ paths:
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/mute:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    put:
+      tags: [Guest menu]
+      operationId: muteEvent
+      summary: Mute an event
+      description: |
+        For a guest (invited, or with any answer) who isn't hosting: 409
+        `is_host` for a host, `not_on_event` for someone with no
+        invitation or answer, `removed` for someone a host removed. Your
+        inbox and pushes skip the chatter about this event (`wall_post`,
+        `rsvp`, `cohost_added`) and still bring the essentials
+        (`event_changed`, `event_cancelled`, `event_uncancelled`,
+        `waitlist_promoted`, `invited`). Nothing changes on the guest list
+        and nobody else can tell. `viewer.muted` is true afterwards. Muting
+        again is fine.
+      responses:
+        '200':
+          description: The event, with `viewer.muted` true.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [Guest menu]
+      operationId: unmuteEvent
+      summary: Unmute an event
+      description: Always fine, muted or not. `viewer.muted` is false afterwards.
+      responses:
+        '200':
+          description: The event, with `viewer.muted` false.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/leave:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    post:
+      tags: [Guest menu]
+      operationId: leaveEvent
+      summary: Remove yourself from an event
+      description: |
+        A guest leaves for good: your invitation or answer is deleted (you
+        drop off the guest list, its counts, your lists and your
+        calendar), your "going" leaves the wall, your notifications about
+        the event are deleted, and so is your mute. A spot you held goes
+        to the waitlist, as when someone says can't go. Your posts stay.
+        Nobody is notified (bar whoever gets your spot).
+
+        It isn't a host's removal: the link still works for you, and you
+        can answer again as anyone opening it could. Ask first: it can't
+        be undone (an answer is never taken back otherwise, so this is the
+        way off an event). 409 `is_host` for a host (a co-host steps down
+        with `DELETE .../cohosts/{personId}` instead), `not_on_event` for
+        someone not on it, `removed` for someone a host removed.
+      responses:
+        '200':
+          description: The event as you now see it, like anyone opening the link (`viewer.rsvp` null).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/invite-optouts:
+    get:
+      tags: [Guest menu]
+      operationId: listInviteOptouts
+      summary: Hosts you won't take invitations from
+      description: Everyone whose invitations you've opted out of, oldest first, as the public person shape. Only ever shown to you.
+      responses:
+        '200':
+          description: The list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InviteOptouts' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/invite-optouts/{personId}:
+    parameters:
+      - $ref: '#/components/parameters/PersonId'
+    put:
+      tags: [Guest menu]
+      operationId: optOutOfInvites
+      summary: Opt out of someone's invitations
+      description: |
+        From now on, this person's invitations to you are skipped, and
+        they're told no more than for someone with no account: their
+        `POST .../invites` answer lists you in `skipped` with `not_found`
+        (or the reason anyone would get if you're already on that event,
+        hosting it or removed from it). **Deliberately vague**: nothing
+        says you opted out. No friendship is made by their invitations
+        either. It doesn't take you off any event you're on now. Doing it
+        twice is fine. 404 `person_not_found` for an id with no account,
+        409 `is_you` for yourself.
+      responses:
+        '200':
+          description: Opted out.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [Guest menu]
+      operationId: optInToInvites
+      summary: Take invitations from someone again
+      description: Undoes the opt-out. Fine when you hadn't opted out. Invitations they sent meanwhile aren't brought back.
+      responses:
+        '200':
+          description: Their invitations reach you again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/people/lookup:
@@ -1433,8 +1579,10 @@ components:
         Not in this event's state: `event_cancelled`, `event_over`,
         `host_cannot_rsvp`, `already_responded`, `is_creator`,
         `too_many_cohosts`, `no_room`, `removed` (a host removed you),
-        `is_host` (removing a host); and for friends, `is_you` (adding
-        yourself) and `own_link` (accepting your own friend link).
+        `is_host` (removing a host, or a host muting or leaving their own
+        event), `not_on_event` (muting or leaving an event you aren't on);
+        and for friends and opt-outs, `is_you` (yourself) and `own_link`
+        (accepting your own friend link).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1685,7 +1833,7 @@ components:
       description: You and this event. Null when signed out.
       type: object
       additionalProperties: false
-      required: [role, rsvp, canEdit, canSeeGuestList, canPost]
+      required: [role, rsvp, canEdit, canSeeGuestList, canPost, muted]
       properties:
         role:
           type: [string, 'null']
@@ -1698,6 +1846,7 @@ components:
         canEdit: { type: boolean }
         canSeeGuestList: { type: boolean, description: "Whether the guest list's names are shown to you. The wall follows the same rule." }
         canPost: { type: boolean, description: 'Whether you may post on the wall: hosts, and answers of going, maybe or waitlisted.' }
+        muted: { type: boolean, description: "You muted this event (PUT .../mute): its chatter doesn't reach your inbox. Always false for a host." }
 
     FriendsGoing:
       description: |
@@ -1880,6 +2029,7 @@ components:
           canEdit: false
           canSeeGuestList: true
           canPost: true
+          muted: false
         friendsGoing:
           count: 1
           people:
@@ -2036,6 +2186,15 @@ components:
           type: boolean
           description: Events you're invited to and haven't answered are in your Canopy calendar. On by default.
       example: { calendarInvites: true }
+
+    InviteOptouts:
+      type: object
+      additionalProperties: false
+      required: [hosts]
+      properties:
+        hosts:
+          type: array
+          items: { $ref: '#/components/schemas/Person' }
 
     FriendEnvelope:
       type: object

@@ -139,6 +139,17 @@ const COPY = {
     moreGuest: 'One more guest',
     nowWaitlisted: "It's full, so you're on the waitlist. You'll move up if a spot opens.",
     // Someone a host removed from the event. Calm, and no details.
+    // A guest's ⋯ menu. {name} is a host's first name.
+    mute: 'Mute event',
+    unmute: 'Unmute event',
+    leave: 'Remove me from event',
+    optOutInvites: 'Opt out of invites from {name}',
+    allowInvites: 'Allow invites from {name}',
+    muted: "Muted. You'll still hear if it's cancelled or moved.",
+    unmuted: 'Unmuted.',
+    optedOut: "You won't get invites from {name}.",
+    optedIn: 'Invites from {name} can reach you again.',
+    leaveConfirm: "Remove yourself from this event? You'll be off the guest list, and it leaves your events and your calendar.",
     removedHeading: "You're not on the list for this event.",
     removedHint: "A host has taken you off it, so you can't answer. If you think that's a mistake, ask whoever invited you.",
     // Refusals when answering, by the API's `reason`. Anything not listed
@@ -394,6 +405,8 @@ const COPY = {
 
   // ---------------- Your friends, at /friends ----------------
   friends: {
+    // Hosts whose invitations you opted out of (an event's ⋯ menu).
+    optoutsHeading: 'Opted out of invites from',
     heading: 'Friends',
     hint: "People you've been to an event with, and people you've added. Only you see this list.",
     empty: "No friends yet. Share your friend link, or add someone by phone or Instagram. Everyone you go to an event with shows up here too.",

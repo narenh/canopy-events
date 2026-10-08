@@ -595,6 +595,49 @@ still takes posts. 5 posts a minute, 100 a day per person.
 own posts; hosts, anything, the server's entries included. `canDelete` on
 each entry says which.
 
+## The guest menu: mute, leave, opt out
+
+A guest (invited, or with any answer, and not hosting) gets a ⋯ menu on
+the web, on their answer card's heading line. The app can offer the same
+three things. Hosts get 409 `is_host` from all of them except opting
+out; someone not on the event gets 409 `not_on_event`; someone a host
+removed gets 409 `removed`.
+
+**Mute**: `PUT /api/v1/events/{id}/mute`, undone by `DELETE` (always
+fine). `viewer.muted` says whether you have. While muted, your inbox and
+pushes skip the event's chatter (`wall_post`, `rsvp`, `cohost_added`)
+and still bring the essentials (`event_changed`, `event_cancelled`,
+`event_uncancelled`, `waitlist_promoted`, `invited`). Nothing changes on
+the guest list, and nobody else can tell. A host is never muted (if a
+muted guest is made a co-host, they hear everything a host does). Both
+answer `{event}`.
+
+**Leave**: `POST /api/v1/events/{id}/leave`, after asking ("Remove
+yourself from this event?"). It can't be undone: your invitation or
+answer is deleted (you're off the guest list and its counts, out of your
+lists and your calendar), your "going" leaves the wall, your
+notifications about the event are deleted, and so is your mute. A spot
+you held goes to the waitlist. Your posts stay. It isn't a host's
+removal: the link still works and you can answer again, as anyone
+opening it could. It answers `{event}` as you now see it (`viewer.rsvp`
+null). An answer is otherwise never taken back, so this is the way off
+an event; a co-host steps down instead (`DELETE
+.../cohosts/{personId}`).
+
+**Opt out of a host's invitations**: `PUT
+/api/v1/me/invite-optouts/{personId}`, undone by `DELETE` (both always
+fine; 409 `is_you` for yourself, 404 `person_not_found` for an id with
+no account). `GET /api/v1/me/invite-optouts` is `{hosts: [Person]}`,
+oldest first, only ever yours. From then on that person's invitations to
+you are skipped, and **deliberately, they aren't told why**: their
+`POST .../invites` answer lists you in `skipped` with `not_found`, the
+same as an id with no account (or, if you're already on that event,
+`already_on_list`, which is what anyone would get). Their invitations
+make no friendship either. It doesn't take you off any event you're on.
+The web offers one item per host of the event ("Opt out of invites from
+Ana"; "Allow invites from Ana" once you have), and lists them on the
+friends page with Undo; the app's Profile can do the same.
+
 ## Host moderation
 
 **Removing someone** (`PUT /api/v1/events/{id}/removed/{personId}`, any
@@ -867,7 +910,7 @@ expect:
 | 403 | `bad_origin` | a web page's problem; apps never see it |
 | 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_found` | the link is wrong, or it's gone (or the host made a new one) |
 | 404 | `friend_link_not_found`, `not_a_friend` | the friend link is wrong or was reset; they weren't in your list |
-| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room`, `removed`, `is_host` | redraw from the event |
+| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room`, `removed`, `is_host`, `not_on_event` | redraw from the event |
 | 409 | `is_you`, `own_link` | adding yourself, or saying yes to your own friend link |
 | 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |

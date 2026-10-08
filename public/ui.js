@@ -1026,6 +1026,43 @@
       + '<p class="small" style="margin:0">' + tx('event.removedHint') + '</p></section>';
   }
 
+  // A guest's ⋯ menu (anyone invited or with an answer who isn't hosting),
+  // on their card's heading line: mute or unmute the event, leave it
+  // (the page asks first), and for each host, opt out of their
+  // invitations, or allow them again. Hosts are named by first name, or
+  // by short name when two share one; a former member isn't offered.
+  // `d.optouts` is the ids the visitor has opted out of
+  // (GET /api/v1/me/invite-optouts). The same popover as the host's menu
+  // (views/event.html).
+  function guestMenu(e, d) {
+    const viewer = e.viewer || {};
+    if (!viewer.rsvp || viewer.role || viewer.rsvp.status === 'removed') return '';
+    const optouts = (d && d.optouts) || [];
+    const hosts = (e.hosts || []).map((x) => x.person).filter((p) => p && p.firstName && (!d || !d.me || p.id !== d.me.id));
+    const firsts = hosts.map((p) => p.firstName);
+    const items = [];
+    items.push(viewer.muted ? ['unmute', t('event.unmute'), '', ''] : ['mute', t('event.mute'), '', '']);
+    hosts.forEach((p) => {
+      const name = firsts.filter((f) => f === p.firstName).length > 1 ? p.shortName || p.firstName : p.firstName;
+      const out = optouts.includes(p.id);
+      items.push([out ? 'allow-invites' : 'optout-invites', t(out ? 'event.allowInvites' : 'event.optOutInvites', { name }), '',
+        ' data-person="' + esc(p.id) + '" data-name="' + esc(name) + '"']);
+    });
+    items.push(['leave', t('event.leave'), 'danger', '']);
+    return '<div class="menu-wrap"><button type="button" class="secondary more-btn" id="guestMenuBtn" data-action="guest-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="guestMenu" aria-label="' + tx('event.moreActions') + '">' + ICON.more + '</button>'
+      + '<div class="menu" id="guestMenu" role="menu" aria-labelledby="guestMenuBtn" hidden>'
+      + items.map(([action, label, cls, attrs]) => '<button type="button" role="menuitem" tabindex="-1" class="menu-item' + (cls ? ' ' + cls : '') + '" data-action="' + action + '"' + attrs + '>' + esc(label) + '</button>').join('')
+      + '</div></div>';
+  }
+
+  // A card's first line with the guest menu at its right edge, and under
+  // it, what the menu just did (or why it couldn't).
+  function withGuestMenu(line, menu) {
+    if (!menu) return line;
+    return '<div class="card-head-row">' + line + menu + '</div>'
+      + '<div class="notice" id="guestNotice" role="status"></div><div class="error" id="guestError" role="alert"></div>';
+  }
+
   // Signed in, not hosting: going / maybe / can't go, and how many guests
   // they're bringing (when the host allows any). An answer changes but is
   // never taken back: "can't go" is how you leave.
@@ -1034,15 +1071,16 @@
     const status = rsvp ? rsvp.status : null;
     if (status === 'removed') return removedSection();
     const answered = !!status && status !== 'invited';
+    const menu = guestMenu(e, d);
     let h = '<section class="card" id="rsvp" data-section="rsvp">';
     if (phase === 'cancelled' || phase === 'over') {
-      h += '<p class="state-line' + (phase === 'cancelled' ? ' danger' : '') + '">' + tx(phase === 'cancelled' ? 'event.cancelled' : 'event.over') + '</p>';
+      h += withGuestMenu('<p class="state-line' + (phase === 'cancelled' ? ' danger' : '') + '">' + tx(phase === 'cancelled' ? 'event.cancelled' : 'event.over') + '</p>', menu);
       if (answered) {
         h += '<p class="small" style="margin:0">' + tx('event.yourAnswer', { status: t('status.' + status) + (rsvp.guests ? ' ' + plusGuests(rsvp.guests) : '') }) + '</p>';
       }
       return h + '</section>';
     }
-    h += '<h3>' + tx(status === 'invited' ? 'event.invitedQuestion' : 'event.question') + '</h3>';
+    h += withGuestMenu('<h3>' + tx(status === 'invited' ? 'event.invitedQuestion' : 'event.question') + '</h3>', menu);
     if (e.capacity != null && e.spotsLeft === 0 && status !== 'going' && status !== 'waitlisted') {
       h += '<p class="small full-hint">' + tx('event.fullHint') + '</p>';
     }
@@ -1506,7 +1544,19 @@
     h += '<ul class="people" id="friendList">' + friendRows(d.friends) + '</ul>';
     h += '<p class="empty' + (d.friends.length ? ' hidden' : '') + '" id="noFriends" style="margin:0">' + tx('friends.empty') + '</p>';
     if (d.nextCursor) h += '<button type="button" class="secondary more" data-action="more">' + tx('common.showMore') + '</button>';
-    return h + '</section>';
+    h += '</section>';
+    return h + optoutsSection(d.optouts);
+  }
+
+  // Whose invitations you've opted out of (from an event's ⋯ menu), each
+  // with Undo. Nothing when there's nobody.
+  function optoutsSection(people) {
+    if (!people || !people.length) return '';
+    return '<section class="card" id="optouts" data-section="optouts"><h2>' + tx('friends.optoutsHeading') + '</h2>'
+      + '<div class="error" id="optoutsError" role="alert"></div><ul class="people" id="optoutList">'
+      + people.map((p) => '<li class="person" data-id="' + esc(p.id) + '">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div></div>'
+        + '<button type="button" class="small-btn secondary" data-action="undo-optout" data-person="' + esc(p.id) + '">Undo</button></li>').join('')
+      + '</ul></section>';
   }
 
   // Someone's friend link, /f/<code>: who it is, and what you can do.
@@ -1957,7 +2007,7 @@
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
-    eventPage, details, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
+    eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED
   };
