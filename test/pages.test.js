@@ -240,6 +240,44 @@ test('pages', async (t) => {
     assert.ok(guests.includes("Invited, hasn&#39;t answered · 1") && guests.includes('Dee Ruiz'), guests);
     assert.ok(section(html, 'guests').includes('1 Going · 1 Maybe'));
     assert.ok(section(html, 'guests').includes('<details class="view-all" id="viewAll"><summary class="pill-btn">'), 'View all, shut');
+    // No help text under "You're hosting": the heading, then the buttons.
+    assert.match(host, /<h3>You&#39;re hosting<\/h3><div class="host-actions">/);
+    // ⋯ is a drawn icon (three dots on the centre line), read out as "More".
+    const more = /<button [^>]*id="hostMenuBtn"[^>]*>([\s\S]*?)<\/button>/.exec(host);
+    assert.ok(more, 'the ⋯ button');
+    assert.match(more[0], /class="secondary more-btn"/);
+    assert.match(more[0], /aria-label="More"/);
+    assert.match(more[1], /^<svg viewBox="0 0 24 24"[^>]*aria-hidden="true"[^>]*>(<circle cx="(5|12|19)" cy="12" r="[\d.]+" fill="currentColor"\/>){3}<\/svg>$/);
+    assert.ok(!host.includes('⋯'), 'not the text character');
+  });
+
+  await t.test('phones: the event sits on the page, with no card, outline or rules', async () => {
+    const r = await page(server, ana, `/e/${party.id}`);
+    const head = /<section class="([^"]*)" id="details"/.exec(r.body);
+    assert.ok(head && !head[1].split(' ').includes('card'), 'the event head isn\'t a card');
+    assert.ok(/<div class="details-card">/.test(r.body), 'its details aren\'t one either');
+    const css = require('fs').readFileSync(require('path').join(__dirname, '../public/events.css'), 'utf8');
+    // Everything before the 700px block is the phone's layout.
+    const desktopAt = css.indexOf('@media (min-width:700px)');
+    assert.ok(desktopAt > 0);
+    const phone = css.slice(0, desktopAt).replace(/\/\*[\s\S]*?\*\//g, '');
+    const desktop = css.slice(desktopAt);
+    assert.ok(!/\.details-card::before/.test(phone), 'no glass or outline on a phone');
+    assert.match(desktop, /\.details-card::before\{[^}]*border:1px solid var\(--glass-edge\)/, 'the card from 700px');
+    const description = /\.description\{([^}]*)\}/.exec(phone);
+    assert.ok(description && !/border/.test(description[1]), 'no rule above the description');
+    // The background: sized to the large viewport from the top, never the
+    // dynamic one (which moves with Safari's toolbars).
+    assert.match(phone, /\.mesh-bg::before, \.mesh-bg::after \{[^}]*position: fixed; top: 0;[^}]*height: 100vh; height: 100lvh;/);
+    assert.ok(!/100dvh/.test(phone.slice(phone.indexOf('.mesh-bg {'), phone.indexOf('.hidden{'))), 'no dvh in the background');
+    // Room under the last thing for the floating toolbar and the home bar.
+    assert.match(phone, /padding-bottom:calc\(var\(--toolbar-clear\) \+ env\(safe-area-inset-bottom, 0px\)\)/);
+    // Every page runs edge to edge (viewport-fit=cover) with a bar colour.
+    for (const url of ['/', `/e/${party.id}`, `/e/${party.id}/edit`, '/friends', `/e/${party.id}/invite`, '/new']) {
+      const text = (await page(server, ana, url)).text;
+      assert.match(text, /<meta name="viewport" content="[^"]*viewport-fit=cover[^"]*">/, url);
+      assert.match(text, /<meta name="theme-color" content="#[0-9a-f]{6}">/, url);
+    }
   });
 
   await t.test('a cancelled event reads as cancelled, and takes no answers', async () => {
@@ -931,6 +969,16 @@ test('pages: the features, as everyone who might look', async (t) => {
     }
     const green = (await page(server, anon, `/e/${party.id}`)).text;
     assert.ok(green.includes('<html lang="en">') && green.includes('<meta name="theme-color" content="#03120c">'));
+    // The bar's colour is exactly the page's base colour (--theme-base,
+    // what html, body and the mesh are drawn on), hue or grey.
+    const grey = await makeEvent(ana, { title: 'Grey party', themeGrayscale: true });
+    for (const [id, key] of [[purple.id, 300], [grey.id, 'grey']]) {
+      const html = (await page(server, anon, `/e/${id}`)).text;
+      const base = /--theme-base:(#[0-9a-f]{6});/.exec(UI.themeStyle(key))[1];
+      assert.ok(html.includes(`<meta name="theme-color" content="${base}">`), `theme-color for ${key}`);
+      assert.ok(html.includes(`style="${UI.themeStyle(key)}"`));
+    }
+    assert.ok((await page(server, anon, `/e/${grey.id}`)).text.includes('<meta name="theme-color" content="#0e0e0e">'), 'grey: a neutral near-black');
     const edit = await page(server, ana, `/e/${purple.id}/edit`);
     assert.ok(edit.text.includes(`<html lang="en" style="${style}">`));
     assert.match(edit.body, /<input type="range" id="themeHue" min="0" max="389" step="1" value="330"/);

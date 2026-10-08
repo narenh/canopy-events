@@ -465,7 +465,10 @@
 
   const ICON = {
     when: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1V3a1 1 0 0 1 1-1zM4 10v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-9zm1-4a1 1 0 0 0-1 1v1h16V7a1 1 0 0 0-1-1z"/></svg>',
-    where: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a8 8 0 0 1 8 8c0 5.4-6.2 11.2-7.3 12.1a1 1 0 0 1-1.4 0C10.2 21.2 4 15.4 4 10a8 8 0 0 1 8-8zm0 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>'
+    where: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a8 8 0 0 1 8 8c0 5.4-6.2 11.2-7.3 12.1a1 1 0 0 1-1.4 0C10.2 21.2 4 15.4 4 10a8 8 0 0 1 8-8zm0 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>',
+    // Three dots on the box's centre line (the "⋯" character sits on the
+    // text baseline, low and to one side, and its size follows the font).
+    more: '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2.1" fill="currentColor"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/><circle cx="19" cy="12" r="2.1" fill="currentColor"/></svg>'
   };
 
   // ---------------- The event page ----------------
@@ -957,9 +960,11 @@
     const creator = e.viewer && e.viewer.role === 'creator';
     let h = '<section class="card" id="host" data-section="host">';
     h += '<h3>' + tx(creator ? 'event.hostingHeading' : 'event.cohostingHeading') + '</h3>';
+    // Only a state worth saying (cancelled, over): no help text under the
+    // heading. The buttons say what a host can do, and a co-host's menu
+    // has only what they may.
     if (phase === 'cancelled') h += '<p class="state-line danger">' + tx(creator ? 'event.restoreHint' : 'event.restoreHintCohost') + '</p>';
     else if (phase === 'over') h += '<p class="state-line">' + tx('event.over') + '</p>';
-    else h += '<p>' + tx(creator ? 'event.hostingHint' : 'event.cohostingHint') + '</p>';
     if (d.newLink) {
       h += '<div class="new-link" id="newLink"><p>' + tx('event.newLinkMade') + '</p>'
         + '<input type="text" readonly value="' + esc(e.url) + '" aria-label="' + tx('event.newLinkLabel') + '" data-action="select">'
@@ -983,7 +988,7 @@
       items.push(['step-down', 'Step down as co-host', '']);
     }
     h += '<div class="edit-row"><a class="button secondary" href="/e/' + esc(e.id) + '/edit">Edit</a>'
-      + '<div class="menu-wrap"><button type="button" class="secondary more-btn" id="hostMenuBtn" data-action="host-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="hostMenu" aria-label="' + tx('event.moreActions') + '">⋯</button>'
+      + '<div class="menu-wrap"><button type="button" class="secondary more-btn" id="hostMenuBtn" data-action="host-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="hostMenu" aria-label="' + tx('event.moreActions') + '">' + ICON.more + '</button>'
       + '<div class="menu" id="hostMenu" role="menu" aria-labelledby="hostMenuBtn" hidden>'
       + items.map(([action, label, cls]) => '<button type="button" role="menuitem" tabindex="-1" class="menu-item' + (cls ? ' ' + cls : '') + '" data-action="' + action + '">' + esc(label) + '</button>').join('')
       + '</div></div></div>';

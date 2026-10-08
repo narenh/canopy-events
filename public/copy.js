@@ -89,7 +89,6 @@ const COPY = {
     withdraw: 'Take back my answer',
     // The host's area.
     hostingHeading: "You're hosting",
-    hostingHint: 'Share the link with anyone you want there. Anyone with it can see the event.',
     copied: 'Link copied.',
     cancelConfirm: "Cancel this event? Everyone on the list will see it's off. You can bring it back later.",
     restoreConfirm: 'Bring this event back? It will show as on again for everyone.',
@@ -140,7 +139,6 @@ const COPY = {
     },
     // Co-hosts, in the host's area.
     cohostingHeading: "You're co-hosting",
-    cohostingHint: 'You can edit the event, invite people and see everyone. Only the person who made it can cancel it or change its link.',
     cohostsHeading: 'Co-hosts',
     cohostsHint: 'Co-hosts can edit the event, invite people and see everyone.',
     removeCohostConfirm: "Take {name} off as a co-host? They'll stay invited, and can answer like anyone else.",

@@ -1562,3 +1562,71 @@ Fixes for the security review's events findings (branch `fix/review`).
 - **Merge order:** data-security, then calendar (account), then events
   calendar. Then copy the full `client/canopy-account.js` into events
   again.
+
+## Mobile web polish
+
+- **(You)** On phones the event has no card: the hero, title, when,
+  place, hosts and description sit on the page's background, with no
+  outline, no line along the foot and no rule above the description.
+  Below 700px `.details-card::before` doesn't exist at all; the space
+  under the description is 12px plus the usual 16px gap. Replaces "Phones:
+  the whole card edge to edge" under "Event card". · The owner's
+  screenshot. · events.css, "The event".
+- **The desktop card stays** from 700px (the glass and the fading
+  outline), but the rule between the hosts and the description is gone
+  there too (22px of space instead). · At 900px the card still frames a
+  column that would otherwise float on a wide background, and the rule
+  added nothing inside it once the phone had none. · Put `border-top`
+  back on `.description` in the 700px block.
+- **Why the background jumped on an iPhone**: the mesh's fixed layers
+  were `inset:0`, which in Safari follows the visible area, so they grew
+  and shrank by the toolbars' height as the page scrolled, and every
+  glow (placed in percentages) slid and stretched; while Safari caught
+  up, the strip it hadn't redrawn showed the bare page colour behind the
+  status and bottom bars. Now they're `top:0; height:100lvh` (100vh
+  where lvh isn't known): always the tallest the screen gets, anchored
+  at the top, so the toolbars only cover their bottom edge. Never
+  `100dvh` for the background. The body's `min-height` is `100svh`
+  (was `100dvh`, which also moved). The full explanation is in
+  events.css above `.mesh-bg`. · n/a · events.css.
+- Already in place and kept: `viewport-fit=cover` on every page, html
+  and body painted the event's base colour (`--theme-base`, grey too),
+  and `<meta name="theme-color">` set by the server to the same base
+  (lib/render.js, the same `themeColors` the CSS variables come from;
+  the editor updates it live). New tests pin the meta to exactly
+  `--theme-base` for a hue and for grey, and viewport-fit on every page.
+  · n/a
+- **Safe areas**: the page's top padding is at least
+  `env(safe-area-inset-top)` (it's 0 in Safari's own window, and the
+  status bar's height in a home-screen web app), so the header, and the
+  hero under it, never run under the status bar. The hero stays below
+  the header, not under the status bar: the header has to be first. ·
+  n/a · events.css, `body`.
+- **Room for Safari's floating toolbar**: below 700px the page ends with
+  `72px + env(safe-area-inset-bottom)` of padding (`--toolbar-clear`),
+  so Attending's faces (the last thing signed out) and Sign out scroll
+  fully clear of iOS 26's bottom bar. 72px is a guess at the bar's
+  height plus its margin. · Chromium can't show it, and I don't know
+  the bar's exact height. · `--toolbar-clear` in events.css.
+- **The ⋯ button**: an inline SVG of three dots (on the box's centre, so
+  it doesn't depend on where the font puts "⋯"), in a 50px square with
+  Edit's border, glass and radius, read out as "More". Share link,
+  Invite and Edit are now exactly 50px high too (a link and a button had
+  come out a pixel or so apart). · The owner's report. · `ICON.more` in
+  public/ui.js, `.more-btn` in events.css.
+- **No sentence under "You're hosting" or "You're co-hosting"**: the
+  card is the heading and the buttons, as the editor lost its help text.
+  The co-host's sentence said what only the creator can do; the co-host's
+  menu already only offers what they can. The cancelled and ended lines
+  stay (they're state, not help). `hostingHint` and `cohostingHint` are
+  gone from copy.js. · The owner suggested it. · Bring the `else` line
+  back in `hostSection()`.
+- The hero's last stretch now melts into the page over its bottom 22%
+  (was 6%), so the edge between the photo's dark foot and the mesh,
+  which shows more now there's no glass under it, is a soft fall rather
+  than a band. White text there is over the base colour or the mesh,
+  both already checked. · Looked like a dark stripe at 390px. ·
+  `.hero` mask in events.css.
+- The mesh rules are the copy of the account service's account.css: the
+  same lvh fix belongs there (its pages have the same fixed layers). Not
+  done here; this branch doesn't touch canopy-account-service. · n/a
