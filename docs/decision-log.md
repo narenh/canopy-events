@@ -1414,3 +1414,11 @@ Fixes for the security review's events findings (branch `fix/review`).
 - Events entries: hosting and going are confirmed; maybe and waitlisted
   are tentative; cancelled ones are kept marked cancelled for 30 days;
   declined and removed are dropped. No guest names.
+
+## iOS: following the web designs
+
+- **(You)** The iOS app adopts the new web designs. Its top card has
+  **no border at all**, because the cover is edge to edge. The theme
+  colours are derived exactly as docs/api.md describes (OKLCH). The app
+  stays fully mocked. The iOS agent's own judgment calls go in the iOS
+  repo's ARCHITECTURE.md ("Decisions").
