@@ -246,7 +246,7 @@ megapixels**: the 12 and 24 megapixel photos iPhones take by default are
 fine, but shrink a 48-megapixel "HEIF Max" one, or send it as a JPEG).
 Send the photo as it is: the server turns it upright, shrinks it to fit
 1600 px, and stores a JPEG with **no EXIF**, so where it was taken never
-leaves the phone. `DELETE` removes it.
+leaves the phone, along with narrower copies (below). `DELETE` removes it.
 
 ```bash
 curl -s "${auth[@]}" -X PUT -F cover=@IMG_0001.HEIC $API/events/4fQ9xKpL2mZa/cover
@@ -257,6 +257,37 @@ with that URL can load it, no sign-in, because link previews (iMessage,
 Slack) fetch it without anyone's session. The URL is random and isn't the
 event's link, and every upload makes a new one (the old one stops
 working), so cache by URL. `null` is no cover.
+
+**Sizes: download the one you need.** `coverImageUrl` is the full size
+(up to 1600 px on its longer side), meant for link previews. To draw
+the cover, use `coverImages`: every size it's stored at, all JPEG,
+narrowest first, the last being the full size at `coverImageUrl`:
+
+```json
+"coverImages": [
+  { "width": 400,  "height": 300,  "url": "https://events.canopysf.com/covers/Qm7Zc2pR9xTa-400.jpg?v=1759870000000" },
+  { "width": 800,  "height": 600,  "url": "https://events.canopysf.com/covers/Qm7Zc2pR9xTa-800.jpg?v=1759870000000" },
+  { "width": 1200, "height": 900,  "url": "https://events.canopysf.com/covers/Qm7Zc2pR9xTa-1200.jpg?v=1759870000000" },
+  { "width": 1600, "height": 1200, "url": "https://events.canopysf.com/covers/Qm7Zc2pR9xTa.jpg?v=1759870000000" }
+]
+```
+
+The widths are 400, 800 and 1200, those narrower than the photo, then
+the photo's own (a 600 px photo has 400 and 600; a 300 px one, just
+300). **iOS: pick the narrowest entry whose `width` is at least the
+width you draw it at × the screen's scale** (`UIScreen.main.scale`, or
+the trait collection's `displayScale`), else the last. A frame filled
+aspect-fill crops a photo wider than the frame, so multiply by
+max(1, (width ÷ height) ÷ (frame width ÷ frame height)) too. On a 375 pt
+iPhone at 3×, the full-width hero needs 1125 px (the 1200), and a
+116 pt thumbnail 348 px (the 400). Take the new URL when the frame grows
+(rotation, iPad split view), not before. Like `coverImageUrl`, every URL
+changes with every upload.
+
+`coverImages` is `[]` with no cover, and also, for a little while after
+a deploy, for a cover uploaded before sizes existed, while the server
+makes them: use `coverImageUrl` then. The notification's event summary
+has `coverImages` too.
 
 **How the web draws it.** A frame of **3:2** (height = width × 2/3),
 the photo filling it `object-fit: cover` style (centred, cropped). The
@@ -525,7 +556,8 @@ what) is real, so build against it.
 
 **Notifications are typed, not sentences.** Each has a `type`, the
 `actor` (a `Person`, or null), the `event` (a short summary with `id`,
-`title`, `startsAt`, `timeZone`, `status`, `coverImageUrl`), `details`,
+`title`, `startsAt`, `timeZone`, `status`, `coverImageUrl`,
+`coverImages`), `details`,
 and `count`. Word them in the app:
 
 | `type` | Say something like | Who gets it |

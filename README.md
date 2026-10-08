@@ -66,11 +66,13 @@ cover all of it except notifications, which belong to the apps.
     the inbox entry and queues the push in one call, and never tells the
     person who did it. `push.js` sends to their phones; for now its
     sender only logs (the APNs and FCM senders need the apps' keys).
-  - `coverImage.js` turns an uploaded photo into the stored JPEG (with
+  - `coverImage.js` turns an uploaded photo into the stored JPEGs, the
+    full size (up to 1600 px) and copies 400, 800 and 1200 px wide (with
     `sharp`, and `heic-decode` for iPhone photos), in a worker thread
     (`coverWorker.js`, one upload at a time) so the HEIC decoder, which
     is synchronous, never holds up other requests. `coverStore.js` keeps
-    them in `DATA_DIR/covers`.
+    them in `DATA_DIR/covers`. `coverBackfill.js` makes the copies for
+    covers uploaded before there were any, after the server starts.
   - `people.js` is **the only place a person is turned into JSON**:
     `publicPerson` (the five public fields, copied by name), the former
     member, and `ownPerson` for `/me`.
@@ -170,7 +172,9 @@ cover as `og:image` (`summary_large_image`) when there is one. Never the
 street address (the preview is of what a signed-out visitor sees, and
 previews are kept by the machines that fetch them) and never the
 description. The page crops the cover to 3:2; the preview gets the whole
-photo.
+photo, at full size. The page's own covers (the hero, list thumbnails,
+the editor's preview) have a `srcset` of every size, so a phone
+downloads the 400 px copy for a thumbnail, not the 1600 px photo.
 
 **The look.** Type is bigger than the account service's (17px body,
 15px secondary, big bold titles; a scale of custom properties at the top
@@ -233,7 +237,7 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `POST /api/v1/events/{id}/wall` | post on it (hosts, going, maybe, waitlisted) |
 | `DELETE /api/v1/events/{id}/wall/{entryId}` | delete a post (its author) or any entry (hosts) |
 | `PUT`, `DELETE /api/v1/events/{id}/cover` | upload or remove the cover image (hosts) |
-| `GET /covers/<key>.jpg` | a cover image, public (for link previews) |
+| `GET /covers/<key>.jpg`, `/covers/<key>-<width>.jpg` | a cover image at full size, or a narrower copy; public (for link previews) |
 | `GET /api/v1/me/notifications`, `/unread` | your inbox, and its unread count |
 | `POST /api/v1/me/notifications/read`, `/read-all` | mark some, or all, read |
 | `POST`, `DELETE /api/v1/me/devices` | register a phone for push, or stop |
@@ -398,8 +402,13 @@ Everything is in `DATA_DIR` (`/app/data` in the container):
 - `events.db` is the database (SQLite, WAL mode, so `events.db-wal` and
   `events.db-shm` sit beside it while it's open);
 - `backups/sqlite/events-YYYY-MM-DD.db` holds the snapshots;
-- `covers/<event id>.jpg` holds the cover images (`lib/coverStore.js`).
+- `covers/<event id>.jpg` holds the cover images at full size, and
+  `covers/<event id>-<width>.jpg` their narrower copies (400, 800 and
+  1200 px wide, those narrower than the photo; `lib/coverStore.js`).
   They're not in the snapshots: copy the folder too, or covers are lost.
+  Losing only the copies is fine: clear `cover_sizes` in the database
+  (`UPDATE events SET cover_sizes = NULL`) and restart, and the server
+  makes them again from the full size.
 
 Its tables are `events`, `hosts` (who hosts each event: the creator and
 any co-hosts), `rsvps` (one row per person per event: invited, or their

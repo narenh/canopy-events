@@ -1314,3 +1314,84 @@ Fixes for the security review's events findings (branch `fix/review`).
   so the photo and title have no hard border. The editor mirrors it.
   Phone treatment is the agent's call (edge to edge, or inset), to be
   recorded.
+
+## Cover image sizes
+
+- **Narrower copies of every cover, JPEG only, at 400, 800 and 1200 px
+  wide plus the full size (up to 1600).** · Measured on six real photos
+  (stock photos at 5–13 MP, cropped to 4:3, and one brought to 4032×3024)
+  through the real pipeline: picking the right width saves 35–43% of the
+  hero on a 375 pt phone at 3× and 88–94% of a list thumbnail. WebP at
+  the same quality 82 is only 14–20% smaller than the JPEG; at quality
+  75 it's about 35% smaller, but I didn't check that it looks as good,
+  and keeping the quality settings was the brief. WebP would double the
+  files, need `<picture>` in three places and a `type` on each
+  `coverImages` entry, and og:image has to stay JPEG anyway. · To add
+  WebP: encode it in `encodeSizes` (lib/coverImage.js) as
+  `<id>-<width>.webp`, add `type` to `coverImages` entries (additive),
+  and wrap the page's `<img>`s in `<picture>`.
+- **A 1200 copy, beyond the suggested 400/800/1600.** · A 375–414 pt
+  phone at 3× needs 1125–1242 px for the full-width hero, so without
+  1200 it would still get the 1600 and save nothing on the page people
+  open most. The 400 covers every thumbnail (116 or 168 CSS px at 2× or
+  3×). · `WIDTHS` in lib/coverImage.js. Each cover records the sizes it
+  actually has, so changing the list never breaks one stored earlier.
+- **One decode, then every size from the same pixels.** The photo is
+  decoded, turned, shrunk to fit 1600 and flattened once into raw 8-bit
+  sRGB pixels; each size is encoded from those. The full size comes out
+  byte-for-byte what it was before (checked on two photos). Cost: an
+  upload takes about 25 ms more (49 → 75 ms for a 12 MP JPEG on this
+  Mac), and a cover takes about twice the disk (the copies add up to
+  about the full size). · Encode only the full size in `convertSizes`.
+- **The full size keeps its file and URL** (`covers/<event id>.jpg`,
+  `/covers/<key>.jpg`); copies are `covers/<event id>-<width>.jpg` on
+  disk and `/covers/<key>-<width>.jpg` publicly. No `-1600` duplicate,
+  and the full size has only the one URL (`<key>-<full width>.jpg` is a
+  404), so caches never hold it twice. Disk names stay on the internal
+  id, which never changes, so "new link" and delete work as before. A
+  name is served only if it matches one pattern and the width is one the
+  cover has; tests throw path-traversal and junk names at it. · Routes
+  in routes/covers.js, names in lib/coverStore.js.
+- **The sizes are in the database (schema version 9, `cover_sizes`,
+  JSON `[[width, height], ...]`), not read off the disk.** · Every event
+  in every list carries `coverImages`, so no file system calls per row;
+  NULL with a cover marks one from before, waiting for its copies; and
+  heights come free. · A later step can stop using it; the column is
+  harmless.
+- **API: `coverImages: [{ width, height, url }]`, narrowest first, the
+  last being `coverImageUrl`.** An array rather than a map, so "the
+  narrowest at least N wide" is a scan. `height` is there so apps can
+  size a frame before the image loads and allow for a photo wider than
+  its frame. `[]` with no cover, and while a cover from before is
+  waiting (its size isn't known without reading the file); apps use
+  `coverImageUrl` then. Also on the notification's event summary, for
+  inbox thumbnails. · Additive; removing it is a breaking change for
+  apps that adopt it.
+- **Existing covers are backfilled after startup, in the background,
+  not lazily.** One at a time through the same worker as uploads (an
+  upload waits behind at most one, about 22 ms each from a stored 1600
+  JPEG), only covers with no sizes, so it's idempotent and a no-op once
+  done. The stored full size isn't touched or re-encoded. Each one is
+  finished synchronously once the worker answers (still the same cover?
+  write files, record sizes), so an upload or delete made meanwhile
+  wins and the old photo's copies are dropped. Failures (file missing,
+  unreadable) are logged and retried at the next start. Lazy-on-request
+  would put the work on the request path and need per-request
+  bookkeeping for no gain at this scale. · Remove the call in server.js
+  (pages and apps keep working on `coverImageUrl`).
+- **`sizes` on each `<img>` follows its layout, and grows for photos
+  wider than 3:2.** Hero `(min-width: 700px) 680px, 100vw`; thumbnail
+  `168px` / `116px`; editor preview `640px` / `calc(100vw - 72px)` (the
+  form card's padding). The frames are 3:2 and filled `object-fit:
+  cover`, so a 16:9 photo is drawn 1.19× its frame's width, and `sizes`
+  says so, or panoramas would come out soft. Thumbnails are
+  `loading="lazy"`, the hero isn't; all are `decoding="async"`.
+  og:image stays the full-size JPEG. · `COVER_DRAWN` and `coverSizes` in
+  public/ui.js.
+- **Assumed: the hero, thumbnail and editor layouts as they are on main
+  today.** The log above mentions an editor redesign (the cover as a
+  hero on top) and the cover joining the top card, possibly inset on
+  phones. Whoever lands those should update `COVER_DRAWN` in
+  public/ui.js (the page tests pin the current `sizes`). Picking a new
+  photo in the editor drops the saved cover's `srcset`, or the browser
+  would keep showing the old one.
