@@ -420,7 +420,7 @@
     return '--theme-base:' + hexOf(c.base) + ';--theme-base-rgb:' + c.base.join(',')
       + ';--theme-1:' + hexOf(c.m1) + ';--theme-2:' + hexOf(c.m2) + ';--theme-3:' + hexOf(c.m3)
       + ';--theme-4:' + hexOf(c.m4) + ';--theme-5:' + hexOf(c.m5)
-      + ';--theme-card:rgba(' + c.card.join(',') + ',0.30)';
+      + ';--theme-card:rgba(' + c.card.join(',') + ',0.30);--theme-card-solid:' + hexOf(c.card);
   }
 
   // The hue that matches a photo: the server works it out when a cover is
@@ -693,12 +693,14 @@
     return h;
   }
 
-  // Hosts: share the link, invite, edit. The creator also cancels (or
-  // brings back), makes a new link, and adds and takes off co-hosts; a
-  // co-host can step down. (The API says the same: creator_only.)
-  // `d.newLink` is set by the page just after a new link was made, to show
-  // it with share and copy.
+  // Hosts: share the link and invite (while it's on), edit, and a ⋯ menu
+  // for the rest. The creator's menu: co-hosts, a new link, cancel (or
+  // bring back) and delete, last and in red. A co-host's: step down. (The
+  // API says the same: creator_only.) `d.newLink` is set by the page just
+  // after a new link was made, to show it with share and copy;
+  // `d.showCohosts` once "Co-hosts…" is picked, to show the co-hosts.
   function hostSection(e, phase, d) {
+    d = d || {};
     const open = isOpen(phase);
     const creator = e.viewer && e.viewer.role === 'creator';
     let h = '<section class="card" id="host" data-section="host">';
@@ -706,7 +708,7 @@
     if (phase === 'cancelled') h += '<p class="state-line danger">' + tx(creator ? 'event.restoreHint' : 'event.restoreHintCohost') + '</p>';
     else if (phase === 'over') h += '<p class="state-line">' + tx('event.over') + '</p>';
     else h += '<p>' + tx(creator ? 'event.hostingHint' : 'event.cohostingHint') + '</p>';
-    if (d && d.newLink) {
+    if (d.newLink) {
       h += '<div class="new-link" id="newLink"><p>' + tx('event.newLinkMade') + '</p>'
         + '<input type="text" readonly value="' + esc(e.url) + '" aria-label="' + tx('event.newLinkLabel') + '" data-action="select">'
         + '<div class="row"><button type="button" data-action="share" data-url="' + esc(e.url) + '" data-title="' + esc(e.title) + '">Share</button>'
@@ -714,38 +716,44 @@
     }
     h += '<div class="host-actions">';
     if (open) {
-      h += '<button type="button" class="wide" data-action="share" data-url="' + esc(e.url) + '" data-title="' + esc(e.title) + '">Share link</button>';
-      h += '<a class="button secondary" href="/e/' + esc(e.id) + '/invite">Invite friends</a>';
+      h += '<button type="button" data-action="share" data-url="' + esc(e.url) + '" data-title="' + esc(e.title) + '">Share link</button>';
+      h += '<a class="button secondary" href="/e/' + esc(e.id) + '/invite">Invite</a>';
     }
-    h += '<a class="button secondary" href="/e/' + esc(e.id) + '/edit">Edit</a>';
-    if (creator && phase === 'cancelled') h += '<button type="button" class="secondary" data-action="restore">Bring back</button>';
-    if (creator && open) {
-      h += '<button type="button" class="secondary" data-action="new-link">New link</button>';
-      h += '<button type="button" class="danger" data-action="cancel">Cancel event</button>';
+    // Edit, and the menu beside it.
+    const items = [];
+    if (creator) {
+      items.push(['cohosts', 'Co-hosts…', '']);
+      if (open) items.push(['new-link', 'Make a new link…', '']);
+      if (phase === 'cancelled') items.push(['restore', 'Bring back event', '']);
+      else if (open) items.push(['cancel', 'Cancel event', '']);
+      items.push(['delete-event', 'Delete event…', 'danger']);
+    } else {
+      items.push(['step-down', 'Step down as co-host', '']);
     }
+    h += '<div class="edit-row"><a class="button secondary" href="/e/' + esc(e.id) + '/edit">Edit</a>'
+      + '<div class="menu-wrap"><button type="button" class="secondary more-btn" id="hostMenuBtn" data-action="host-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="hostMenu" aria-label="' + tx('event.moreActions') + '">⋯</button>'
+      + '<div class="menu" id="hostMenu" role="menu" aria-labelledby="hostMenuBtn" hidden>'
+      + items.map(([action, label, cls]) => '<button type="button" role="menuitem" tabindex="-1" class="menu-item' + (cls ? ' ' + cls : '') + '" data-action="' + action + '">' + esc(label) + '</button>').join('')
+      + '</div></div></div>';
     h += '</div><div class="notice" id="hostNotice" role="status"></div><div class="error" id="hostError" role="alert"></div>';
-    h += cohostsBlock(e, phase, creator);
+    if (creator && d.showCohosts) h += cohostsBlock(e, phase);
     h += '</section>';
     return h;
   }
 
-  // The co-hosts, in the host's area: the creator sees them with "Remove"
-  // and "Add co-host"; a co-host gets "Step down".
-  function cohostsBlock(e, phase, creator) {
+  // The co-hosts, for the creator (opened from the menu): each with
+  // "Remove", and "Add co-host".
+  function cohostsBlock(e, phase) {
     const cohosts = (e.hosts || []).filter((x) => x.role === 'cohost');
     let h = '<div class="cohosts" id="cohosts">';
-    if (creator) {
-      h += '<div class="group-heading">' + tx('event.cohostsHeading') + (cohosts.length ? ' · ' + cohosts.length : '') + '</div>';
-      if (cohosts.length) {
-        h += '<ul class="people">' + cohosts.map((x) => personRow(x.person, '',
-          '<button type="button" class="small-btn secondary" data-action="remove-cohost" data-person="' + esc(x.person.id) + '" data-name="' + esc(fullName(x.person)) + '">Remove</button>')).join('') + '</ul>';
-      } else {
-        h += '<p class="small" style="margin:6px 0 10px">' + tx('event.cohostsHint') + '</p>';
-      }
-      if (isOpen(phase)) h += '<a class="button secondary" href="/e/' + esc(e.id) + '/cohosts">Add co-host</a>';
+    h += '<div class="group-heading">' + tx('event.cohostsHeading') + (cohosts.length ? ' · ' + cohosts.length : '') + '</div>';
+    if (cohosts.length) {
+      h += '<ul class="people">' + cohosts.map((x) => personRow(x.person, '',
+        '<button type="button" class="small-btn secondary" data-action="remove-cohost" data-person="' + esc(x.person.id) + '" data-name="' + esc(fullName(x.person)) + '">Remove</button>')).join('') + '</ul>';
     } else {
-      h += '<button type="button" class="link-btn" data-action="step-down">Step down as co-host</button>';
+      h += '<p class="small" style="margin:6px 0 10px">' + tx('event.cohostsHint') + '</p>';
     }
+    if (isOpen(phase)) h += '<a class="button secondary" href="/e/' + esc(e.id) + '/cohosts">Add co-host</a>';
     h += '<div class="error" id="cohostError" role="alert"></div>';
     return h + '</div>';
   }

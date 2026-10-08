@@ -701,6 +701,8 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.ok(host.includes(`href="/e/${party.id}/invite"`) && host.includes(`href="/e/${party.id}/edit"`));
     assert.ok(!host.includes('data-action="cancel"') && !host.includes('data-action="new-link"'));
     assert.ok(host.includes('data-action="step-down"') && !host.includes('data-action="remove-cohost"'));
+    assert.deepEqual([...host.matchAll(/role="menuitem"[^>]*data-action="([^"]+)"/g)].map((m) => m[1]), ["step-down"], "a co-host's menu: step down, nothing creator-only");
+    assert.ok(!host.includes("delete-event"));
     assert.equal(section(r.body, 'rsvp'), null);
     const guests = section(r.body, 'guests');
     assert.ok(guests.includes(`data-action="remove-guest" data-person="${P.ben.id}" data-name="Ben Okafor"`), guests);
@@ -720,8 +722,19 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.ok(host.includes('You&#39;re hosting'));
     assert.ok(host.includes('data-action="new-link"') && host.includes('data-action="cancel"'));
     assert.ok(!host.includes('data-action="step-down"'));
-    assert.match(host, /Co-hosts · 1[\s\S]*Fay Tran[\s\S]*data-action="remove-cohost" data-person="[^"]+" data-name="Fay Tran"/);
-    assert.ok(host.includes(`href="/e/${party.id}/cohosts">Add co-host</a>`));
+    // Share and Invite, then Edit with the ⋯ menu: co-hosts, new link,
+    // cancel, and delete last, in red.
+    assert.match(host, /data-action="share"[^>]*>Share link<\/button><a class="button secondary" href="\/e\/[^"]+\/invite">Invite<\/a>/);
+    assert.match(host, /<div class="edit-row"><a class="button secondary" href="[^"]+\/edit">Edit<\/a>/);
+    assert.match(host, /id="hostMenuBtn" data-action="host-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="hostMenu"/);
+    const items = [...host.matchAll(/role="menuitem"[^>]*data-action="([^"]+)">([^<]+)</g)].map((m) => [m[1], m[2]]);
+    assert.deepEqual(items, [['cohosts', 'Co-hosts…'], ['new-link', 'Make a new link…'], ['cancel', 'Cancel event'], ['delete-event', 'Delete event…']]);
+    assert.match(host, /class="menu-item danger" data-action="delete-event"/);
+    assert.ok(!host.includes('id="cohosts"'), 'the co-hosts open from the menu');
+    // Opened: Fay, with Remove, and Add co-host.
+    const opened = UI.hostSection(pageData(r.text).event, 'upcoming', { showCohosts: true });
+    assert.match(opened, /Co-hosts · 1[\s\S]*Fay Tran[\s\S]*data-action="remove-cohost" data-person="[^"]+" data-name="Fay Tran"/);
+    assert.ok(opened.includes(`href="/e/${party.id}/cohosts">Add co-host</a>`));
     assert.ok(section(r.body, 'guests').includes('Dee Ruiz'));
     // A new link: the page's data is the event under it, and the old one
     // is gone.

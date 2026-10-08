@@ -180,6 +180,29 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/EventNotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [Events]
+      operationId: deleteEvent
+      summary: Delete an event
+      description: |
+        The creator only (403 `creator_only` for a co-host or anyone else).
+        The event and everything under it go for good: its hosts, answers
+        and invitations, its wall, everyone's notifications about it, and
+        its cover. Its link is a 404 `event_not_found` afterwards, like any
+        wrong link. **Nobody is notified**: to tell people an event is off,
+        cancel it instead (`PATCH` with `status: cancelled`), which keeps
+        it to open. Who has hosted it still counts for `hasHosted`.
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/events/{id}/rsvp:
     parameters:

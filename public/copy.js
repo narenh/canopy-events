@@ -144,6 +144,11 @@ const COPY = {
     cohostsHint: 'Co-hosts can edit the event, invite people and see everyone.',
     removeCohostConfirm: "Take {name} off as a co-host? They'll stay invited, and can answer like anyone else.",
     stepDownConfirm: "Step down as a co-host? You'll stay invited, and can answer like anyone else.",
+    // The host's ⋯ menu.
+    moreActions: 'More',
+    deleteConfirm: 'Delete “{title}”? This can’t be undone: the link stops working and everything on it goes.',
+    deleteConfirmComing: 'Delete “{title}”? {count} people have said they’re coming. Deleting doesn’t tell them, but cancelling does, and keeps the event for them to see it’s off. Delete anyway? This can’t be undone.',
+    deleteConfirmOne: 'Delete “{title}”? 1 person has said they’re coming. Deleting doesn’t tell them, but cancelling does, and keeps the event for them to see it’s off. Delete anyway? This can’t be undone.',
     // Removing a guest, and undoing it.
     removeGuestConfirm: "Remove {name} from this event? They won't be able to answer, or see the address, the guest list or the wall. You can undo this.",
     // A new link.

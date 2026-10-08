@@ -396,10 +396,32 @@ a{color:var(--accent-text);}
 .cta-sub{margin:10px 0 0;text-align:center;}
 .cta-hint{margin:14px 0 0;text-align:center;font-size:var(--fs-small);}
 
-/* The host's area: buttons in a grid, two to a row. */
+/* The host's area: Share link and Invite side by side, then Edit (wide)
+   with the ⋯ menu beside it. */
 .host-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .host-actions .wide{grid-column:1 / -1;}
 .host-actions .button, .host-actions button{padding:13px 8px;}
+.edit-row{grid-column:1 / -1;display:flex;gap:10px;}
+.edit-row > .button{flex:1;}
+.menu-wrap{position:relative;flex:0 0 auto;}
+/* Each glass card is its own stacking context, so the host's card sits
+   above the cards after it, or the open menu would be painted under them. */
+#host{position:relative;z-index:6;}
+.host-actions .more-btn{width:56px;padding:0;font-size:24px;line-height:1;letter-spacing:.05em;}
+/* The menu: a solid card under the ⋯, right-aligned to it (solid, not
+   glass: it floats over other buttons, which mustn't show through). */
+.menu{
+  position:absolute;right:0;top:calc(100% + 8px);z-index:20;min-width:236px;max-width:calc(100vw - 32px);
+  background:var(--theme-card-solid, #03200b);border:1px solid var(--glass-edge);border-radius:14px;padding:6px;
+  box-shadow:0 14px 40px rgba(0,0,0,.45);
+}
+.menu[hidden]{display:none;}
+.host-actions .menu-item{
+  display:flex;align-items:center;width:100%;min-height:var(--tap);padding:10px 14px;border:none;border-radius:10px;
+  background:transparent;color:var(--text);font-size:var(--fs-body);font-weight:600;text-align:left;
+}
+.host-actions .menu-item:hover, .host-actions .menu-item:focus-visible{background:var(--secondary);outline:none;}
+.host-actions .menu-item.danger{color:var(--danger);border-top:1px solid var(--line);border-radius:0 0 10px 10px;margin-top:4px;}
 
 /* People: a photo, a name, and what they said. */
 .people{list-style:none;margin:0;padding:0;}

@@ -1004,6 +1004,50 @@ waitlist, host moderation and lookup, plus one API fix, built on branch
 - Faces with no photo are initials on the event's brightest glow colour
   (`--mesh-3`), so they follow the hue (and go grey). Tapping a face
   does nothing; each has the person's name as a `title`. · n/a
+- The minimum gap between faces is 5px, which fits 5 at 375px (8px
+  fitted only 4) and 9 at desktop width. · Seen in the browser. ·
+  `MIN_GAP` in views/event.html.
+
+### The host's controls, and deleting an event
+
+- **Layout**: "Share link" and "Invite" side by side (while the event is
+  on), then "Edit" wide with a ⋯ button beside it. The creator's menu:
+  Co-hosts…, Make a new link… (while on), Cancel event or Bring back
+  event, and Delete event… last, in red under a rule. A co-host's: Step
+  down as co-host. Those controls are nowhere else on the page now. ·
+  The owner's layout. · `hostSection` in public/ui.js.
+- **The menu** is a `role="menu"` popover under the ⋯ (a button with
+  `aria-haspopup="menu"`, `aria-expanded`, `aria-controls`), drawn as a
+  solid card in the event's own card colour (`--theme-card-solid`), not
+  glass, since it floats over other buttons. Opening focuses the first
+  item; arrows, Home and End move; Escape closes and returns focus to
+  ⋯; Tab, a tap outside, or picking an item closes it. The host's card
+  is lifted above the cards after it (each glass card is its own
+  stacking context, so the menu was painted under the next one). · A
+  sheet would be more work for four items. · views/event.html.
+- **"Co-hosts…"** opens the existing co-hosts block (list with Remove,
+  and Add co-host) inside the host's card, and scrolls to it. · The
+  brief. · `d.showCohosts`.
+- **`DELETE /api/v1/events/{id}`**, the creator only (403
+  `creator_only` for a co-host, a guest or anyone else; 401 signed out).
+  It deletes the row, and the database's cascades take its hosts,
+  answers, invitations, wall and every inbox entry about it; the route
+  removes the cover file. `hosted_people` keeps its hosts (once a host,
+  always a host). The link is a 404 `event_not_found` afterwards. No
+  schema change. · routes/events.js.
+- **Nobody is notified of a deletion**, and its existing notifications
+  go with it. · There's no event left to open, so a notification could
+  only say "something you were going to is gone" with nothing behind it;
+  cancelling is the way to tell people, and the confirm says so. ·
+  Notify `audienceOf` with an `event_deleted` type carrying the title
+  (needs `event` null in the inbox and a new type for the apps).
+- **The confirm** names the event; when people have said going or maybe
+  and the event isn't over, it says how many, that deleting doesn't tell
+  them and cancelling does, and still lets the host delete. After
+  deleting, the page goes to Your events. · The brief. · `delete-event`
+  in views/event.html.
+- The Invite button says "Invite" (was "Invite friends"): it also finds
+  people by phone or Instagram now, and two buttons share the row. · n/a
 
 ## Security review (both services)
 

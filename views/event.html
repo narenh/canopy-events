@@ -72,7 +72,7 @@ if (data.drawnZone !== zone) draw();
 // Attending's row of faces: as many as fit this row's width, at least
 // MIN_GAP apart (the server drew it for a phone). Worked out again when
 // the window changes size.
-const MIN_GAP = 8;
+const MIN_GAP = 5;
 function fitAvatars(){
   const row = document.getElementById('attendRow');
   if (!row) return false;
@@ -88,6 +88,46 @@ window.addEventListener('resize', () => {
   clearTimeout(resizing);
   resizing = setTimeout(() => { if (fitAvatars()) draw(); }, 150);
 });
+// The host's ⋯ menu: opens under its button, arrow keys move through it,
+// Escape (or a tap anywhere else, or picking something) shuts it and puts
+// focus back on the button.
+function menuParts(){
+  return { btn: document.getElementById('hostMenuBtn'), menu: document.getElementById('hostMenu') };
+}
+function closeMenu(focusButton){
+  const { btn, menu } = menuParts();
+  if (!menu || menu.hidden) return;
+  menu.hidden = true;
+  btn.setAttribute('aria-expanded', 'false');
+  if (focusButton) btn.focus();
+}
+function openMenu(){
+  const { btn, menu } = menuParts();
+  menu.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+  const first = menu.querySelector('[role=menuitem]');
+  if (first) first.focus();
+}
+document.addEventListener('click', (e) => {
+  const { menu } = menuParts();
+  if (!menu || menu.hidden) return;
+  if (e.target.closest('#hostMenuBtn')) return;
+  // A tap outside, or on an item (whose own action then runs).
+  closeMenu(false);
+}, true);
+document.addEventListener('keydown', (e) => {
+  const { menu } = menuParts();
+  if (!menu || menu.hidden) return;
+  const items = Array.from(menu.querySelectorAll('[role=menuitem]'));
+  const at = items.indexOf(document.activeElement);
+  if (e.key === 'Escape'){ e.preventDefault(); closeMenu(true); }
+  else if (e.key === 'ArrowDown'){ e.preventDefault(); items[(at + 1) % items.length].focus(); }
+  else if (e.key === 'ArrowUp'){ e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+  else if (e.key === 'Home'){ e.preventDefault(); items[0].focus(); }
+  else if (e.key === 'End'){ e.preventDefault(); items[items.length - 1].focus(); }
+  else if (e.key === 'Tab') closeMenu(false);
+});
+
 // "View all" stays open (or shut) when the page is drawn again.
 document.addEventListener('toggle', (e) => {
   if (e.target && e.target.id === 'viewAll') data.showAll = e.target.open;
@@ -240,6 +280,36 @@ onActions({
     answer('PUT', { status, guests: guestsToSend(status) }, btn);
   },
   withdraw: (btn) => answer('DELETE', undefined, btn),
+  'host-menu': (btn) => {
+    if (btn.getAttribute('aria-expanded') === 'true') closeMenu(true);
+    else openMenu();
+  },
+
+  // The co-hosts, from the menu: shown in the host's area.
+  cohosts: () => {
+    data.showCohosts = true;
+    draw();
+    const box = document.getElementById('cohosts');
+    if (box) box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  },
+
+  // Deleting, for good. The confirm names the event, and when people
+  // have said they're coming, says cancelling would tell them.
+  'delete-event': () => {
+    const e = data.event;
+    const coming = ((e.counts || {}).going || 0) + ((e.counts || {}).maybe || 0);
+    const live = UI.phaseOf(e) === 'upcoming' || UI.phaseOf(e) === 'now';
+    const words = live && coming
+      ? (coming === 1 ? t('event.deleteConfirmOne', { title: e.title }) : t('event.deleteConfirmComing', { title: e.title, count: coming }))
+      : t('event.deleteConfirm', { title: e.title });
+    if (!confirm(words)) return;
+    let refused = '';
+    busy(null, document.getElementById('hostError'), async () => {
+      const { res, data: d } = await api('DELETE', eventPath());
+      if (!res.ok){ refused = refusal('event', d); return; }
+      window.location.href = '/';
+    }).then(() => { if (refused) show('hostError', refused); });
+  },
   guests: (btn) => stepGuests(btn),
   cancel: (btn) => setStatus('cancelled', btn),
   restore: (btn) => setStatus('active', btn),

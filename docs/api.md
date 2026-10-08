@@ -139,8 +139,15 @@ Optional: `description`, `endsAt` (after `startsAt`), `locationName`,
 co-hosts). Send only what changes; `null` or `""` clears an optional
 field. `{"status": "cancelled"}` cancels it, and `{"status": "active"}`
 takes that back; only the creator can do either (403 `creator_only`).
-There's no delete: a cancelled event keeps its link and guest list so
-people can see it's off.
+A cancelled event keeps its link and guest list so people can see it's
+off, and they're notified (`event_cancelled`).
+
+`DELETE /api/v1/events/{id}` deletes it for good (the creator only; 403
+`creator_only` for anyone else): its hosts, answers, invitations, wall,
+everyone's notifications about it and its cover all go, and the link is
+a 404 `event_not_found` afterwards. **Nobody is notified**, so when
+people have answered going or maybe, suggest cancelling instead (the web
+page's confirm does) and delete only if the host still wants to.
 
 `guestsAllowed` (0 to 10, 0 by default) is how many plus-ones each answer
 may bring. See "Plus-ones" below.

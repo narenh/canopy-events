@@ -226,6 +226,7 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `POST /api/v1/events` | make an event (verified people) |
 | `GET /api/v1/events/{id}` | one event (anyone with the link) |
 | `PATCH /api/v1/events/{id}` | edit it (hosts), cancel or un-cancel it (the creator) |
+| `DELETE /api/v1/events/{id}` | delete it and everything under it (the creator); nobody is notified |
 | `POST /api/v1/events/{id}/cohosts` | make someone a co-host (the creator; verified people only) |
 | `DELETE /api/v1/events/{id}/cohosts/{personId}` | take a co-host off (the creator), or step down |
 | `GET /api/v1/events/{id}/wall` | the activity wall, newest first (whoever sees the guest list) |

@@ -163,6 +163,45 @@ test('events', async (t) => {
     assert.equal((await ana.post('/api/v1/events', eventBody({ themeHue: 400 }))).data.reason, 'bad_theme_hue');
   });
 
+  await t.test('deleting: the creator only, everything goes, the link is a 404, nobody is told', async () => {
+    const fs = require('fs');
+    const path = require('path');
+    const sharp = require('sharp');
+    const fay = client(server, 'fay');
+    await fay.get('/api/v1/me');
+    const gone = await makeEvent(ana, { title: 'Delete me' });
+    await ana.post(`/api/v1/events/${gone.id}/cohosts`, { personId: server.people.fay.id });
+    await ana.post(`/api/v1/events/${gone.id}/invites`, { personIds: [server.people.una.id] });
+    await ben.put(`/api/v1/events/${gone.id}/rsvp`, { status: 'going' });
+    await ben.post(`/api/v1/events/${gone.id}/wall`, { text: 'hi' });
+    const jpeg = await sharp({ create: { width: 300, height: 200, channels: 3, background: '#335577' } }).jpeg().toBuffer();
+    assert.equal((await ana.upload('PUT', `/api/v1/events/${gone.id}/cover`, jpeg, { type: 'image/jpeg' })).status, 200);
+    const coverFile = path.join(server.dataDir, 'covers', `${gone.id}.jpg`);
+    assert.ok(fs.existsSync(coverFile));
+    const inbox = async (who) => (await who.get('/api/v1/me/notifications?limit=100')).data.notifications;
+    assert.ok((await inbox(una)).some((n) => n.event && n.event.id === gone.id), 'una was told she was invited');
+    const before = { ben: (await inbox(ben)).length, una: (await inbox(una)).length };
+
+    assert.equal((await anon.del(`/api/v1/events/${gone.id}`)).status, 401);
+    for (const who of [fay, ben]) {
+      const r = await who.del(`/api/v1/events/${gone.id}`);
+      assert.equal(r.status, 403);
+      assert.equal(r.data.reason, 'creator_only');
+    }
+    const r = await ana.del(`/api/v1/events/${gone.id}`);
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.data, { ok: true });
+    for (const who of [anon, ana, ben]) assert.equal((await who.get(`/api/v1/events/${gone.id}`)).data.reason, 'event_not_found');
+    assert.equal((await ana.del(`/api/v1/events/${gone.id}`)).status, 404);
+    assert.ok(!fs.existsSync(coverFile), 'the cover file went too');
+    // Inbox entries about it went with it, and nothing new arrived.
+    assert.ok(!(await inbox(una)).some((n) => n.event && n.event.id === gone.id));
+    assert.equal((await inbox(una)).length, before.una - 1);
+    assert.equal((await inbox(ben)).length, before.ben);
+    assert.ok(!(await ben.get('/api/v1/me/events/upcoming')).data.events.some((e) => e.id === gone.id));
+    assert.equal((await fay.get('/api/v1/me')).data.hasHosted, true, 'once a host, always a host');
+  });
+
   await t.test('no colour at all: themeGrayscale, which outranks the hue', async () => {
     assert.equal(event.themeGrayscale, false);
     const grey = await makeEvent(ana, { title: 'Grey party', themeHue: 30, themeGrayscale: true });
