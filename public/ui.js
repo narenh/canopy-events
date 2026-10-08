@@ -288,6 +288,132 @@
     return safeUrl(e && e.coverImageUrl);
   }
 
+  // ---------------- An event's colour ----------------
+  //
+  // A host can turn an event's page to any hue: the event's `themeHue`, in
+  // degrees, or null for Canopy's own green. The page's mesh is defined in
+  // OKLCH, a space where lightness is what the eye sees, with each glow's
+  // lightness (L) and chroma (C) fixed at today's green and only its hue
+  // turning. So every hue is exactly as dark as the green, and the contrast
+  // worked out at the top of events.css holds for all of them (checked
+  // round the whole wheel; docs/decision-log.md has the numbers). Each
+  // glow keeps its own small offset from the theme hue, as today's greens
+  // differ slightly (the base is a little bluer than the brightest glow).
+  //
+  // null draws today's hex values exactly. Canopy green is hue 161, so
+  // themeHue 161 looks the same (to within a third of a degree). A colour
+  // outside sRGB has its chroma lowered until it fits, keeping L and hue.
+  // docs/api.md ("Event colours") says the same for the apps.
+  const THEME_DEFAULT_HUE = 161;
+  const THEME_MESH = {
+    //        L       C       hue offset
+    base: [0.1652, 0.0266, 6.4],
+    m1: [0.3655, 0.0715, 1.4],
+    m2: [0.3166, 0.0559, 9.8],
+    m3: [0.4233, 0.0856, -0.4],
+    m4: [0.2597, 0.0466, 5.8],
+    m5: [0.3122, 0.0590, 1.9],
+    card: [0.2150, 0.0537, -11.2]
+  };
+
+  function linToByte(c) {
+    const v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return Math.round(Math.min(1, Math.max(0, v)) * 255);
+  }
+
+  function oklchToLinear(L, C, h) {
+    const a = C * Math.cos(h * Math.PI / 180);
+    const b = C * Math.sin(h * Math.PI / 180);
+    const l = Math.pow(L + 0.3963377774 * a + 0.2158037573 * b, 3);
+    const m = Math.pow(L - 0.1055613458 * a - 0.0638541728 * b, 3);
+    const s = Math.pow(L - 0.0894841775 * a - 1.2914855480 * b, 3);
+    return [
+      4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+      -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+      -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+    ];
+  }
+
+  // An OKLCH colour as [r, g, b] bytes, its chroma lowered until it fits
+  // sRGB.
+  function oklchToRgb(L, C, h) {
+    const fits = (c) => oklchToLinear(L, c, h).every((x) => x >= -0.0001 && x <= 1.0001);
+    let c = C;
+    if (!fits(c)) {
+      let lo = 0;
+      let hi = C;
+      for (let i = 0; i < 20; i++) {
+        const mid = (lo + hi) / 2;
+        if (fits(mid)) lo = mid; else hi = mid;
+      }
+      c = lo;
+    }
+    return oklchToLinear(L, c, h).map(linToByte);
+  }
+
+  function hexOf(rgb) {
+    return '#' + rgb.map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+
+  function rgbToOklch(hex) {
+    const lin = [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    const l = Math.cbrt(0.4122214708 * lin[0] + 0.5363325363 * lin[1] + 0.0514459929 * lin[2]);
+    const m = Math.cbrt(0.2119034982 * lin[0] + 0.6806995451 * lin[1] + 0.1073969566 * lin[2]);
+    const s = Math.cbrt(0.0883024619 * lin[0] + 0.2817188376 * lin[1] + 0.6299787005 * lin[2]);
+    const A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+    const B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+    return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, Math.hypot(A, B), (Math.atan2(B, A) * 180 / Math.PI + 360) % 360];
+  }
+
+  function isHue(hue) {
+    return Number.isInteger(hue) && hue >= 0 && hue <= 359;
+  }
+
+  // Any Canopy-green colour (#rrggbb) turned to `hue` the same way: its
+  // offset from Canopy green's hue kept, L kept, C fitted to sRGB.
+  function turnHex(hex, hue) {
+    if (!isHue(hue)) return hex;
+    const [L, C, h] = rgbToOklch(hex);
+    return hexOf(oklchToRgb(L, C, (hue + h - THEME_DEFAULT_HUE + 360) % 360));
+  }
+
+  // The mesh's colours for `hue`: { base, m1...m5, card } as [r, g, b].
+  const themeCache = {};
+  function themeColors(hue) {
+    if (!isHue(hue)) return null;
+    if (!themeCache[hue]) {
+      const out = {};
+      Object.keys(THEME_MESH).forEach((k) => {
+        const [L, C, off] = THEME_MESH[k];
+        out[k] = oklchToRgb(L, C, (hue + off + 360) % 360);
+      });
+      themeCache[hue] = out;
+    }
+    return themeCache[hue];
+  }
+
+  // The CSS custom properties that turn a page to `hue` (events.css reads
+  // them, falling back to Canopy green), or '' for the default.
+  function themeStyle(hue) {
+    const c = themeColors(hue);
+    if (!c) return '';
+    return '--theme-base:' + hexOf(c.base) + ';--theme-base-rgb:' + c.base.join(',')
+      + ';--theme-1:' + hexOf(c.m1) + ';--theme-2:' + hexOf(c.m2) + ';--theme-3:' + hexOf(c.m3)
+      + ';--theme-4:' + hexOf(c.m4) + ';--theme-5:' + hexOf(c.m5)
+      + ';--theme-card:rgba(' + c.card.join(',') + ',0.30)';
+  }
+
+  // The slider's rainbow: the wheel at a lightness you can see on a dark
+  // page (the mesh itself is too dark to tell hues apart on a thin track).
+  function hueTrack() {
+    const stops = [];
+    for (let h = 0; h <= 360; h += 30) stops.push(hexOf(oklchToRgb(0.68, 0.15, h % 360)));
+    return 'linear-gradient(to right, ' + stops.join(', ') + ')';
+  }
+
   // An event with no cover gets a picture anyway, so every event page has
   // the same hero: soft glows in Canopy greens on the page's own dark
   // base, placed and coloured by the event's id (the same event always
@@ -310,8 +436,9 @@
   function coverArt(e, cls) {
     const h = seedOf(e && e.id);
     const part = (n, shift) => (h >>> shift) % n;
-    const [c1, c2, c3] = ART_GREENS[part(ART_GREENS.length, 0)];
-    const style = '--c1:' + c1 + ';--c2:' + c2 + ';--c3:' + c3
+    // In the event's colour, when it has one.
+    const [c1, c2, c3] = ART_GREENS[part(ART_GREENS.length, 0)].map((hex) => turnHex(hex, e && e.themeHue));
+    const style = '--c0:' + turnHex('#03120c', e && e.themeHue) + ';--c1:' + c1 + ';--c2:' + c2 + ';--c3:' + c3
       + ';--x1:' + (8 + part(45, 3)) + '%;--y1:' + (10 + part(40, 9)) + '%'
       + ';--x2:' + (50 + part(45, 14)) + '%;--y2:' + (35 + part(50, 20)) + '%'
       + ';--a:' + (90 + part(180, 25)) + 'deg';
@@ -707,7 +834,10 @@
     else if (viewer.rsvp && !['invited', 'removed'].includes(viewer.rsvp.status)) tag = '<span class="tag' + (viewer.rsvp.status === 'going' ? '' : ' off') + '">' + tx('status.' + viewer.rsvp.status) + '</span>';
     // The cover (or the generated picture) as a 3:2 thumbnail; then when,
     // in a bold line above the title, as calendars do; the title; where.
-    return '<a class="event-row' + (asCard ? ' card' : '') + (phase === 'cancelled' ? ' is-cancelled' : '') + '" href="/e/' + esc(e.id) + '">'
+    // An event with its own colour tints its card's glass with it.
+    const theme = themeColors(e.themeHue);
+    const tint = theme ? ' style="--card:rgba(' + theme.card.join(',') + ',0.45)"' : '';
+    return '<a class="event-row' + (asCard ? ' card' : '') + (phase === 'cancelled' ? ' is-cancelled' : '') + '" href="/e/' + esc(e.id) + '"' + (asCard ? tint : '') + '>'
       + '<span class="thumb">' + coverMedia(e, ' loading="lazy"') + '</span>'
       + '<span class="info"><span class="row-when">' + unbroken(whenRow(e, o.viewerZone)) + '</span>'
       + '<span class="title">' + esc(e.title) + '</span>'
@@ -916,12 +1046,25 @@
       + '<img class="cover-preview" id="coverPreview" alt=""' + (url ? ' src="' + esc(url) + '"' : '') + '>'
       + '<p class="field-hint hidden" id="coverNoPreview">' + tx('editor.coverNoPreview') + '</p>'
       + '<div class="cover-buttons">'
-      + '<label class="button secondary file-btn"><span id="coverPickLabel">' + (url ? 'Replace photo' : 'Choose photo') + '</span>'
+      + '<label class="button secondary file-btn"><span id="coverPickLabel">' + (url ? 'Replace' : 'Choose photo') + '</span>'
       + '<input type="file" id="coverFile" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"></label>'
       + '<button type="button" class="secondary" id="coverRemove" data-action="remove-cover"' + (url ? '' : ' hidden') + '>Remove</button>'
       + '</div></div>'
       + '<p class="field-hint">' + tx('editor.coverHint') + '</p>'
       + '<div class="error" id="coverError" role="alert"></div></div>';
+  }
+
+  // The event's colour: a slider round the wheel (dragging it turns this
+  // page, views/editor.html), and "Canopy green" to go back to the
+  // default. The slider sits on Canopy green's hue while there's none.
+  function themeField(hue) {
+    const set = isHue(hue);
+    return '<div class="field" id="themeField"><label class="field-label" for="themeHue">' + tx('editor.theme') + '</label>'
+      + '<div class="hue-row"><input type="range" id="themeHue" min="0" max="359" step="1" value="' + (set ? hue : THEME_DEFAULT_HUE) + '"'
+      + ' data-set="' + (set ? '1' : '') + '" style="--track:' + esc(hueTrack()) + '" aria-valuetext="' + (set ? esc(hue + '°') : tx('editor.themeDefault')) + '">'
+      + '<button type="button" class="secondary small-btn" id="themeReset" data-action="theme-reset"' + (set ? '' : ' disabled') + '>' + tx('editor.themeDefault') + '</button></div>'
+      + '<p class="field-hint">' + tx('editor.themeHint') + '</p>'
+      + '<div class="error" id="themeHueError" role="alert"></div></div>';
   }
 
   // The form for making an event (d.event null) or editing one, in
@@ -941,6 +1084,7 @@
     h += field('title', 'editor.title', '<input type="text" id="title" maxlength="120" required value="' + esc(e.title || '') + '">');
     h += field('description', 'editor.description', '<textarea id="description" maxlength="5000" placeholder="' + tx('editor.descriptionPlaceholder') + '">' + esc(e.description || '') + '</textarea>');
     h += coverField(coverUrl(e));
+    h += themeField(e.themeHue);
     h += '</fieldset>';
 
     h += '<fieldset><legend>' + tx('editor.when') + '</legend>';
@@ -986,7 +1130,7 @@
 
   return {
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, coverField, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
-    fullName, initials, avatar, personRow, coverUrl, coverArt, plusGuests, spotsLine, countsLine, guestsShown,
+    fullName, initials, avatar, personRow, coverUrl, coverArt, plusGuests, themeStyle, themeColors, turnHex, isHue, THEME_DEFAULT_HUE, spotsLine, countsLine, guestsShown,
     eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, friendRows, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED

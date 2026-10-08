@@ -141,6 +141,28 @@ test('events', async (t) => {
     assert.equal((await ana.patch(`/api/v1/events/${event.id}`, { status: 'deleted' })).data.reason, 'bad_status');
   });
 
+  await t.test('the event\'s colour: a hue in degrees or null, set by any host, seen by everyone', async () => {
+    assert.equal(event.themeHue, null, 'Canopy green by default');
+    const made = await makeEvent(ana, { title: 'Purple party', themeHue: 300 });
+    assert.equal(made.themeHue, 300);
+    // Signed out sees it too: the signed-out page is drawn in it.
+    assert.equal((await anon.get(`/api/v1/events/${made.id}`)).data.event.themeHue, 300);
+    // A co-host sets it; null goes back to green; leaving it out leaves it.
+    const fay = client(server, 'fay');
+    await fay.get('/api/v1/me');
+    await ana.post(`/api/v1/events/${made.id}/cohosts`, { personId: server.people.fay.id });
+    assert.equal((await fay.patch(`/api/v1/events/${made.id}`, { themeHue: 0 })).data.event.themeHue, 0);
+    assert.equal((await ana.patch(`/api/v1/events/${made.id}`, { title: 'Still red' })).data.event.themeHue, 0);
+    assert.equal((await ana.patch(`/api/v1/events/${made.id}`, { themeHue: null })).data.event.themeHue, null);
+    assert.equal((await ben.patch(`/api/v1/events/${made.id}`, { themeHue: 10 })).status, 403);
+    for (const bad of [-1, 360, 12.5, '120', true]) {
+      const r = await ana.patch(`/api/v1/events/${made.id}`, { themeHue: bad });
+      assert.equal(r.status, 400, String(bad));
+      assert.equal(r.data.reason, 'bad_theme_hue');
+    }
+    assert.equal((await ana.post('/api/v1/events', eventBody({ themeHue: 400 }))).data.reason, 'bad_theme_hue');
+  });
+
   await t.test('a body that is not JSON is a 400, and an unknown endpoint a 404', async () => {
     const r = await ana.post('/api/v1/events', '{"title": ');
     assert.equal(r.status, 400);

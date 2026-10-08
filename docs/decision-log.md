@@ -837,3 +837,64 @@ waitlist, host moderation and lookup, plus one API fix, built on branch
 - The friends page lists people, not events, so it has nothing to date.
   · n/a
 
+### An event's colour (`themeHue`)
+
+- **`themeHue` is folded into schema version 7** (the step that also
+  adds `hosted_people`), as `events.theme_hue INTEGER` with a CHECK of 0
+  to 359, NULL for Canopy green. · Version 7 isn't merged or deployed,
+  so one step is simpler than two. · If 7 has shipped by the time this
+  is read, it's frozen as it is; a later change is version 8.
+- Any host sets it (co-hosts too), on create and PATCH; it's on every
+  Event (signed out included) and on the notification `EventSummary`. ·
+  It's how the page looks, not who runs it. · n/a
+- **The model**: each colour of the mesh (base, five glows, the card's
+  tint) is today's hex converted to OKLCH, with L and C kept and only the
+  hue turned: hue = themeHue + that colour's offset from the brightest
+  glow's hue. Canopy green is **161** (the brightest glow, `#145c3e`, is
+  160.65°). `null` draws today's hex exactly; 161 is within 2/255 per
+  channel. Out-of-gamut colours have their chroma lowered (binary
+  search, L and hue kept). The constants are in `public/ui.js`
+  (`THEME_MESH`) and docs/api.md's table, for the apps. · Same
+  lightness means same contrast. · n/a
+- **The contrast check** (white text on a card over the brightest glow,
+  composited in linear light; same method for every row): Canopy green
+  9.52:1; red (25°) 10.28; orange (60°) 10.13; yellow (100°) 9.86; cyan
+  (193°, the worst on the wheel) 9.35; blue (255°) 9.91; purple (305°)
+  10.23; pink (345°) 10.32. Muted text is 7.72–8.53, links 7.49–8.28,
+  danger text 6.82–7.53, white straight on the brightest glow 7.83–8.75.
+  All far past 4.5:1, and within 2% of the green's at worst. (This
+  method gives slightly lower numbers than the 10.3:1 in the CSS comment,
+  which was worked out differently; the comparison between hues is what
+  matters here.) Only the card tint near yellow and `--card-solid`
+  (unused by events) leave sRGB; no glow does, so no per-hue chroma
+  table was needed beyond the general fit. A test holds white-on-card at
+  ≥ 9:1 for eight hues. · n/a · test/pages.test.js.
+- **Buttons, links and grey text stay Canopy green at every hue.**
+  Turned, the accent `#2ec44f` leaves sRGB at most hues (clipped, it
+  drifts in lightness), dark text on it drops to 6.5:1, and the link
+  colour to 7.1:1; kept, they're the same everywhere and say "Canopy".
+  · Looked right on purple, blue, red and olive in the browser. · To
+  turn them, add `accent`/`accentText` rows to `THEME_MESH` and the
+  `--theme-*` variables.
+- **Yellow comes out olive**: a yellow as dark as the green is olive,
+  which is what equal darkness means. Accepted rather than brightening
+  yellow (which would break the "same darkness" rule the contrast rests
+  on). · n/a
+- The theme rides on `<html style="--theme-…">` (lib/render.js), so the
+  page's own background, the overscroll area, the mesh, the cards, the
+  hero's fade and the title's shadow all follow, and `<meta
+  name="theme-color">` (the phone's browser bar) is the turned base.
+  The generated cover picture turns with it too. · n/a
+- **Where it applies**: the event page (signed in and out) and its
+  editor. Home tints that event's card glass (the card tint at 45%
+  rather than 30%, so it shows on the green); home, friends, inviting
+  and co-hosts otherwise stay green. · The brief. · `eventRow`.
+- **The editor's slider** is a native `<input type=range>` (0–359)
+  under the cover, on its own row, with a rainbow track drawn at a
+  visible lightness (the mesh's own colours are too dark to tell apart
+  on a thin track) and a 30px thumb in the current glow colour; dragging
+  it repaints the editor page itself. "Canopy green" sets null and is
+  disabled while it is. Nothing is saved until Save. · Native ranges
+  work with touch everywhere; no library. · `themeField`,
+  views/editor.html.
+

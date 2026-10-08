@@ -209,6 +209,7 @@ module.exports = function pagesRoutes(ctx) {
       links: req.person ? null : { quickSignUp: canopy.quickSignUpUrl(req, here), signIn: canopy.signInUrl(req, here) }
     };
     render.page(req, res, 'event.html', {
+      theme: event.themeHue,
       title: event.title,
       meta: render.eventMeta(event),
       main: UI.eventPage(data, { viewerZone: render.viewerZone(req) }),
@@ -240,7 +241,7 @@ module.exports = function pagesRoutes(ctx) {
     // upload (views/editor.html sends them here to try again).
     const coverError = /^[a-z_]{1,40}$/.test(String(req.query.coverError || '')) ? req.query.coverError : null;
     const data = { me: meView(req.person), event, coverError };
-    render.page(req, res, 'editor.html', { title: t('editor.editHeading'), main: UI.editorForm(data), data });
+    render.page(req, res, 'editor.html', { title: t('editor.editHeading'), main: UI.editorForm(data), data, theme: event.themeHue });
   }));
 
   // ---------------- Inviting friends ----------------

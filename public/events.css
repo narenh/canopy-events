@@ -213,6 +213,28 @@ button.danger, .button.danger{background:var(--card);color:var(--danger);border:
   --gap:16px;             /* between cards */
 }
 body{font-size:var(--fs-body);line-height:var(--lh);}
+
+/* An event's colour. A themed page (its event's themeHue) carries
+   --theme-* on <html> (lib/render.js, from public/ui.js themeStyle): the
+   mesh's base, its five glows and the card's tint, each the green above
+   turned to the event's hue in OKLCH with its lightness and chroma kept.
+   Without them, everything falls back to the green, exactly as above.
+   Same lightness means the same contrast: round the whole wheel, white
+   on a card over the brightest glow stays within 2% of the green's (the
+   worst is cyan, hue 193), and so does every other pair checked at the
+   top (docs/decision-log.md has the numbers). Buttons, links and the
+   greys stay Canopy green at every hue: turned, the accent leaves sRGB
+   at most hues and loses contrast; kept, it's the same 8:1 everywhere. */
+html{background:var(--theme-base, var(--bg));}
+:root{--card:var(--theme-card, rgba(3,32,11,0.30));}
+.mesh-bg{
+  --mesh-base:var(--theme-base, #03120c);
+  --mesh-1:var(--theme-1, #0f4a33);
+  --mesh-2:var(--theme-2, #0a3b2e);
+  --mesh-3:var(--theme-3, #145c3e);
+  --mesh-4:var(--theme-4, #072b1f);
+  --mesh-5:var(--theme-5, #0c3a28);
+}
 h1{font-size:var(--fs-h2);line-height:var(--lh-tight);margin:0 0 8px;}
 h2{font-size:var(--fs-h2);line-height:var(--lh-tight);margin:0 0 8px;}
 h3{font-size:var(--fs-h3);line-height:var(--lh-tight);margin:0 0 12px;}
@@ -297,13 +319,13 @@ a{color:var(--accent-text);}
 .hero .cover, .hero .cover-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
 .hero::after{
   content:"";position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(to bottom, rgba(3,18,12,0) 55%, rgba(3,18,12,.7) 80%, var(--mesh-base, #03120c) 100%);
+  background:linear-gradient(to bottom, rgba(var(--theme-base-rgb, 3,18,12),0) 55%, rgba(var(--theme-base-rgb, 3,18,12),.7) 80%, var(--mesh-base, #03120c) 100%);
 }
 .head-text{position:relative;z-index:1;margin:-64px 0 14px;padding:0 2px;}
 .head-text .tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
 .event-title{
   font-size:var(--fs-title);line-height:1.12;font-weight:800;letter-spacing:-.01em;margin:0;overflow-wrap:anywhere;
-  color:var(--on-bg);text-shadow:0 2px 14px rgba(3,18,12,.85), 0 1px 2px rgba(3,18,12,.6);
+  color:var(--on-bg);text-shadow:0 2px 14px rgba(var(--theme-base-rgb, 3,18,12),.85), 0 1px 2px rgba(var(--theme-base-rgb, 3,18,12),.6);
 }
 .event-head.is-cancelled .event-title{text-decoration:line-through;text-decoration-thickness:3px;}
 /* When: right under the title, the second biggest thing on the page.
@@ -320,7 +342,7 @@ a{color:var(--accent-text);}
   background-image:
     radial-gradient(at var(--x1, 20%) var(--y1, 25%), var(--c2, #2ec44f) 0, transparent 55%),
     radial-gradient(at var(--x2, 75%) var(--y2, 60%), var(--c3, #0f5a5a) 0, transparent 50%),
-    linear-gradient(var(--a, 160deg), var(--c1, #145c3e), #03120c);
+    linear-gradient(var(--a, 160deg), var(--c1, #145c3e), var(--c0, #03120c));
 }
 .details-card .meta:first-child{margin-top:2px;}
 .meta{display:flex;gap:14px;align-items:flex-start;margin-bottom:16px;}
@@ -478,6 +500,25 @@ select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(
 .file-btn{position:relative;overflow:hidden;}
 .file-btn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0;}
 .file-btn:focus-within{outline:2px solid var(--text);outline-offset:2px;}
+
+/* The colour slider: a rainbow track (its stops come with the field, from
+   public/ui.js) and a big round thumb a finger can hold. */
+.hue-row{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;}
+.hue-row input[type="range"]{
+  flex:1 1 100%;min-width:0;height:var(--tap);margin:0;background:transparent;
+  -webkit-appearance:none;appearance:none;touch-action:pan-y;cursor:pointer;
+}
+.hue-row input[type="range"]::-webkit-slider-runnable-track{height:14px;border-radius:999px;background:var(--track);border:1px solid var(--field-line);}
+.hue-row input[type="range"]::-moz-range-track{height:14px;border-radius:999px;background:var(--track);border:1px solid var(--field-line);}
+.hue-row input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:30px;height:30px;margin-top:-9px;border-radius:50%;
+  background:var(--mesh-3);border:3px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.5);
+}
+.hue-row input[type="range"]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:var(--mesh-3);border:3px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.5);}
+.hue-row input[type="range"]:focus{outline:none;}
+.hue-row input[type="range"]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--text);outline-offset:2px;}
+.hue-row .small-btn{min-height:var(--tap);}
+.hue-row .small-btn:disabled{opacity:.45;}
 
 /* Picking friends to invite: a checkbox per row, the whole row its label. */
 .pick .person{cursor:pointer;}

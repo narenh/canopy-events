@@ -437,6 +437,30 @@ test('ui.js: the features, drawn', async (t) => {
     assert.equal(UI.relativeWhen({ startsAt: '2030-10-12T19:00:00.000Z', timeZone: 'UTC', status: 'cancelled' }, now), '');
   });
 
+  await t.test('an event\'s colour: null is today\'s green, hue 161 the same, every hue as dark', () => {
+    assert.equal(UI.themeStyle(null), '');
+    assert.equal(UI.themeStyle(360), '');
+    const hex = (rgb) => '#' + rgb.map((x) => x.toString(16).padStart(2, '0')).join('');
+    const green = UI.themeColors(UI.THEME_DEFAULT_HUE);
+    const today = { base: '#03120c', m1: '#0f4a33', m2: '#0a3b2e', m3: '#145c3e', m4: '#072b1f', m5: '#0c3a28', card: '#03200b' };
+    for (const [k, v] of Object.entries(today)) {
+      const near = green[k].every((x, i) => Math.abs(x - parseInt(v.slice(1 + 2 * i, 3 + 2 * i), 16)) <= 2);
+      assert.ok(near, `${k}: ${hex(green[k])} vs ${v}`);
+    }
+    // White on the card over the brightest glow, composited in linear
+    // light, at a few hues: never under 9:1 (the green's is 9.5:1).
+    const lin = (b) => { const c = b / 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const lum = (rgb) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    for (const hue of [UI.THEME_DEFAULT_HUE, 25, 60, 100, 193, 255, 305, 345]) {
+      const c = UI.themeColors(hue);
+      const overGlow = c.m3.map((x, i) => 0.7 * lin(x) + 0.3 * lin(c.card[i]));
+      const ratio = 1.05 / (lum(overGlow) + 0.05);
+      assert.ok(ratio >= 9, `hue ${hue}: ${ratio.toFixed(2)}`);
+    }
+    // The generated picture turns with it.
+    assert.notEqual(UI.coverArt({ id: 'AAAAAAAAAAAA', themeHue: 300 }), UI.coverArt({ id: 'AAAAAAAAAAAA', themeHue: null }));
+  });
+
   await t.test('counts are people, plus the guests they bring', () => {
     const counts = { going: 4, maybe: 1, notGoing: 0, invited: 2, waitlisted: 1, guests: { going: 2, maybe: 1, waitlisted: 0 } };
     assert.equal(UI.countsLine({ counts }, false), '4 going +2 guests · 1 maybe +1 guest · 1 on the waitlist');
@@ -672,7 +696,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     const edit = await page(server, ana, `/e/${party.id}/edit`);
     const form = edit.body;
     assert.ok(form.includes(`id="coverPreview" alt="" src="${cover}"`), 'the cover, previewed');
-    assert.ok(form.includes('Replace photo') && form.includes('id="coverFile"') && !/id="coverRemove"[^>]*hidden/.test(form));
+    assert.ok(form.includes('>Replace<') && form.includes('id="coverFile"') && !/id="coverRemove"[^>]*hidden/.test(form));
     assert.ok(form.includes('<option value="2" selected>2</option>'));
     assert.ok(/id="capacity"[^>]*value="2"/.test(form));
     const fresh = (await page(server, ana, '/new')).body;
@@ -714,10 +738,30 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.equal(d.links, null);
   });
 
+  await t.test('an event\'s colour: its page (signed out too), its editor and its list card; nothing else', async () => {
+    const purple = await makeEvent(ana, { title: 'Purple party', themeHue: 300 });
+    const style = UI.themeStyle(300);
+    for (const who of [anon, ben, ana]) {
+      const html = (await page(server, who, `/e/${purple.id}`)).text;
+      assert.ok(html.includes(`<html lang="en" style="${style}">`), 'the page is turned');
+      assert.ok(!html.includes('<meta name="theme-color" content="#03120c">'), "the browser's bar too");
+    }
+    const green = (await page(server, anon, `/e/${party.id}`)).text;
+    assert.ok(green.includes('<html lang="en">') && green.includes('<meta name="theme-color" content="#03120c">'));
+    const edit = await page(server, ana, `/e/${purple.id}/edit`);
+    assert.ok(edit.text.includes(`<html lang="en" style="${style}">`));
+    assert.match(edit.body, /<input type="range" id="themeHue" min="0" max="359" step="1" value="300" data-set="1"/);
+    assert.match((await page(server, ana, '/new')).body, /id="themeHue"[^>]*value="161" data-set=""[\s\S]*id="themeReset" data-action="theme-reset" disabled/);
+    const home = await page(server, ana, '/');
+    assert.ok(home.text.includes('<html lang="en">'), 'home stays green');
+    assert.match(section(home.body, 'list-hosting'), /<a class="event-row card" href="\/e\/[^"]+" style="--card:rgba\(\d+,\d+,\d+,0\.45\)">/);
+    assert.ok((await page(server, ana, `/e/${purple.id}/invite`)).text.includes('<html lang="en">'), 'inviting stays green');
+  });
+
   await t.test('home: a cover is the list row\'s 3:2 thumbnail; no cover, the generated one', async () => {
     const hosting = section((await page(server, ana, '/')).body, 'list-hosting');
     assert.ok(hosting.includes(`<span class="thumb"><img class="cover" src="${cover}" alt="" loading="lazy">`), hosting);
-    assert.match(hosting, /<span class="thumb"><span class="cover-art" style="--c1:#[0-9a-f]{6};/);
+    assert.match(hosting, /<span class="thumb"><span class="cover-art" style="--c0:#[0-9a-f]{6};--c1:#[0-9a-f]{6};/);
     assert.ok(section((await page(server, fay, '/')).body, 'list-hosting').includes('Garden party'));
   });
 });

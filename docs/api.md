@@ -248,6 +248,50 @@ Slack) fetch it without anyone's session. The URL is random and isn't the
 event's link, and every upload makes a new one (the old one stops
 working), so cache by URL. `null` is no cover.
 
+The web shows the cover at **3:2**, `object-fit: cover` style (centred,
+cropped to fill), as a full-width hero fading into the background at the
+bottom. The crop is display-only: the stored image is the whole photo.
+An event with no cover gets a generated picture on the web (soft glows
+in its colours); draw your own, or use the event's colours below.
+
+## Event colours
+
+Every event has `themeHue`: the hue, in degrees (0–359), its page's
+background is turned to, or `null` for Canopy's own green, which is the
+default. Any host sets it, co-hosts included, on `POST /events` or
+`PATCH /events/{id}` (`null` goes back to green; anything else outside
+0–359 is 400 `bad_theme_hue`). It's on every event, signed out too, since
+the page a guest opens from a text is drawn in it.
+
+The background is the dark Canopy mesh: a base colour with five soft
+glows, and cards of 30% tinted glass over it. Each colour is defined in
+**OKLCH** (lightness, chroma, hue). For a `themeHue` of *H*, each
+colour keeps its lightness and chroma and takes the hue *H + offset*:
+
+| Colour | Role | L | C | hue offset | Today's green |
+|---|---|---|---|---|---|
+| base | the page behind everything | 0.1652 | 0.0266 | +6.4 | `#03120c` |
+| glow 1 | top left (12% 18%, to 50%) | 0.3655 | 0.0715 | +1.4 | `#0f4a33` |
+| glow 2 | top right (88% 8%, to 45%) | 0.3166 | 0.0559 | +9.8 | `#0a3b2e` |
+| glow 3 | the brightest, lower right (72% 78%, to 50%) | 0.4233 | 0.0856 | −0.4 | `#145c3e` |
+| glow 4 | lower left (18% 88%, to 55%) | 0.2597 | 0.0466 | +5.8 | `#072b1f` |
+| glow 5 | the middle (50% 45%, to 60%) | 0.3122 | 0.0590 | +1.9 | `#0c3a28` |
+| card | glass tint, at 30% opacity | 0.2150 | 0.0537 | −11.2 | `#03200b` |
+
+Hues wrap at 360. Convert with the standard OKLCH → OKLab → linear sRGB
+→ sRGB maths (Björn Ottosson's matrices, as in CSS Color 4). If a
+colour falls outside sRGB, **lower its chroma** (keep L and hue) until
+it fits; at these lightnesses that only happens to the card tint near
+yellow. Canopy green is hue **161**: `null` means "use the hex column
+exactly", and 161 comes out within 2/255 of it.
+
+Because only the hue turns, every hue is as dark as the green, so white
+and light text keep their contrast over it (round the whole wheel, white
+on a card over the brightest glow stays at least 9.3:1). Buttons, links
+and grey text stay Canopy green (`#2ec44f` with `#03190a` on it, links
+`#b6f5c3`) at every hue. The web's code for all of this is
+`public/ui.js` (`themeColors`).
+
 ## Plus-ones
 
 The host sets `guestsAllowed` on the event (0 to 10). Each answer then

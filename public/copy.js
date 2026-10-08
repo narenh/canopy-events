@@ -253,6 +253,10 @@ const COPY = {
     coverHint: "Shown at the top of the event and in link previews. It's public: anyone with the image's address can see it.",
     coverNoPreview: "This photo can't be previewed here. It will show once it's saved.",
     coverNotSaved: "The event is saved, but its cover didn't upload.",
+    // The event's colour.
+    theme: 'Background colour',
+    themeHint: "Slide to colour this event's page, for everyone who opens it. This page shows how it will look.",
+    themeDefault: 'Canopy green',
     // Plus-ones and capacity.
     guestsAllowed: 'Guests each person can bring',
     guestsAllowedHint: 'Plus-ones. Lowering it later keeps the answers people already gave.',
@@ -274,7 +278,8 @@ const COPY = {
       bad_time_zone: 'Pick a time zone.',
       rate_limited: "That's a lot of events for one day. Try again tomorrow.",
       bad_guests_allowed: 'Pick from 0 to 10 guests.',
-      bad_capacity: 'Capacity is a whole number from 1 to 10,000, or empty for no limit.'
+      bad_capacity: 'Capacity is a whole number from 1 to 10,000, or empty for no limit.',
+      bad_theme_hue: 'Pick a colour on the slider, or Canopy green.'
     },
     // The cover's own refusals, by the API's `reason`.
     coverErrors: {
@@ -301,7 +306,7 @@ const COPY = {
     // Finding someone by phone number or Instagram.
     lookupHeading: 'Invite by phone number or Instagram',
     lookupHint: 'Type their number or Instagram username exactly. Only people who let themselves be found will show up.',
-    lookupPlaceholder: 'Phone number or @username',
+    lookupPlaceholder: 'Number or @username',
     lookupVerify: 'Confirm your email to find people by phone number or Instagram.',
     lookupOff: "Finding people by phone number or Instagram isn't available yet.",
     lookupNone: 'No one found. Check the number or username, or share the link with them instead.',

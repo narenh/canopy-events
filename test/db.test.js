@@ -111,7 +111,12 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   });
   assert.equal(upgraded.removeGuest('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003').outcome, 'removed');
   assert.equal(upgraded.getRsvp('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003').status, 'removed');
-  // Version 7: whoever was hosting at the upgrade has hosted, from when
+  // Version 7: an event's colour, Canopy green (null) until a host picks
+  // one, and nothing outside 0-359 stored.
+  assert.equal(upgraded.getEvent('AAAAAAAAAAAA').themeHue, null);
+  assert.equal(upgraded.updateEvent('AAAAAAAAAAAA', { themeHue: 300 }).themeHue, 300);
+  assert.throws(() => upgraded.db.prepare("UPDATE events SET theme_hue = 360 WHERE id = 'AAAAAAAAAAAA'").run(), /CHECK/);
+  // And whoever was hosting at the upgrade has hosted, from when
   // they started; nobody else has, until they host.
   assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000001'), true);
   assert.deepEqual(upgraded.db.prepare('SELECT first_at FROM hosted_people WHERE person_id = ?').get('00000000-0000-4000-8000-000000000001'), { first_at: 3 });
