@@ -3224,3 +3224,98 @@ the inviter (in progress)" above). The rest:
   cache. In production events reaches it through Cloudflare and
   Coolify's proxy, so the connection it reuses is the proxy's, with the
   proxy's idle timeout.
+- **The sheet is drawn by public/ui.js and run by views/event.html**, in a
+  box at the end of the body (not inside the page's content, which is
+  drawn again after every change), with the "Show list QR" sheet's
+  handling: a dialog (`aria-modal`, labelled by its heading), the page
+  behind made `inert`, Tab kept inside, Escape, × or the backdrop to
+  close, and focus back on Invite. It loads on first open, in the browser
+  (your friends, every page; the suggestions; your lists and who's on
+  them; your past events; everyone on this event), so a host's page costs
+  nothing extra until they invite; who's on the event is fetched again
+  each time it opens. · Server-drawn with the page.
+- **`/e/<id>/invite` redirects hosts to `/e/<id>?invite=1`**, which opens
+  the sheet (and drops the `?invite` from the address); anyone else gets
+  the same "only a host" page as before, signed out the sign-in. The old
+  page (views/invite.html, `UI.invitePage`, `inviteRow`, `lookupResult`)
+  is gone. **"Invite" is a `<button aria-haspopup="dialog">` now**, not a
+  link. · Draw the sheet as a full page there.
+- **The search box is the only input.** A name filters everyone the sheet
+  knows (accents folded, "ines" finds Inés), suggested people first. When
+  the text is a whole phone number (10 to 15 digits, with `+ ( ) - .` and
+  spaces) or an `@username`, the name filter steps aside and the lookup
+  runs 450 ms after they stop typing, each text once (the answer is kept),
+  with "Looking…", the person (a row to tick, "Found by phone number"), or
+  "No one found." Plain names and partial numbers never look anything up:
+  the lookup is the tightly limited one. A found person stays known to the
+  sheet afterwards (in Everyone, A to Z). Verified hosts only, as before. ·
+  An explicit "Find" button.
+- **Order.** Lists, then "Invite everyone from…", then Suggested (the first
+  8 of 30 suggestions who aren't on the event), then "Everyone else", A to
+  Z: every friend, and anyone from a list, a past event or a lookup, the
+  ones on the event included (greyed). With nothing to suggest it's
+  "Everyone". While searching, one "Matches" list. · As approved.
+- **Lists in the sheet: "Invite all <n>" ticks every member not on the
+  event** (`n` is that number; a list with nobody on it isn't shown;
+  everyone on it already says "All invited"). It's a toggle: pressed once
+  they're all ticked, and pressing again unticks them; anyone can be
+  unticked one by one. Ticking a list is not attaching it (that's
+  "Lists…"), so later joiners aren't invited by it. Members who aren't
+  friends appear in Everyone as "On Drag Race". · Attach the list on send.
+- **"Invite everyone from…" is a native `<select>` of `GET
+  /me/events/past` (hosted, or going or maybe, over), newest first, this
+  event left out.** Picking one ticks its hosts and its going and maybe
+  guests, as far as its guest list lets you see them (the existing
+  `GET .../guests?status=going|maybe`, so no new API: the visibility rule
+  is the API's own), friends or not (anyone at an event you were at; the
+  invitation makes them friends anyway), skipping you and anyone on this
+  event; it says "Picked 9 from Drag Race night 4." (or that nobody's
+  left, or that the list isn't shown to you), and puts the select back. Its
+  hosts count too: "everyone from Ben's birthday" without Ben would be
+  odd. · Friends only; a new "guest ids" endpoint.
+- **People already on the event stay in the list, greyed (their photo
+  and name at 55%), with their status badge at full color** (Going,
+  Maybe, Invited, Hosting, the waitlist; Removed and Can't Go in plain
+  glass), and no checkbox. You never appear.
+- **The tray**: the picked as small faces, newest first (so a tick shows
+  up where you're looking), scrolling sideways past what fits, each a
+  button "Take Maya Chen out" that unticks them (focus moves to the next
+  face, or the search box); then "Invite 7", or "Invite", disabled, at 0.
+  A polite live region says "7 picked." after each change. Sending (100 at
+  a time), the sheet closes, the page is fetched again, and the host card
+  says "Invited 7 people." ("people", since not everyone invited is a
+  friend). A refusal stays in the sheet. · Keep the sheet open.
+- **Keyboard and screen readers:** every row is a native checkbox inside
+  its label (Space ticks, the row lights while the box has focus);
+  sections have headings; the search box is labelled and controls the
+  results; ticking only updates the boxes, the lists' buttons and the
+  tray, so focus never jumps; typing redraws only the results under the
+  box. Checked with Tab, Space and Escape in the desktop pane.
+- **Rows light up edge to edge** (the main fix's look, inside the sheet's
+  16 px padding). The editor's `.pick` focus outline was drawing round
+  the whole list while a row had focus; lists of people to pick from turn
+  it off.
+- **Copy:** "Invite to <title>"; "Name, phone or @username"; "Your
+  lists", "Invite all 12", "All invited"; "Invite everyone from…";
+  "Suggested", "Everyone else"; "On Drag Race", "From <event>", "Found by
+  phone number" / "Found by Instagram" under people who aren't friends.
+  The old page's hints went with it (no help text). invite.* keys only the
+  old page used are gone.
+- **Tests** (test/inviter.test.js): what counts as a lookup (names, short
+  numbers and emails don't); the suggested eight, skipping people on the
+  event, then A to Z without you; searching (accents, suggested first,
+  nothing for a lookup's text, "Looking…", found, none, an error, a stale
+  answer hidden); greyed rows with each status and no checkbox, a picked
+  box ticked; "Invite all <n>" counting and toggling, "All invited", empty
+  lists left out; the tray's faces newest first with their labels and
+  "Invite 3" / disabled "Invite"; the dialog's markup, the past events in
+  their own time zone, the live region; the Invite button on a host's
+  page and not a guest's. test/pages.test.js: `/e/<id>/invite` redirects
+  hosts, refuses guests, and signs in the signed out; the sheet's lookup
+  row is a name and a photo only. test/friend-pages.test.js: added and
+  friend-link friends say so in the sheet. Checked by hand at 375 px and
+  on desktop against the fake account service with 40 people, four past
+  Drag Race nights, a birthday, and three lists: search by name, a phone
+  number (a friend already on it, greyed Maybe), an @username (a
+  non-friend, ticked), Invite all, a past event (Picked 10), sending 21,
+  and the greyed rows afterwards.

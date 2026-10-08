@@ -1,6 +1,6 @@
-// The web pages: an event (/e/<id>, what a shared link opens), your
-// events (/), making and editing one (/new, /e/<id>/edit), inviting
-// friends or anyone by phone or Instagram (/e/<id>/invite), adding
+// The web pages: an event (/e/<id>, what a shared link opens, where
+// hosts invite people from a sheet; /e/<id>/invite opens it), your
+// events (/), making and editing one (/new, /e/<id>/edit), adding
 // co-hosts (/e/<id>/cohosts), your friends, your friend link and your
 // lists (/friends), someone else's friend link (/f/<code>), and a list's
 // link (/l/<code>, with its QR code at /l/<code>/qr.svg).
@@ -31,15 +31,14 @@ const { isVerified } = require('../lib/people');
 const { publicBase } = require('../lib/domain');
 
 // How many of a list a page asks for at once. The guest list shows 50 and
-// then "show more"; inviting reads everyone already on the list, up to
-// MAX_PAGES pages of 100, so it can mark them.
+// then "show more". (The invite sheet reads what it needs itself, in the
+// browser: views/event.html.)
 const GUESTS_SHOWN = 50;
 const WALL_SHOWN = 20;
 const FRIENDS_SHOWN = 50;
 const MEMBERS_SHOWN = 50;
 const LIST_SHOWN = 20;
 const PAST_SHOWN = 10;
-const MAX_PAGES = 20;
 // The account service, for links to the Canopy profile.
 const ACCOUNT_BASE = String(process.env.CANOPY_ACCOUNT_URL || '').replace(/\/+$/, '');
 
@@ -283,33 +282,16 @@ module.exports = function pagesRoutes(ctx) {
     render.page(req, res, 'editor.html', { title: t('editor.editHeading'), main: UI.editorForm(data, { viewerZone: render.viewerZone(req) }), data, theme: UI.themeKeyOf(event), accent: UI.accentKeyOf(event) });
   }));
 
-  // ---------------- Inviting friends ----------------
+  // ---------------- Inviting ----------------
 
+  // Inviting is a sheet over the event page now (public/ui.js
+  // inviteSheet). This old address still works: hosts go to the event with
+  // the sheet open (?invite=1); anyone else is told it's for hosts.
   router.get('/e/:id/invite', attach, signedIn, pageRoute(async (req, res) => {
     const event = await loadEvent(req, res);
     if (!event) return;
     if (!event.viewer || !event.viewer.canEdit) return hostsOnly(req, res, event, 'invite.notHost');
-    // The hosts, everyone already on the list, invited or answered, and
-    // everyone a host removed, so they're marked rather than offered.
-    const onList = {};
-    event.hosts.forEach((h) => { onList[h.person.id] = h.role === 'creator' ? 'hosting' : 'cohosting'; });
-    for (const status of ['', 'removed']) {
-      let cursor = '';
-      for (let i = 0; i < MAX_PAGES; i++) {
-        const page = want(await apiGet(req, `/events/${event.id}/guests?limit=100${status ? `&status=${status}` : ''}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`));
-        page.guests.forEach((g) => { onList[g.person.id] = g.status; });
-        if (!page.nextCursor) break;
-        cursor = page.nextCursor;
-      }
-    }
-    const friends = want(await apiGet(req, '/me/friends?limit=100'));
-    const me = meView(req.person);
-    const data = {
-      me, event, onList, friends: friends.friends, nextCursor: friends.nextCursor, phase: UI.phaseOf(event),
-      // Finding people by phone or Instagram is for verified people.
-      links: me.emailVerified ? null : { verify: canopy.verifyUrl(req, render.hereUrl(req)) }
-    };
-    render.page(req, res, 'invite.html', { title: t('invite.heading'), main: UI.invitePage(data), data });
+    res.redirect(302, `/e/${event.id}?invite=1`);
   }));
 
   // ---------------- Adding co-hosts ----------------

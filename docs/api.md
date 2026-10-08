@@ -936,6 +936,29 @@ little, fading the same way from when it was made: an invitation (either
 way) 0.5, a friend link or adding by id 0.25. Only friends with a score
 above 0 are in it; ties go to whoever you were with last, then by id.
 
+**An invite picker, the way the web's works** (the sheet over an event
+page, public/ui.js `inviteSheet`), from calls that already exist:
+
+1. One search box. A name filters what's loaded (friends, the people on
+   your lists, anyone picked from a past event), accents aside. When the
+   text is a whole phone number (10 to 15 digits, with `+ ( ) - .` and
+   spaces) or an `@username`, look it up (`POST /api/v1/people/lookup`,
+   once they stop typing, each text once) and offer the person first.
+   Never look up a name: the lookup is tightly limited.
+2. Your lists (`GET /api/v1/me/lists`, then each one's `.../members`),
+   each with "Invite all <n>", `n` being its people not on the event yet.
+   Picking them isn't attaching the list (`PUT .../lists/{listId}` is
+   that, from the host's "Lists…").
+3. "Invite everyone from…" one of `GET /api/v1/me/events/past`: its hosts
+   and its `going` and `maybe` guests (`GET .../guests?status=going`, and
+   `maybe`), which the guest list's own visibility rule already limits.
+4. Suggested: the first eight of `GET /api/v1/me/friends/suggested?limit=30`
+   who aren't on the event. Then everyone else A to Z.
+5. Everyone already on the event (its `hosts`, and `GET .../guests` plus
+   `?status=removed` for a host) stays in the list, greyed, with their
+   status, and can't be picked.
+6. Send the picked with `POST .../invites`, 100 at a time.
+
 ## Lists
 
 A list is **one person's own list of people who joined it themselves**,

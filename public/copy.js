@@ -395,35 +395,56 @@ const COPY = {
     }
   },
 
-  // ---------------- Inviting friends, at /e/<id>/invite ----------------
+  // ---------------- Inviting: the sheet over an event page ----------------
   invite: {
-    heading: 'Invite Friends',
-    hint: "Your friends: people you've been to events with, and people you've added. They'll see this in their invitations.",
+    sheetHeading: 'Invite to {title}',
+    close: 'Close',
+    // The one search box: names, and a whole phone number or @username.
+    searchLabel: 'Search your friends, or find someone by phone number or Instagram',
+    searchPlaceholder: 'Name, phone or @username',
+    // The co-hosts page's search box.
     search: 'Search by name',
-    noFriends: "You don't have friends here yet. Share the link instead, or add friends on the Friends page.",
-    noMatch: 'No friends by that name.',
+    loading: 'Loading…',
+    foundHeading: 'Found',
+    looking: 'Looking…',
+    listsHeading: 'Your lists',
+    inviteAll: 'Invite all {count}',
+    allOnEvent: 'All invited',
+    fromLabel: 'Invite everyone from…',
+    fromPicked: 'Picked {count} from {title}.',
+    fromPickedOne: 'Picked 1 from {title}.',
+    fromNone: 'Everyone from {title} is on this event already.',
+    fromHidden: "{title}'s guest list isn't shown to you.",
+    suggestedHeading: 'Suggested',
+    everyoneElseHeading: 'Everyone else',
+    everyoneHeading: 'Everyone',
+    matchesHeading: 'Matches',
+    noMatch: 'No one by that name. Type a whole phone number or @username to find someone.',
+    noFriends: 'No friends here yet. Type a phone number or @username to find someone, or share the link.',
+    pickedLabel: '{count} picked',
+    pickedLive: '{count} picked.',
+    unpick: 'Take {name} out',
+    // Under someone who isn't a friend (yet).
+    fromList: 'On {list}',
+    fromEvent: 'From {title}',
+    foundByPhone: 'Found by phone number',
+    foundByInstagram: 'Found by Instagram',
     inviteSome: 'Invite {count}',
-    invited: 'Invited {count} friends.',
-    invitedOne: 'Invited 1 friend.',
+    invited: 'Invited {count} people.',
+    invitedOne: 'Invited 1 person.',
     together: '{count} events together',
     togetherOne: '1 event together',
-    closed: "This event isn't taking invitations: it's over or cancelled.",
     notHost: 'Only a host can invite people to this event.',
-    // Finding someone by phone number or Instagram.
-    lookupHeading: 'Invite by phone number or Instagram',
-    lookupHint: 'Type their number or Instagram username exactly. Only people who let themselves be found will show up.',
+    // The friends page's lookup box.
     lookupPlaceholder: 'Number or @username',
-    lookupVerify: 'Confirm your email to find people by phone number or Instagram.',
-    lookupOff: "Finding people by phone number or Instagram isn't available yet.",
     lookupNone: 'No one found. Check the number or username, or share the link with them instead.',
-    lookupInvited: 'Invited {name}.',
-    lookupRemoved: "You've removed them from this event. Undo that from the guest list first.",
     lookupErrors: {
       bad_phone: "That doesn't look like a phone number.",
       bad_instagram: 'An Instagram username is letters, numbers, dots and underscores.',
       one_of: 'Type a phone number or an Instagram username.',
       rate_limited: "That's a lot of lookups. Try again later.",
-      email_unverified: 'Confirm your email to find people by phone number or Instagram.'
+      email_unverified: 'Confirm your email to find people by phone number or Instagram.',
+      lookup_not_allowed: "Finding people by phone number or Instagram isn't available yet."
     },
     back: 'Back to the event'
   },

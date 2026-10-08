@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const sharp = require('sharp');
 const jsQR = require('jsqr');
 const { startServer, client, makeEvent, findLeaks } = require('./harness');
+const UI = require('../public/ui.js');
 
 async function page(server, who, url) {
   const c = who && who.get ? who : client(server, who);
@@ -128,11 +129,12 @@ test('friend pages', async (t) => {
     assert.equal((await page(server, anon, `/f/${link.code}`)).status, 404);
   });
 
-  await t.test('the invite page offers added friends too', async () => {
-    const other = await makeEvent(ana, { title: 'Other' });
-    const r = await page(server, ana, `/e/${other.id}/invite`);
-    const list = section(r.body, 'invite');
-    assert.match(list, /Cy Park<\/div><div class="sub">Added</);
-    assert.match(list, /Dee Ruiz<\/div><div class="sub">Friend link</);
+  await t.test('the invite sheet offers added friends too, each saying how they are in your list', async () => {
+    const friends = (await ana.get('/api/v1/me/friends?limit=100')).data.friends;
+    const people = {};
+    friends.forEach((f) => { people[f.person.id] = { person: f.person, sub: UI.friendSub(f, 'invite') }; });
+    const html = UI.inviteResults({ me: { id: P.ana.id }, people, suggestedIds: [], lists: [], past: [], onList: {}, selected: [], query: '' });
+    assert.match(html, /Cy Park<\/div><div class="sub">Added</);
+    assert.match(html, /Dee Ruiz<\/div><div class="sub">Friend link</);
   });
 });

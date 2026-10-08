@@ -1134,3 +1134,40 @@ textarea.address-input{min-height:0;margin-top:8px;}
 @media (min-width: 700px) {
   .sheet-panel{left:50%;right:auto;width:560px;transform:translateX(-50%);top:5vh;bottom:5vh;}
 }
+
+/* The invite sheet: the heading, the search box, everything to pick from
+   (scrolling), and the tray of faces with "Invite 7" at the foot. Each
+   row lights up edge to edge on hover, as the old page's did. Someone on
+   the event already is greyed, their status badge in its own color. */
+.invite-panel .bg-head h2{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.invite-search{padding:12px 16px 0;}
+.invite-search input{margin:0;}
+.invite-panel .sheet-scroll{padding:4px 16px 8px;}
+.invite-group{margin:0;}
+.invite-group .group-heading{margin:16px 0 2px;}
+.invite-line{margin:14px 0;}
+.invite-line.error-line{color:var(--danger);}
+.people.pick .pick-row{padding:0;}
+.people.pick .pick-row .pick-label{display:flex;align-items:center;gap:12px;width:100%;padding:10px 16px;cursor:pointer;}
+.people.pick .pick-row.on-list .pick-label{cursor:default;}
+.invite-panel .people.pick .person{margin:0 -16px;}
+.invite-panel .people.pick .pick-row{padding:0;}
+.people.pick .pick-row.on-list:hover{background:none;}
+.pick-row.on-list .avatar, .pick-row.on-list .who{opacity:.55;}
+.people.pick .list-row{padding:10px 16px;}
+.list-icon{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex:0 0 auto;border-radius:50%;background:var(--secondary);border:1px solid var(--line);color:var(--text);}
+.list-icon svg{width:22px;height:22px;}
+.list-row .small-btn[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);}
+.invite-from{margin:14px 0 2px;}
+.invite-from select{margin:0;}
+.invite-foot{border-top:1px solid var(--line);padding:10px 16px 12px;}
+.invite-foot .notice:not(:empty), .invite-foot .error:not(:empty){margin:0 0 8px;}
+.invite-tray{display:flex;align-items:center;gap:10px;}
+.tray-faces{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px;}
+.tray-faces::-webkit-scrollbar{display:none;}
+.tray-face{width:auto;padding:0;background:none;border:none;border-radius:50%;flex:0 0 auto;}
+.tray-face .avatar.small{width:36px;height:36px;}
+.invite-tray #inviteSend{width:auto;flex:0 0 auto;min-width:112px;}
+/* The editor's .pick outlines itself while focused inside; a list of
+   people to pick from shows focus on the row or the control instead. */
+.people.pick:focus-within{outline:none;}

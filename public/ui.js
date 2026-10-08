@@ -1205,7 +1205,8 @@
     h += '<div class="host-actions">';
     if (open) {
       h += '<button type="button" data-action="share" data-url="' + esc(e.url) + '" data-title="' + esc(e.title) + '">Share link</button>';
-      h += '<a class="button secondary" href="/e/' + esc(e.id) + '/invite">Invite</a>';
+      // The invite sheet (views/event.html); /e/<id>/invite opens it too.
+      h += '<button type="button" class="secondary" data-action="open-invite" id="inviteBtn" aria-haspopup="dialog">Invite</button>';
     }
     // Edit, and the menu beside it.
     const items = [];
@@ -1962,25 +1963,14 @@
     return '<span class="tag off">' + tx('status.' + status) + '</span>';
   }
 
-  // A friend to invite: a checkbox, or what they've already said (or that
-  // a host removed them: the host is the one looking).
-  function inviteRow(f, onList) {
-    const p = f.person;
-    const status = onList[p.id];
-    const sub = friendSub(f, 'invite');
-    const right = status ? statusTag(status) : '<input type="checkbox" value="' + esc(p.id) + '" aria-label="' + esc(fullName(p)) + '">';
-    return '<li class="person' + (status ? ' on-list' : '') + '" data-name="' + esc(fullName(p).toLowerCase()) + '">'
-      + '<label style="display:contents">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div><div class="sub">' + esc(sub) + '</div></div>' + right + '</label></li>';
-  }
-
-  // Finding someone by their phone number or Instagram username: one
-  // field, an exact match (the account service's lookup, through POST
-  // /api/v1/people/lookup), and the person it finds, a name and a photo,
-  // offered with "Invite" (the invite page) or "Add friend" (the friends
-  // page; `prefix` 'friends' picks its words). Only for verified people
-  // (the API's rule); anyone else is told how to get it.
+  // Finding someone by their phone number or Instagram username, on the
+  // friends page: one field, an exact match (the account service's
+  // lookup, through POST /api/v1/people/lookup), and the person it finds,
+  // a name and a photo, offered with "Add friend". Only for verified
+  // people (the API's rule); anyone else is told how to get it. (The
+  // invite sheet does its lookups from its one search box.)
   function lookupSection(d, prefix) {
-    prefix = prefix || 'invite';
+    prefix = prefix || 'friends';
     let h = '<section class="card" id="lookup" data-section="lookup"><h3>' + tx(prefix + '.lookupHeading') + '</h3>';
     if (!d.me || !d.me.emailVerified) {
       const verify = d.links && safeUrl(d.links.verify);
@@ -1994,42 +1984,190 @@
     return h + '</section>';
   }
 
-  // The person a lookup found: their name and photo, and "Invite", or
-  // what they've already said.
-  function lookupResult(p, onList) {
-    const status = onList[p.id];
-    return '<ul class="people found"><li class="person">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div></div>'
-      + (status ? statusTag(status) : '<button type="button" class="small-btn" data-action="invite-found" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Invite</button>')
-      + '</li></ul>';
+  // ---------------- The invite sheet ----------------
+  //
+  // A host's "Invite" opens a sheet over the event page (views/event.html
+  // loads what it needs and keeps the state; these draw it). Top to
+  // bottom: one search field, which filters everyone by name and, when
+  // what's typed is a whole phone number or @username, looks that person
+  // up and offers them first; your lists, each with "Invite all <n>"; "Invite
+  // everyone from…" one of your past events; Suggested (the people you've
+  // been with most and most recently, GET /me/friends/suggested); then
+  // everyone else, A to Z. Everyone already on the event stays in the
+  // list, greyed, with their status, and can't be picked. The picked are a
+  // row of faces at the foot, beside "Invite 7".
+  //
+  // `st` is the page's state: { me, people: { id: { person, sub } },
+  // suggestedIds, lists: [{ id, name, memberIds }], past: [event],
+  // onList: { id: status }, selected: [id], query, lookup, loading }.
+
+  const SUGGESTED_SHOWN = 8;
+
+  // What a search box's text is for the lookup: 'instagram' for an
+  // @username, 'phone' for a whole phone number (10 to 15 digits, with the
+  // usual + ( ) - . and spaces), or null (a name: no lookup). The same
+  // shapes the account service accepts, so a name never costs a lookup.
+  function lookupKindOf(q) {
+    const s = String(q || '').trim();
+    if (/^@[a-z0-9._]{1,30}$/i.test(s)) return 'instagram';
+    if (/^\+?[\d\s().-]+$/.test(s)) {
+      const digits = s.replace(/\D/g, '').length;
+      if (digits >= 10 && digits <= 15) return 'phone';
+    }
+    return null;
   }
 
-  // Inviting: finding someone by phone or Instagram, then a search box,
-  // your friends with a checkbox each (or what they've already said), and
-  // the button. `d` is { event, me, links, friends, onList: { personId:
-  // status }, phase }.
-  function invitePage(d) {
-    const e = d.event;
-    let h = '<a class="back-link" href="/e/' + esc(e.id) + '">‹ ' + esc(e.title) + '</a>';
-    if (d.phase === 'cancelled' || d.phase === 'over') {
-      h += '<section class="card" id="invite" data-section="invite"><h2>' + tx('invite.heading') + '</h2>';
-      h += '<p class="state-line" style="margin:0">' + tx('invite.closed') + '</p>';
-      return h + '</section>';
+  // Letters without their accents, lower case: "Inés" is found by "ines".
+  function foldName(s) {
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  }
+
+  function byName(st) {
+    return (a, b) => fullName(st.people[a].person).localeCompare(fullName(st.people[b].person), LOCALE, { sensitivity: 'base' }) || (a < b ? -1 : 1);
+  }
+
+  // Who can be picked: not already on the event (hosting, invited, any
+  // answer, removed) and not you.
+  function pickable(st, id) {
+    return !st.onList[id] && !(st.me && st.me.id === id);
+  }
+
+  // The order of the list under the lists: { suggested, everyone }, ids.
+  // Suggested is the first SUGGESTED_SHOWN suggestions who aren't on the
+  // event yet; everyone is everybody else known to the sheet (friends, and
+  // people from your lists, a past event or a lookup), A to Z, the ones on
+  // the event included (greyed). With a search, one list: whoever's name
+  // matches, suggested first, then A to Z.
+  function inviteOrder(st) {
+    const known = Object.keys(st.people).filter((id) => !(st.me && st.me.id === id));
+    const suggested = (st.suggestedIds || []).filter((id) => st.people[id] && pickable(st, id)).slice(0, SUGGESTED_SHOWN);
+    const q = foldName(String(st.query || '').trim());
+    if (q && !lookupKindOf(st.query)) {
+      const hits = known.filter((id) => foldName(fullName(st.people[id].person)).includes(q));
+      const top = suggested.filter((id) => hits.includes(id));
+      return { suggested: [], everyone: top.concat(hits.filter((id) => !top.includes(id)).sort(byName(st))) };
     }
-    h += lookupSection(d);
-    h += '<section class="card" id="invite" data-section="invite"><h2>' + tx('invite.heading') + '</h2>';
-    h += '<p>' + tx('invite.hint') + '</p>';
-    if (!d.friends.length) {
-      h += '<p class="empty" style="margin:0">' + tx('invite.noFriends') + '</p>';
-      return h + '</section>';
+    if (q) return { suggested: [], everyone: [] };
+    return { suggested, everyone: known.filter((id) => !suggested.includes(id)).sort(byName(st)) };
+  }
+
+  // A list's people who could be picked, for "Invite all <n>".
+  function listPickable(st, l) {
+    return l.memberIds.filter((id) => pickable(st, id));
+  }
+
+  // One person: a checkbox, the whole row its label; or, already on the
+  // event, greyed with their status and nothing to tick.
+  function invitePickRow(st, id) {
+    const x = st.people[id];
+    const p = x.person;
+    const status = st.onList[id];
+    const name = fullName(p);
+    const picked = (st.selected || []).includes(id);
+    const right = status
+      ? statusTag(status)
+      : '<input type="checkbox" class="pick-box" value="' + esc(id) + '"' + (picked ? ' checked' : '') + ' aria-label="' + esc(name) + '">';
+    return '<li class="person pick-row' + (status ? ' on-list' : '') + '">'
+      + (status ? '<div class="pick-label">' : '<label class="pick-label">')
+      + avatar(p) + '<div class="who"><div class="name">' + esc(name) + '</div>' + (x.sub ? '<div class="sub">' + esc(x.sub) + '</div>' : '') + '</div>'
+      + right + (status ? '</div>' : '</label>') + '</li>';
+  }
+
+  // The found-by-lookup line at the top: looking, the person, nobody, or
+  // why it couldn't look.
+  function inviteLookup(st) {
+    const l = st.lookup;
+    if (!l || l.q !== String(st.query || '').trim()) return '';
+    let h = '<section class="invite-group" aria-labelledby="inviteFoundHeading"><h3 class="group-heading" id="inviteFoundHeading">' + tx('invite.foundHeading') + '</h3>';
+    if (l.state === 'loading') h += '<p class="small invite-line">' + tx('invite.looking') + '</p>';
+    else if (l.state === 'found' && l.person && st.people[l.person.id]) h += '<ul class="people pick">' + invitePickRow(st, l.person.id) + '</ul>';
+    else if (l.state === 'none') h += '<p class="small invite-line">' + tx('invite.lookupNone') + '</p>';
+    else h += '<p class="small invite-line error-line">' + esc(l.message || t('common.failed')) + '</p>';
+    return h + '</section>';
+  }
+
+  // Everything under the search box. Drawn again when what's typed, or
+  // what's loaded, changes (ticking a box only updates the boxes, the
+  // lists' buttons and the tray, so focus stays put).
+  function inviteResults(st) {
+    if (st.loading) return '<p class="small invite-line" role="status">' + tx('invite.loading') + '</p>';
+    const order = inviteOrder(st);
+    const searching = !!String(st.query || '').trim();
+    let h = inviteLookup(st);
+    if (!searching) {
+      const lists = (st.lists || []).filter((l) => l.memberIds.length);
+      if (lists.length) {
+        h += '<section class="invite-group" aria-labelledby="inviteListsHeading"><h3 class="group-heading" id="inviteListsHeading">' + tx('invite.listsHeading') + '</h3><ul class="people pick">';
+        h += lists.map((l) => inviteListRow(st, l)).join('');
+        h += '</ul></section>';
+      }
+      if ((st.past || []).length) {
+        h += '<div class="invite-from"><label class="sr-only" for="inviteFrom">' + tx('invite.fromLabel') + '</label>'
+          + '<select id="inviteFrom"><option value="">' + tx('invite.fromLabel') + '</option>'
+          + st.past.map((e) => '<option value="' + esc(e.id) + '">' + esc(e.title) + ' · ' + esc(fmt(Date.parse(e.startsAt), e.timeZone, { month: 'short', day: 'numeric' })) + '</option>').join('')
+          + '</select></div>';
+      }
+      if (order.suggested.length) {
+        h += '<section class="invite-group" aria-labelledby="inviteSuggestedHeading"><h3 class="group-heading" id="inviteSuggestedHeading">' + tx('invite.suggestedHeading') + '</h3>'
+          + '<ul class="people pick">' + order.suggested.map((id) => invitePickRow(st, id)).join('') + '</ul></section>';
+      }
     }
-    h += '<input type="search" id="search" placeholder="' + tx('invite.search') + '" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="' + tx('invite.search') + '">';
-    h += '<ul class="people pick" id="pickList">' + d.friends.map((f) => inviteRow(f, d.onList || {})).join('') + '</ul>';
-    h += '<p class="hidden" id="noMatch" style="margin:10px 0 0">' + tx('invite.noMatch') + '</p>';
-    h += '</section>';
-    h += '<div class="sticky-send"><div class="card" style="padding:12px">'
-      + '<div class="notice" id="inviteNotice" role="status"></div><div class="error" id="inviteError" role="alert"></div>'
-      + '<button type="button" id="sendBtn" data-action="send" disabled>Invite</button></div></div>';
+    if (order.everyone.length) {
+      const heading = searching ? t('invite.matchesHeading') : (order.suggested.length ? t('invite.everyoneElseHeading') : t('invite.everyoneHeading'));
+      h += '<section class="invite-group" aria-labelledby="inviteEveryoneHeading"><h3 class="group-heading" id="inviteEveryoneHeading">' + esc(heading) + '</h3>'
+        + '<ul class="people pick">' + order.everyone.map((id) => invitePickRow(st, id)).join('') + '</ul></section>';
+    } else if (searching && !lookupKindOf(st.query)) {
+      h += '<p class="small invite-line">' + tx('invite.noMatch') + '</p>';
+    } else if (!searching && !order.suggested.length) {
+      h += '<p class="small invite-line">' + tx('invite.noFriends') + '</p>';
+    }
     return h;
+  }
+
+  // A list, with "Invite all <n>" (its people not on the event yet), a
+  // toggle: pressed once they're all picked, and pressing it again
+  // unpicks them.
+  function inviteListRow(st, l) {
+    const ids = listPickable(st, l);
+    const all = ids.length > 0 && ids.every((id) => (st.selected || []).includes(id));
+    const sub = l.memberIds.length === 1 ? t('lists.countOne') : t('lists.count', { count: l.memberIds.length });
+    const btn = ids.length
+      ? '<button type="button" class="small-btn' + (all ? '' : ' secondary') + '" data-action="pick-list" data-list="' + esc(l.id) + '" aria-pressed="' + (all ? 'true' : 'false') + '">' + tx('invite.inviteAll', { count: ids.length }) + '</button>'
+      : '<span class="tag off">' + tx('invite.allOnEvent') + '</span>';
+    return '<li class="person list-row" data-list="' + esc(l.id) + '"><span class="list-icon" aria-hidden="true">' + ICON_LIST + '</span>'
+      + '<div class="who"><div class="name">' + esc(l.name) + '</div><div class="sub">' + esc(sub) + '</div></div>' + btn + '</li>';
+  }
+
+  // The foot of the sheet: the picked as a row of faces (each a button that
+  // unpicks them), and the button, "Invite 7" (just "Invite", off, at 0).
+  function inviteTray(st) {
+    // The latest picked first, so a tick shows up where you're looking.
+    const picked = (st.selected || []).filter((id) => st.people[id]).reverse();
+    const n = picked.length;
+    let h = '<div class="tray-faces" role="list" aria-label="' + tx('invite.pickedLabel', { count: n }) + '">';
+    h += picked.map((id) => {
+      const p = st.people[id].person;
+      return '<span role="listitem"><button type="button" class="tray-face" data-action="unpick" data-person="' + esc(id) + '" aria-label="' + tx('invite.unpick', { name: fullName(p) }) + '" title="' + esc(fullName(p)) + '">' + avatar(p, 'small') + '</button></span>';
+    }).join('');
+    h += '</div>';
+    h += '<button type="button" id="inviteSend" data-action="send-invites"' + (n ? '' : ' disabled') + '>' + (n ? tx('invite.inviteSome', { count: n }) : 'Invite') + '</button>';
+    return h;
+  }
+
+  // The sheet itself, once: its heading, the search box, a box for the
+  // results and one for the tray. `e` is the event.
+  function inviteSheet(e, st) {
+    return '<div class="sheet-backdrop" id="inviteBackdrop"></div>'
+      + '<div class="sheet-panel invite-panel" id="invitePanel" role="dialog" aria-modal="true" aria-labelledby="inviteHeading">'
+      + '<div class="bg-head"><h2 id="inviteHeading">' + tx('invite.sheetHeading', { title: e.title }) + '</h2>'
+      + '<button type="button" class="round-btn" data-action="close-invite" aria-label="' + tx('invite.close') + '">' + ICON_CLOSE + '</button></div>'
+      + '<div class="invite-search"><input type="search" id="inviteSearch" placeholder="' + tx(st && st.me && st.me.emailVerified ? 'invite.searchPlaceholder' : 'invite.search') + '"'
+      + ' aria-label="' + tx('invite.searchLabel') + '" aria-controls="inviteResults" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="64"></div>'
+      + '<div class="sheet-scroll" id="inviteResults">' + inviteResults(st || { loading: true }) + '</div>'
+      + '<div class="invite-foot"><div class="notice" id="inviteNotice" role="status"></div><div class="error" id="inviteError" role="alert"></div>'
+      + '<div class="invite-tray" id="inviteTray">' + inviteTray(st || {}) + '</div></div>'
+      + '<p class="sr-only" id="inviteLive" aria-live="polite"></p>'
+      + '</div>';
   }
 
   // ---------------- Adding co-hosts ----------------
@@ -2137,6 +2275,8 @@
     + '<rect x="7" y="13" width="3" height="3" rx=".6" fill="currentColor"/><rect x="14" y="13" width="3" height="3" rx=".6" fill="currentColor"/></svg>';
   const ICON_PICTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>'
     + '<circle cx="8.5" cy="9.5" r="1.9" fill="currentColor"/><path fill="currentColor" d="M4 18.5l5.2-5.6 3.3 3.4 3.2-4.1L20 18.5z"/></svg>';
+  // A list: three lines with a dot each.
+  const ICON_LIST = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9 6.5h11M9 12h11M9 17.5h11"/><circle cx="4.5" cy="6.5" r="1.5" fill="currentColor"/><circle cx="4.5" cy="12" r="1.5" fill="currentColor"/><circle cx="4.5" cy="17.5" r="1.5" fill="currentColor"/></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
 
   // A gallery: four tiles.
@@ -2460,7 +2600,7 @@
     backgroundGroups, backgroundSheet, tmdbCredit,
     eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     listQr, listCount, ownListItem, listMemberRows, listsSection, membershipsSection, listLinkPage, joinListSection, eventListsBlock, listQrSheet,
-    eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, ICON_CALENDAR, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
+    eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, ICON_CALENDAR, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, lookupKindOf, foldName, inviteOrder, invitePickRow, inviteResults, inviteTray, inviteSheet, inviteListRow, listPickable, SUGGESTED_SHOWN, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, HOME_LOADS, HOME_TABS, MAX_GUESTS_ALLOWED
   };
 });
