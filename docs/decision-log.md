@@ -759,3 +759,50 @@ waitlist, host moderation and lookup, plus one API fix, built on branch
   shows the new link in a box with Share and Copy, under the confirm
   that explains the old one stops working. · n/a · views/event.html.
 
+### Bigger type, and covers first (the owner's design direction)
+
+- **A type scale in custom properties** (`--fs-body` 17px, `--fs-small`
+  15px, `--fs-button` 17px, `--fs-h3` 19px, `--fs-title` 32px on a
+  phone and 36px from 700px, `--fs-list-title` 19–20px, `--tap` 44px),
+  set in the events half of events.css, which overrides the copied
+  account.css sizes rather than editing them, so that half stays
+  diffable against the account service. Fields are 17px. Colours are
+  unchanged, so the contrast notes stay true. · The owner: friendlier,
+  larger. · `:root` in the events half of public/events.css.
+- Status pills (GOING, CANCELLED) stay at 13px, uppercase and bold: the
+  one thing under 15px. · At 15px uppercase they shout and crowd a
+  list row; they're labels next to bigger text, not something read. ·
+  `.tag`.
+- **The hero**: the cover at 3:2 (`object-fit: cover`), edge to edge on
+  a phone (negative margins equal to the page gutter, safe areas
+  included), inside the column with rounded corners from 700px. A
+  gradient overlay fades it into the mesh's base colour (clear at 55%,
+  70% at 80%, solid at the bottom), and the last 12% also melts away
+  with a mask, so no edge shows against the mesh's glows. The title
+  overlaps the bottom 64px (80px on desktop), where the overlay is at
+  least 70%, with a text shadow. · The owner's brief; the overlap depth
+  is what keeps a white title readable over a white sky. · `.hero`,
+  `.head-text`.
+- **No cover: a generated picture** at the same 3:2 in the same hero:
+  three glows in one of six Canopy-green palettes, placed by an FNV
+  hash of the event's id, drawn in CSS (no image file, no words). It's
+  never a link preview image (`og:image` is only ever the real cover).
+  · Every event page has the same shape; a preview of a gradient tells
+  nobody anything. · `coverArt` in public/ui.js.
+- **List rows get a 3:2 thumbnail** (132px wide on a phone, 168px from
+  700px) with the date on it, the generated picture when there's no
+  cover, and the title in two lines at 19px. Not a full-width card
+  image per event. · A full-width 3:2 image is ~230px tall on a phone;
+  twenty of them make the home page a long scroll to find one event. ·
+  `.event-row .thumb`; for full cards, move `.thumb` above `.info`.
+- The editor's preview is the cover at 3:2, cropped as the page crops
+  it, without the fade (inside a glass card the fade reads as a
+  smudge). · n/a · `.cover-preview`.
+- **The 3:2 crop is display-only.** The API keeps the whole photo
+  (within 1600px), and `og:image` is that photo. A server-side 3:2 crop
+  for previews isn't worth it yet: iMessage and WhatsApp crop the image
+  to their own shapes anyway, and Slack/X want about 1.91:1, not 3:2,
+  so one more crop wouldn't match them either. If previews look bad, the
+  fix is a second file at upload (1200×630, centre crop) used only for
+  `og:image`. · n/a
+

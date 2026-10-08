@@ -202,6 +202,42 @@
     return safeUrl(e && e.coverImageUrl);
   }
 
+  // An event with no cover gets a picture anyway, so every event page has
+  // the same hero: soft glows in Canopy greens on the page's own dark
+  // base, placed and coloured by the event's id (the same event always
+  // looks the same, on the server and in the browser). No words in it.
+  const ART_GREENS = [
+    ['#145c3e', '#2ec44f', '#0f5a5a'],
+    ['#0f4a33', '#7fbf3f', '#145c3e'],
+    ['#0a3b2e', '#3fa86b', '#b6f5c3'],
+    ['#1f7a4d', '#0c3a28', '#9be0a8'],
+    ['#0f5a5a', '#2ec44f', '#0a3b2e'],
+    ['#145c3e', '#d7e86b', '#0f4a33']
+  ];
+
+  function seedOf(text) {
+    let h = 2166136261;
+    for (const c of String(text || '')) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+    return h >>> 0;
+  }
+
+  function coverArt(e, cls) {
+    const h = seedOf(e && e.id);
+    const part = (n, shift) => (h >>> shift) % n;
+    const [c1, c2, c3] = ART_GREENS[part(ART_GREENS.length, 0)];
+    const style = '--c1:' + c1 + ';--c2:' + c2 + ';--c3:' + c3
+      + ';--x1:' + (8 + part(45, 3)) + '%;--y1:' + (10 + part(40, 9)) + '%'
+      + ';--x2:' + (50 + part(45, 14)) + '%;--y2:' + (35 + part(50, 20)) + '%'
+      + ';--a:' + (90 + part(180, 25)) + 'deg';
+    return '<span class="cover-art' + (cls ? ' ' + cls : '') + '" style="' + esc(style) + '" aria-hidden="true"></span>';
+  }
+
+  // The event's picture: its cover, or the generated one.
+  function coverMedia(e, imgAttrs) {
+    const url = coverUrl(e);
+    return url ? '<img class="cover" src="' + esc(url) + '" alt=""' + (imgAttrs || '') + '>' : coverArt(e);
+  }
+
   function isOpen(phase) {
     return phase === 'upcoming' || phase === 'now';
   }
@@ -242,16 +278,17 @@
     return bits.join(' · ');
   }
 
-  // The event itself: title, when, where, who's hosting, the description.
+  // The event itself: the hero (its cover, or the generated picture, at
+  // 3:2, fading into the page), the title on the fade, then a card with
+  // when, where, who's hosting, the counts and the description.
   function details(e, d, o, phase) {
     const signedIn = !!d.me;
     const w = when(e, o.viewerZone);
     const tags = statusTags(e, phase);
-    const cover = coverUrl(e);
-    let h = '<section class="card event-head' + (phase === 'cancelled' ? ' is-cancelled' : '') + '" id="details" data-section="details">';
-    if (cover) h += '<img class="cover" src="' + esc(cover) + '" alt="">';
-    if (tags) h += '<div class="tags">' + tags + '</div>';
-    h += '<h1 class="event-title">' + esc(e.title) + '</h1>';
+    let h = '<section class="event-head' + (phase === 'cancelled' ? ' is-cancelled' : '') + (coverUrl(e) ? ' has-cover' : '') + '" id="details" data-section="details">';
+    h += '<div class="hero">' + coverMedia(e) + '</div>';
+    h += '<div class="head-text">' + (tags ? '<div class="tags">' + tags + '</div>' : '') + '<h1 class="event-title">' + esc(e.title) + '</h1></div>';
+    h += '<div class="card details-card">';
     h += '<div class="meta when">' + ICON.when + '<div class="what">' + esc(w.date) + '<span class="sub">' + esc(w.time) + '</span>'
       + (w.zoneNote ? '<span class="sub zone-note">' + esc(w.zoneNote) + '</span>' : '') + '</div></div>';
     if (e.locationName || e.locationAddress || e.locationAddressHidden) {
@@ -276,7 +313,7 @@
     const spots = spotsLine(e, phase);
     if (spots) h += '<p class="spots' + (e.spotsLeft === 0 ? ' full' : '') + '">' + esc(spots) + '</p>';
     if (e.description) h += '<div class="description">' + esc(e.description) + '</div>';
-    h += '</section>';
+    h += '</div></section>';
     return h;
   }
 
@@ -590,16 +627,13 @@
     else if (viewer.canEdit && list !== 'hosting') tag = '<span class="tag off">' + tx(viewer.role === 'cohost' ? 'status.cohosting' : 'status.hosting') + '</span>';
     else if (viewer.rsvp && !['invited', 'removed'].includes(viewer.rsvp.status)) tag = '<span class="tag' + (viewer.rsvp.status === 'going' ? '' : ' off') + '">' + tx('status.' + viewer.rsvp.status) + '</span>';
     const sub = [whenShort(e, o.viewerZone), e.locationName].filter(Boolean).join(' · ');
-    // The cover as a thumbnail, with the date on it; otherwise the date
-    // on its own.
-    const cover = coverUrl(e);
+    // The cover (or the generated picture) as a 3:2 thumbnail, with the
+    // date on it.
     const tile = '<span class="mon">' + esc(fmt(s, z, { month: 'short' })) + '</span><span class="day">' + esc(fmt(s, z, { day: 'numeric' })) + '</span>';
     return '<a class="event-row' + (asCard ? ' card' : '') + (phase === 'cancelled' ? ' is-cancelled' : '') + '" href="/e/' + esc(e.id) + '">'
-      + (cover
-        ? '<span class="when-tile thumb"><img src="' + esc(cover) + '" alt="" loading="lazy"><span class="date">' + tile + '</span></span>'
-        : '<span class="when-tile">' + tile + '</span>')
-      + '<span class="info"><span class="title">' + esc(e.title) + '</span><span class="sub">' + esc(sub) + '</span></span>'
-      + tag + '</a>';
+      + '<span class="thumb">' + coverMedia(e, ' loading="lazy"') + '<span class="date">' + tile + '</span></span>'
+      + '<span class="info"><span class="title">' + esc(e.title) + '</span><span class="sub">' + esc(sub) + '</span>'
+      + (tag ? '<span class="tags">' + tag + '</span>' : '') + '</span></a>';
   }
 
   // An invitation: the event, and going / can't go right there.
@@ -873,7 +907,7 @@
 
   return {
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, coverField, safeUrl, fmt, when, whenShort, whenPreview, phaseOf, zoneAbbr, zoneCity, sameClock,
-    fullName, initials, avatar, personRow, coverUrl, plusGuests, spotsLine, countsLine, guestsShown,
+    fullName, initials, avatar, personRow, coverUrl, coverArt, plusGuests, spotsLine, countsLine, guestsShown,
     eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, friendRows, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED

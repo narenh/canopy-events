@@ -504,12 +504,18 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.equal(pageData(r.text).wall, null);
   });
 
-  await t.test('without a cover, the preview has no image', async () => {
+  await t.test('without a cover: the same hero with a generated picture, and no image in the preview', async () => {
     const plain = await makeEvent(ana, { title: 'No picture' });
-    const html = (await page(server, anon, `/e/${plain.id}`)).text;
-    assert.equal(meta(html, 'og:image'), null);
-    assert.equal(meta(html, 'twitter:card'), 'summary');
-    assert.ok(!html.slice(0, html.indexOf('id="pageData"')).includes('<img class="cover"'));
+    const r = await page(server, anon, `/e/${plain.id}`);
+    assert.equal(meta(r.text, 'og:image'), null);
+    assert.equal(meta(r.text, 'twitter:card'), 'summary');
+    const details = section(r.body, 'details');
+    assert.ok(!details.includes('<img class="cover"'));
+    assert.match(details, /<div class="hero"><span class="cover-art" style="[^"]+" aria-hidden="true"><\/span><\/div>/);
+    // The same event always gets the same picture, and the picture has
+    // no words in it.
+    assert.equal(UI.coverArt({ id: plain.id }), UI.coverArt({ id: plain.id }));
+    assert.notEqual(UI.coverArt({ id: plain.id }), UI.coverArt({ id: 'BBBBBBBBBBBB' }));
   });
 
   await t.test('unverified, maybe: the guests stepper, and the wall with a box to post in', async () => {
@@ -679,9 +685,10 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.equal(d.links, null);
   });
 
-  await t.test('home: a cover is the list row\'s thumbnail', async () => {
+  await t.test('home: a cover is the list row\'s 3:2 thumbnail; no cover, the generated one', async () => {
     const hosting = section((await page(server, ana, '/')).body, 'list-hosting');
-    assert.ok(hosting.includes(`<span class="when-tile thumb"><img src="${cover}" alt="" loading="lazy">`), hosting);
+    assert.ok(hosting.includes(`<span class="thumb"><img class="cover" src="${cover}" alt="" loading="lazy">`), hosting);
+    assert.match(hosting, /<span class="thumb"><span class="cover-art" style="--c1:#[0-9a-f]{6};/);
     assert.ok(section((await page(server, fay, '/')).body, 'list-hosting').includes('Garden party'));
   });
 });
