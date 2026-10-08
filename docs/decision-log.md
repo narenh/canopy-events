@@ -2327,6 +2327,19 @@ rest:
   stored `accentHue: 330` and drew a purple pill and button on grey;
   moving Colour to a hue hid the Accent slider and Save stored null.
 
+## Guest menu (queued after event details)
+
+- **(You)** Guests get a ⋯ menu on the event page with: Mute event,
+  Remove me from event, Opt out of all invites from this host.
+- Assumed: mute stops wall posts, RSVP chatter and co-host news, but
+  keeps the essentials (cancelled, time or place changed). Leaving
+  deletes your row, invitation and notifications, and frees your spot
+  for the waitlist. The link still works for you as a fresh visitor, so
+  it's a deliberate exit, not the withdrawn "take back my answer".
+  Opt-out silently skips that host's future invites; the host only sees
+  a generic "couldn't invite", never why. Undo from the friends page
+  (and the app's Profile).
+
 ## No taking answers back
 
 - **An answer can change but is never withdrawn.** The owner's call,
@@ -2361,6 +2374,9 @@ rest:
   the test checks that a can't-go guest still sees the event, then
   deletes the row behind the API's back to keep the "no event for
   people off the list" guard covered. · n/a
+- **The queued guest menu's "Remove me from event"** (see "Guest menu"
+  above) is a separate, deliberate exit, not this: it isn't built, and
+  until it is, a guest who has answered stays on the list. · n/a
 - **Still to do elsewhere:** the iOS app's mock still has a withdraw
   repository method to remove (`withdrawRSVP` in
   EventsRepository.swift and MockEventsRepository+Guests.swift, and the
