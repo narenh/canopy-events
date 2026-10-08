@@ -2016,3 +2016,11 @@ change.
   `test/icsCheck.js`** for what it doesn't enforce (CRLF, 75 octets,
   escaping, required properties once, UTC). · Swap for another parser in
   test/icsCheck.js.
+- **Merged and deployed (2026-10-08):** data security and the
+  calendar feed. Account cf3c32c went first, after you set
+  `CONTACT_ENCRYPTION_KEYS` and `LOOKUP_HMAC_KEY` in Coolify; it started
+  with them, so the contact fields are encrypted at rest. Events 63d161f
+  went second, with the client file synced from the account service.
+  Remaining for you: in the Sites tab, untick events' contact fields, set
+  its Calendar URL, and put the secret it shows in events'
+  `CANOPY_CALENDAR_SECRET`.
