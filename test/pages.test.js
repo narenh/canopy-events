@@ -1143,7 +1143,7 @@ test('pages: the features, as everyone who might look', async (t) => {
 
   await t.test('home: a cover is the list row\'s 3:2 thumbnail; no cover, the generated one', async () => {
     const hosting = section((await page(server, ana, '/?tab=hosting')).body, 'list-hosting');
-    assert.ok(hosting.includes(`<span class="thumb">${img('cover', '(min-width: 700px) 200px, 138px', ' loading="lazy"')}`), hosting);
+    assert.ok(hosting.includes(`<span class="thumb">${img('cover', '(min-width: 700px) 200px, 193px', ' loading="lazy"')}`), hosting);
     assert.match(hosting, /<span class="thumb"><span class="cover-art" style="--c0:#[0-9a-f]{6};--c1:#[0-9a-f]{6};/);
     assert.ok(section((await page(server, fay, '/?tab=hosting')).body, 'list-hosting').includes('Garden party'));
   });

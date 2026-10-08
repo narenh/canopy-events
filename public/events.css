@@ -985,3 +985,19 @@ textarea.address-input{min-height:0;margin-top:8px;}
 
 /* A heading inside a home tab's list (Invited's "Declined"). */
 .home-panel .list-heading{color:var(--on-bg);font-size:var(--fs-small);font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin:22px 4px 10px;}
+
+/* Phones: a list row's picture is a square filling the card's left edge,
+   top to bottom, cropped from the middle of the cover; the card's own
+   rounded corners round it (no inset, border or corners of its own). An
+   invitation's card does the same for its event row, with the answers
+   below at full width. */
+@media (max-width: 699px) {
+  .event-row.card, .invite-card{overflow:hidden;}
+  .event-row.card{padding:0;}
+  .invite-card .event-row{padding:0;}
+  .event-row.card .thumb, .invite-card .event-row .thumb{
+    align-self:stretch;width:108px;min-height:108px;aspect-ratio:auto;border:none;border-radius:0;
+  }
+  .event-row.card .info, .invite-card .event-row .info{padding:12px 12px 12px 0;}
+  .invite-card .reply{padding-top:12px;}
+}

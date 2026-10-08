@@ -2724,3 +2724,9 @@ with hosting blue. The rest:
   the token in `TMDB_TOKEN` on the server only. The feature is off until
   both are set. Textless backdrops are preferred. TMDB's attribution goes
   in the picker and on a small credits line. Search is left for later.
+- **(You)** On phones, a list row's picture fills the card's left edge,
+  top to bottom, as a 108px square cropped from the middle of the cover
+  (rounded only by the card's own corners). A taller row (a two-line
+  title) stretches it a little taller rather than leaving a gap. Desktop
+  keeps the inset 3:2 thumbnail. Invitation cards do the same. The
+  srcset hint asks for 162px (a 3:2 crop is drawn wider than its square).

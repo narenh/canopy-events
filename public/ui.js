@@ -586,7 +586,9 @@
   //   The editor's preview is the same hero, so it asks for 'hero' too.
   const COVER_DRAWN = {
     hero: ['680px', '100vw'],
-    thumb: ['168px', '116px']
+    // Phones: a 108px square, cropped from a 3:2 cover by its height, so
+    // the photo is drawn 162px wide.
+    thumb: ['168px', '162px']
   };
 
   // `sizes` for a cover drawn at `place`. The frame is filled
