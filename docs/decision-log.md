@@ -685,4 +685,77 @@ waitlist, host moderation and lookup, plus one API fix, built on branch
   host deleted isn't known, and reads false until they host again. ·
   Point `hasHosted` in lib/store/people.js back at `hosts` (and leave
   the table).
+- **The editor sends cover changes on Save**, not when a photo is
+  picked: picking or removing only changes the preview, and the PUT or
+  DELETE goes after the event's own PATCH (or POST). · One rule for the
+  whole form ("nothing changes until you save"), and a new event has no
+  id to upload to before it's made. · views/editor.html `saveCover`.
+- A new event whose cover upload fails is still made, and the browser
+  goes to its editor with `?coverError=<reason>`, which says so under
+  the cover field. An edit whose cover fails stays on the page, saying
+  the rest was saved. · The event is the important part; the cover can
+  be tried again. · views/editor.html, routes/pages.js.
+- Covers over 15 MB are refused in the browser before uploading, and a
+  413 with no JSON (a proxy's) reads as "too big". · A phone on a slow
+  connection shouldn't upload 20 MB to be told no. · views/editor.html.
+- **No waitlist position.** The API doesn't give one, so a waitlisted
+  viewer sees their status ("You're on the waitlist. You'll move up if
+  a spot opens."). · The brief: position only if the API gives it. ·
+  Add `position` to `Rsvp` and a line in `rsvpSection`.
+- "It's full: you'll join the waitlist" shows when `spotsLeft` is 0 and
+  the viewer isn't already going or waitlisted. It doesn't work out
+  whether a party bigger than the spots left would fit. · The API says
+  `waitlisted: true` either way, and the page redraws to say so. · n/a
+- **The plus-ones stepper**: before answering, it only remembers the
+  number (the answer takes it along); once someone has answered going,
+  maybe or waitlisted, each tap changes the answer straight away. An
+  answer over a lowered limit keeps its number, with a note saying that
+  changing the answer will bring it down to the limit, which the page
+  then does. · No extra "save" button under the answers. · `guestsShown`
+  in public/ui.js, `stepGuests` in views/event.html.
+- Counts read "4 going +2 guests · 1 maybe", and the guest list's
+  groups "Going · 4 +2 guests". People first, plus-ones after. · The
+  API's top-level counts are people; this keeps that meaning. ·
+  `countsLine` in public/ui.js.
+- **Adding co-hosts is its own page**, `/e/<id>/cohosts` (the creator
+  only), picking from friends with a search box, like inviting. Removing
+  a co-host and stepping down are buttons on the event page, with a
+  `confirm()`. Refusals (an unconfirmed email, too many) show under that
+  friend's row, in copy.js's words. Lookup isn't offered there. · The
+  invite page's pattern; a co-host is someone you know. · n/a
+- **Co-hosts no longer see Cancel or Bring back**, which the first
+  pages showed every host and the API refuses (`creator_only`); "New
+  link" is the creator's too. A co-host's area says what they can do. ·
+  `hostSection` in public/ui.js.
+- **A removed viewer's page** fetches no guest list or wall (the API
+  would only say no), and its RSVP card is a calm line: "You're not on
+  the list for this event. A host has taken you off it, so you can't
+  answer. If you think that's a mistake, ask whoever invited you."
+  `status.removed` ("Removed") is in copy.js for hosts' own lists. ·
+  The brief: no raw key, nothing harsh. · `removedSection`.
+- Hosts see the first 50 removed people, with no "show more". · Nobody
+  removes 50 people from a party. · routes/pages.js `GUESTS_SHOWN`.
+- The invite page marks hosts ("Hosting", "Co-hosting") and removed
+  people, as it marks answers, rather than offering a checkbox the API
+  would skip. · n/a · routes/pages.js.
+- **Lookup reads what's typed**: a letter or a leading `@` means an
+  Instagram username, anything else a phone number (the account service
+  cleans both). An all-digit username needs its `@`. · One field, as
+  the brief asks. · views/invite.html.
+- `lookup_not_allowed` swaps the lookup box for a line saying it isn't
+  available yet (until the page is opened again). An unverified host
+  gets a "confirm your email" link in its place, and a 403
+  `email_unverified` from the lookup is said in place, not a redirect.
+  · Nobody is sent away mid-typing. · `api(..., { stay: true })` in
+  public/events.js.
+- **The wall shows the newest 20**, with "show more"; times are "just
+  now", "5m", "3h", then the date. A post being typed survives the page
+  redrawing (an answer, a delete). After an answer the wall is fetched
+  again from the top. · n/a · views/event.html.
+- Hosts' "Delete" on the server's entries ("Ana is going") asks "Take
+  this off the wall?"; on posts, "Delete this post?". Unknown entry
+  types are left out, as the spec says. · n/a
+- **A new link** replaces the page's address in place (no reload) and
+  shows the new link in a box with Share and Copy, under the confirm
+  that explains the old one stops working. · n/a · views/event.html.
 

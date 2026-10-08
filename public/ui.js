@@ -40,6 +40,17 @@
     return esc(t(path, vars));
   }
 
+  // The same, with the values named in `strong` (escaped) in bold: "<b>Ana
+  // Lima</b> is going." The sentence is escaped first, with markers where
+  // they go, so nothing in a value or the copy can become markup.
+  function txStrong(path, vars, strong) {
+    const marked = Object.assign({}, vars);
+    strong.forEach((k, i) => { marked[k] = '\u0001' + i + '\u0002'; });
+    let html = esc(t(path, marked));
+    strong.forEach((k, i) => { html = html.replace('\u0001' + i + '\u0002', '<strong>' + esc(vars[k]) + '</strong>'); });
+    return html;
+  }
+
   // Only http(s) links make it into an href or src.
   function safeUrl(url) {
     return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null;
@@ -183,11 +194,29 @@
 
   // ---------------- The event page ----------------
 
-  // A cover image, once events have one (v1 scope 4, being built
-  // separately). Point this at the field the API gives it; the page and
-  // the link preview (lib/render.js) both ask here.
+  // The event's cover image (the API's coverImageUrl: public, at a random
+  // address that changes with every upload), or null. The page's hero, the
+  // home list's thumbnails and the link preview (lib/render.js) all ask
+  // here.
   function coverUrl(e) {
     return safeUrl(e && e.coverImageUrl);
+  }
+
+  function isOpen(phase) {
+    return phase === 'upcoming' || phase === 'now';
+  }
+
+  // "+2 guests": plus-ones, wherever they're counted.
+  function plusGuests(n) {
+    return n === 1 ? t('event.plusGuest') : t('event.plusGuests', { count: n });
+  }
+
+  // "3 spots left", "Full...": for an event with a capacity that's still
+  // on. Empty otherwise.
+  function spotsLine(e, phase) {
+    if (e.capacity == null || e.spotsLeft == null || !isOpen(phase)) return '';
+    if (e.spotsLeft === 0) return t('event.full');
+    return e.spotsLeft === 1 ? t('event.spotLeft') : t('event.spotsLeft', { count: e.spotsLeft });
   }
 
   function statusTags(e, phase) {
@@ -197,14 +226,19 @@
     return '';
   }
 
+  // "4 going +2 guests · 1 maybe": people, and the plus-ones they bring.
   function countsLine(e, isHost) {
     const c = e.counts || {};
+    const g = c.guests || {};
     const bits = [];
-    if (c.going) bits.push(c.going + ' ' + t('status.going').toLowerCase());
-    if (c.maybe) bits.push(c.maybe + ' ' + t('status.maybe').toLowerCase());
-    if (c.notGoing) bits.push(c.notGoing + ' ' + t('status.not_going').toLowerCase());
-    if (c.waitlisted) bits.push(c.waitlisted + ' ' + t('status.waitlisted').toLowerCase());
-    if (isHost && c.invited) bits.push(c.invited + ' ' + t('status.invited').toLowerCase());
+    const add = (n, status, guests) => {
+      if (n) bits.push(n + ' ' + t('status.' + status).toLowerCase() + (guests ? ' ' + plusGuests(guests) : ''));
+    };
+    add(c.going, 'going', g.going);
+    add(c.maybe, 'maybe', g.maybe);
+    add(c.notGoing, 'not_going', 0);
+    add(c.waitlisted, 'waitlisted', g.waitlisted);
+    if (isHost) add(c.invited, 'invited', 0);
     return bits.join(' · ');
   }
 
@@ -239,6 +273,8 @@
     }
     const counts = countsLine(e, !!(e.viewer && e.viewer.canEdit));
     if (counts) h += '<p class="counts">' + esc(counts) + '</p>';
+    const spots = spotsLine(e, phase);
+    if (spots) h += '<p class="spots' + (e.spotsLeft === 0 ? ' full' : '') + '">' + esc(spots) + '</p>';
     if (e.description) h += '<div class="description">' + esc(e.description) + '</div>';
     h += '</section>';
     return h;
@@ -263,24 +299,62 @@
 
   const ANSWER_BUTTONS = [['going', 'Going'], ['maybe', 'Maybe'], ['not_going', "Can't go"]];
 
-  // Signed in, not hosting: going / maybe / can't go, and taking it back.
-  function rsvpSection(e, phase) {
+  const BRINGS_GUESTS = ['going', 'maybe', 'waitlisted'];
+
+  // The plus-ones the RSVP's stepper shows: what their answer brings, or,
+  // before they've answered, what they've picked so far (d.pendingGuests,
+  // which the page keeps; it goes with the answer).
+  function guestsShown(e, d) {
+    const rsvp = e.viewer && e.viewer.rsvp;
+    if (rsvp && BRINGS_GUESTS.includes(rsvp.status)) return rsvp.guests;
+    return Math.min(Math.max(0, (d && d.pendingGuests) || 0), e.guestsAllowed || 0);
+  }
+
+  // Someone a host took off the event: a calm line, nothing to press.
+  function removedSection() {
+    return '<section class="card" id="rsvp" data-section="rsvp">'
+      + '<p class="state-line">' + tx('event.removedHeading') + '</p>'
+      + '<p class="small" style="margin:0">' + tx('event.removedHint') + '</p></section>';
+  }
+
+  // Signed in, not hosting: going / maybe / can't go, how many guests
+  // they're bringing (when the host allows any), and taking it back.
+  function rsvpSection(e, phase, d) {
     const rsvp = e.viewer && e.viewer.rsvp;
     const status = rsvp ? rsvp.status : null;
+    if (status === 'removed') return removedSection();
     const answered = !!status && status !== 'invited';
     let h = '<section class="card" id="rsvp" data-section="rsvp">';
     if (phase === 'cancelled' || phase === 'over') {
       h += '<p class="state-line' + (phase === 'cancelled' ? ' danger' : '') + '">' + tx(phase === 'cancelled' ? 'event.cancelled' : 'event.over') + '</p>';
-      if (answered) h += '<p class="small" style="margin:0">' + tx('event.yourAnswer', { status: t('status.' + status) }) + '</p>';
+      if (answered) {
+        h += '<p class="small" style="margin:0">' + tx('event.yourAnswer', { status: t('status.' + status) + (rsvp.guests ? ' ' + plusGuests(rsvp.guests) : '') }) + '</p>';
+      }
       return h + '</section>';
     }
     h += '<h3>' + tx(status === 'invited' ? 'event.invitedQuestion' : 'event.question') + '</h3>';
+    if (e.capacity != null && e.spotsLeft === 0 && status !== 'going' && status !== 'waitlisted') {
+      h += '<p class="small full-hint">' + tx('event.fullHint') + '</p>';
+    }
     h += '<div class="answers" role="group">';
     ANSWER_BUTTONS.forEach(([value, label]) => {
       const on = status === value || (value === 'going' && status === 'waitlisted');
       h += '<button type="button" data-action="answer" data-status="' + value + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + esc(label) + '</button>';
     });
     h += '</div>';
+    const allowed = e.guestsAllowed || 0;
+    const overLimit = !!(rsvp && rsvp.guestsOverLimit);
+    if ((allowed > 0 || overLimit) && status !== 'not_going') {
+      const n = guestsShown(e, d);
+      h += '<div class="bringing"><div class="label">' + tx('event.bringing')
+        + '<span class="sub">' + (allowed === 1 ? tx('event.bringingHintOne') : tx('event.bringingHint', { count: allowed })) + '</span></div>'
+        + '<div class="stepper" role="group" aria-label="' + tx('event.bringing') + '">'
+        + '<button type="button" class="secondary" data-action="guests" data-delta="-1" aria-label="' + tx('event.fewerGuest') + '"' + (n <= 0 ? ' disabled' : '') + '>−</button>'
+        + '<output id="guestCount" aria-live="polite">' + esc(n) + '</output>'
+        + '<button type="button" class="secondary" data-action="guests" data-delta="1" aria-label="' + tx('event.moreGuest') + '"' + (n >= allowed ? ' disabled' : '') + '>+</button>'
+        + '</div></div>';
+      if (overLimit) h += '<p class="small note">' + tx('event.overLimitNote', { allowed, guests: rsvp.guests }) + '</p>';
+    }
     if (status === 'waitlisted') h += '<p class="small" style="margin:12px 0 0">' + tx('event.waitlisted') + '</p>';
     h += '<div class="under-answers"><span class="error" id="rsvpError" role="alert"></span>';
     if (answered) h += '<button type="button" class="link-btn" data-action="withdraw">' + tx('event.withdraw') + '</button>';
@@ -288,26 +362,61 @@
     return h;
   }
 
-  // Hosts: share the link, invite friends, edit, cancel (or bring back).
-  // Co-hosts, plus-ones, capacity and the rest join this area later.
-  function hostSection(e, phase) {
-    const open = phase === 'upcoming' || phase === 'now';
+  // Hosts: share the link, invite, edit. The creator also cancels (or
+  // brings back), makes a new link, and adds and takes off co-hosts; a
+  // co-host can step down. (The API says the same: creator_only.)
+  // `d.newLink` is set by the page just after a new link was made, to show
+  // it with share and copy.
+  function hostSection(e, phase, d) {
+    const open = isOpen(phase);
+    const creator = e.viewer && e.viewer.role === 'creator';
     let h = '<section class="card" id="host" data-section="host">';
-    h += '<h3>' + tx('event.hostingHeading') + '</h3>';
-    if (phase === 'cancelled') h += '<p class="state-line danger">' + tx('event.restoreHint') + '</p>';
+    h += '<h3>' + tx(creator ? 'event.hostingHeading' : 'event.cohostingHeading') + '</h3>';
+    if (phase === 'cancelled') h += '<p class="state-line danger">' + tx(creator ? 'event.restoreHint' : 'event.restoreHintCohost') + '</p>';
     else if (phase === 'over') h += '<p class="state-line">' + tx('event.over') + '</p>';
-    else h += '<p>' + tx('event.hostingHint') + '</p>';
+    else h += '<p>' + tx(creator ? 'event.hostingHint' : 'event.cohostingHint') + '</p>';
+    if (d && d.newLink) {
+      h += '<div class="new-link" id="newLink"><p>' + tx('event.newLinkMade') + '</p>'
+        + '<input type="text" readonly value="' + esc(e.url) + '" aria-label="' + tx('event.newLinkLabel') + '" data-action="select">'
+        + '<div class="row"><button type="button" data-action="share" data-url="' + esc(e.url) + '" data-title="' + esc(e.title) + '">Share</button>'
+        + '<button type="button" class="secondary" data-action="copy" data-url="' + esc(e.url) + '">Copy</button></div></div>';
+    }
     h += '<div class="host-actions">';
     if (open) {
       h += '<button type="button" class="wide" data-action="share" data-url="' + esc(e.url) + '" data-title="' + esc(e.title) + '">Share link</button>';
       h += '<a class="button secondary" href="/e/' + esc(e.id) + '/invite">Invite friends</a>';
     }
     h += '<a class="button secondary" href="/e/' + esc(e.id) + '/edit">Edit</a>';
-    if (phase === 'cancelled') h += '<button type="button" class="secondary" data-action="restore">Bring back</button>';
-    else if (open) h += '<button type="button" class="danger wide" data-action="cancel">Cancel event</button>';
+    if (creator && phase === 'cancelled') h += '<button type="button" class="secondary" data-action="restore">Bring back</button>';
+    if (creator && open) {
+      h += '<button type="button" class="secondary" data-action="new-link">New link</button>';
+      h += '<button type="button" class="danger" data-action="cancel">Cancel event</button>';
+    }
     h += '</div><div class="notice" id="hostNotice" role="status"></div><div class="error" id="hostError" role="alert"></div>';
+    h += cohostsBlock(e, phase, creator);
     h += '</section>';
     return h;
+  }
+
+  // The co-hosts, in the host's area: the creator sees them with "Remove"
+  // and "Add co-host"; a co-host gets "Step down".
+  function cohostsBlock(e, phase, creator) {
+    const cohosts = (e.hosts || []).filter((x) => x.role === 'cohost');
+    let h = '<div class="cohosts" id="cohosts">';
+    if (creator) {
+      h += '<div class="group-heading">' + tx('event.cohostsHeading') + (cohosts.length ? ' · ' + cohosts.length : '') + '</div>';
+      if (cohosts.length) {
+        h += '<ul class="people">' + cohosts.map((x) => personRow(x.person, '',
+          '<button type="button" class="small-btn secondary" data-action="remove-cohost" data-person="' + esc(x.person.id) + '" data-name="' + esc(fullName(x.person)) + '">Remove</button>')).join('') + '</ul>';
+      } else {
+        h += '<p class="small" style="margin:6px 0 10px">' + tx('event.cohostsHint') + '</p>';
+      }
+      if (isOpen(phase)) h += '<a class="button secondary" href="/e/' + esc(e.id) + '/cohosts">Add co-host</a>';
+    } else {
+      h += '<button type="button" class="link-btn" data-action="step-down">Step down as co-host</button>';
+    }
+    h += '<div class="error" id="cohostError" role="alert"></div>';
+    return h + '</div>';
   }
 
   // Which of your friends are going: the count always, the names when you
@@ -326,11 +435,20 @@
   }
 
   const GROUPS = ['going', 'maybe', 'waitlisted', 'not_going', 'invited'];
+  const GROUP_LABELS = { invited: 'event.invitedGroup', waitlisted: 'event.waitlistGroup' };
+
+  // One guest's line under their name: their plus-ones, and (hosts) that
+  // they're bringing more than the host now allows.
+  function guestSub(x) {
+    if (!x.guests) return '';
+    return plusGuests(x.guests) + (x.guestsOverLimit ? ' · ' + t('event.overLimit') : '');
+  }
 
   // The guest list, as GET /events/{id}/guests answered: names when
   // they're visible to this viewer, grouped by answer; otherwise counts
-  // and why.
-  function guestsSection(e, g, isHost) {
+  // and why. Hosts get "Remove" on each guest, and the people they've
+  // removed (`removed`, from ?status=removed) with "Undo".
+  function guestsSection(e, g, isHost, removed) {
     if (!g) return '';
     const counts = countsLine(e, isHost);
     let h = '<section class="card" id="guests" data-section="guests">';
@@ -340,24 +458,109 @@
       h += '<p style="margin:0">' + tx('event.hiddenList') + '</p>';
       return h + '</section>';
     }
-    if (!g.guests.length) {
-      h += '<p style="margin:0">' + tx('event.noAnswers') + '</p>';
-      return h + '</section>';
-    }
+    if (!g.guests.length) h += '<p style="margin:0">' + tx('event.noAnswers') + '</p>';
+    const c = e.counts || {};
     GROUPS.forEach((status) => {
       const rows = g.guests.filter((x) => x.status === status);
       if (!rows.length) return;
-      const label = status === 'invited' ? t('event.invitedGroup') : t('status.' + status);
-      const total = (e.counts || {})[status === 'not_going' ? 'notGoing' : status];
-      h += '<div class="group-heading">' + esc(label) + (total ? ' · ' + esc(total) : '') + '</div>';
-      h += '<ul class="people">' + rows.map((x) => personRow(x.person, x.guests ? '+' + x.guests : '')).join('') + '</ul>';
+      const total = c[status === 'not_going' ? 'notGoing' : status];
+      const guests = (c.guests || {})[status];
+      h += '<div class="group-heading">' + tx(GROUP_LABELS[status] || 'status.' + status)
+        + (total ? ' · ' + esc(total) + (guests ? ' ' + esc(plusGuests(guests)) : '') : '') + '</div>';
+      h += '<ul class="people">' + rows.map((x) => personRow(x.person, guestSub(x), isHost
+        ? '<button type="button" class="small-btn secondary" data-action="remove-guest" data-person="' + esc(x.person.id) + '" data-name="' + esc(fullName(x.person)) + '">Remove</button>'
+        : '')).join('') + '</ul>';
     });
     if (g.nextCursor) h += '<button type="button" class="secondary more" data-action="more-guests">' + tx('common.showMore') + '</button>';
+    if (isHost && removed && removed.guests && removed.guests.length) {
+      h += '<div class="removed-group" id="removedGroup"><div class="group-heading">' + tx('event.removedGroup') + ' · ' + esc(removed.guests.length + (removed.nextCursor ? '+' : '')) + '</div>';
+      h += '<p class="small" style="margin:2px 0 4px">' + tx('event.removedGroupHint') + '</p>';
+      h += '<ul class="people">' + removed.guests.map((x) => personRow(x.person, '',
+        '<button type="button" class="small-btn secondary" data-action="undo-remove" data-person="' + esc(x.person.id) + '">Undo</button>')).join('') + '</ul></div>';
+    }
+    h += '<div class="error" id="guestsError" role="alert"></div>';
     return h + '</section>';
   }
 
+  // ---------------- The activity wall ----------------
+
+  // When a wall entry happened: "just now", "5m", "3h", then the date (in
+  // the viewer's zone, or the event's when the viewer's isn't known).
+  function ago(iso, zone, now) {
+    const ms = Date.parse(iso);
+    const mins = Math.floor(((now == null ? Date.now() : now) - ms) / 60000);
+    if (mins < 1) return t('wall.justNow');
+    if (mins < 60) return t('wall.minutesAgo', { count: mins });
+    if (mins < 24 * 60) return t('wall.hoursAgo', { count: Math.floor(mins / 60) });
+    return fmt(ms, zone, { month: 'short', day: 'numeric' });
+  }
+
+  // The words for one of the server's entries, or null for a type this
+  // doesn't know (the API may add some; they're left out).
+  function wallSentence(x, o) {
+    const name = x.person ? fullName(x.person) : t('common.formerMember');
+    const d = x.details || {};
+    switch (x.type) {
+      case 'going': case 'off_waitlist': case 'cancelled': case 'uncancelled': case 'cohost_added':
+        return txStrong('wall.entries.' + x.type, { name }, ['name']);
+      case 'time_changed':
+        if (!d.startsAt || !d.timeZone) return null;
+        return txStrong('wall.entries.time_changed', { name, when: whenShort({ startsAt: d.startsAt, timeZone: d.timeZone }, o.viewerZone) }, ['name']);
+      case 'place_changed': {
+        const place = d.locationName || d.locationAddress;
+        return place
+          ? txStrong('wall.entries.place_changed', { name, place }, ['name', 'place'])
+          : txStrong('wall.entries.place_cleared', { name }, ['name']);
+      }
+      default:
+        return null;
+    }
+  }
+
+  function wallEntry(x, e, o) {
+    const zone = o.viewerZone || e.timeZone;
+    const del = x.canDelete
+      ? '<button type="button" class="link-btn quiet" data-action="delete-entry" data-entry="' + esc(x.id) + '" data-type="' + esc(x.type) + '">Delete</button>'
+      : '';
+    const when = '<span class="when">' + esc(ago(x.createdAt, zone, o.now)) + '</span>';
+    if (x.type === 'post') {
+      return '<li class="wall-entry post" data-entry="' + esc(x.id) + '">' + avatar(x.person || {})
+        + '<div class="body"><div class="wall-meta"><span class="name">' + esc(x.person ? fullName(x.person) : t('common.formerMember')) + '</span>' + when + '</div>'
+        + '<div class="wall-text">' + esc(x.text) + '</div></div>' + del + '</li>';
+    }
+    const words = wallSentence(x, o);
+    if (!words) return '';
+    return '<li class="wall-entry auto" data-entry="' + esc(x.id) + '">' + avatar(x.person || {}, 'small')
+      + '<div class="body"><span class="wall-line">' + words + '</span> ' + when + '</div>' + del + '</li>';
+  }
+
+  // The wall, as GET /events/{id}/wall answered: the newest first, with
+  // "show more"; a box to post in when the viewer may; and why there's
+  // nothing when the host only shows it to people who've answered.
+  function wallSection(e, w, o) {
+    if (!w) return '';
+    let h = '<section class="card" id="wall" data-section="wall"><h3>' + tx('wall.heading') + '</h3>';
+    if (!w.wallVisible) return h + '<p style="margin:0">' + tx('wall.hidden') + '</p></section>';
+    if (w.canPost) {
+      h += '<form class="wall-form" id="wallForm" novalidate><textarea id="wallText" maxlength="1000" rows="2" placeholder="' + tx('wall.placeholder') + '" aria-label="' + tx('wall.placeholder') + '"></textarea>'
+        + '<div class="wall-form-row"><span class="error" id="wallError" role="alert"></span><button type="submit" id="wallPost">Post</button></div></form>';
+    }
+    const rows = w.entries.map((x) => wallEntry(x, e, o)).join('');
+    if (rows) h += '<ul class="wall-list" id="wallList">' + rows + '</ul>';
+    else h += '<p class="empty" style="margin:' + (w.canPost ? '12px' : '0') + ' 0 0">' + tx(w.canPost ? 'wall.emptyCanPost' : 'wall.empty') + '</p>';
+    if (w.nextCursor) h += '<button type="button" class="secondary more" data-action="more-wall">' + tx('common.showMore') + '</button>';
+    return h + '</section>';
+  }
+
+  // Whether the viewer is someone a host took off this event.
+  function isRemovedViewer(e) {
+    return !!(e.viewer && e.viewer.rsvp && e.viewer.rsvp.status === 'removed');
+  }
+
   // The whole event page's content. `d` is the page's data ({ event,
-  // guests, me, links }); `o` is { viewerZone }.
+  // guests, removed, wall, me, links, newLink, pendingGuests }); `o` is
+  // { viewerZone }. Someone a host removed gets the details and a calm
+  // line, and nothing about who's coming (the API gives them nothing).
   function eventPage(d, o) {
     o = o || {};
     const e = d.event;
@@ -365,9 +568,11 @@
     const isHost = !!(e.viewer && e.viewer.canEdit);
     let h = details(e, d, o, phase);
     if (!d.me) h += signedOutSection(e, d, phase);
-    else if (isHost) h += hostSection(e, phase);
-    else h += rsvpSection(e, phase);
-    if (d.me) h += friendsGoingSection(e) + guestsSection(e, d.guests, isHost);
+    else if (isHost) h += hostSection(e, phase, d);
+    else h += rsvpSection(e, phase, d);
+    if (d.me && !isRemovedViewer(e)) {
+      h += friendsGoingSection(e) + guestsSection(e, d.guests, isHost, d.removed) + wallSection(e, d.wall, o);
+    }
     return h;
   }
 
@@ -382,11 +587,17 @@
     const viewer = e.viewer || {};
     let tag = '';
     if (phase === 'cancelled') tag = '<span class="tag danger">' + tx('status.cancelled') + '</span>';
-    else if (viewer.canEdit && list !== 'hosting') tag = '<span class="tag off">' + tx('status.hosting') + '</span>';
-    else if (viewer.rsvp && viewer.rsvp.status !== 'invited') tag = '<span class="tag' + (viewer.rsvp.status === 'going' ? '' : ' off') + '">' + tx('status.' + viewer.rsvp.status) + '</span>';
+    else if (viewer.canEdit && list !== 'hosting') tag = '<span class="tag off">' + tx(viewer.role === 'cohost' ? 'status.cohosting' : 'status.hosting') + '</span>';
+    else if (viewer.rsvp && !['invited', 'removed'].includes(viewer.rsvp.status)) tag = '<span class="tag' + (viewer.rsvp.status === 'going' ? '' : ' off') + '">' + tx('status.' + viewer.rsvp.status) + '</span>';
     const sub = [whenShort(e, o.viewerZone), e.locationName].filter(Boolean).join(' · ');
+    // The cover as a thumbnail, with the date on it; otherwise the date
+    // on its own.
+    const cover = coverUrl(e);
+    const tile = '<span class="mon">' + esc(fmt(s, z, { month: 'short' })) + '</span><span class="day">' + esc(fmt(s, z, { day: 'numeric' })) + '</span>';
     return '<a class="event-row' + (asCard ? ' card' : '') + (phase === 'cancelled' ? ' is-cancelled' : '') + '" href="/e/' + esc(e.id) + '">'
-      + '<span class="when-tile"><span class="mon">' + esc(fmt(s, z, { month: 'short' })) + '</span><span class="day">' + esc(fmt(s, z, { day: 'numeric' })) + '</span></span>'
+      + (cover
+        ? '<span class="when-tile thumb"><img src="' + esc(cover) + '" alt="" loading="lazy"><span class="date">' + tile + '</span></span>'
+        : '<span class="when-tile">' + tile + '</span>')
       + '<span class="info"><span class="title">' + esc(e.title) + '</span><span class="sub">' + esc(sub) + '</span></span>'
       + tag + '</a>';
   }
@@ -438,35 +649,65 @@
     }).join('');
   }
 
-  // A friend to invite: a checkbox, or what they've already said.
+  // What someone already on the list said, as a tag.
+  function statusTag(status) {
+    return '<span class="tag' + (status === 'going' ? '' : ' off') + '">' + tx('status.' + status) + '</span>';
+  }
+
+  // A friend to invite: a checkbox, or what they've already said (or that
+  // a host removed them: the host is the one looking).
   function inviteRow(f, onList) {
     const p = f.person;
     const status = onList[p.id];
     const sub = together(f, 'invite');
-    const right = status
-      ? '<span class="tag' + (status === 'going' ? '' : ' off') + '">' + tx('status.' + status) + '</span>'
-      : '<input type="checkbox" value="' + esc(p.id) + '" aria-label="' + esc(fullName(p)) + '">';
+    const right = status ? statusTag(status) : '<input type="checkbox" value="' + esc(p.id) + '" aria-label="' + esc(fullName(p)) + '">';
     return '<li class="person' + (status ? ' on-list' : '') + '" data-name="' + esc(fullName(p).toLowerCase()) + '">'
       + '<label style="display:contents">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div><div class="sub">' + esc(sub) + '</div></div>' + right + '</label></li>';
   }
 
-  // Inviting friends: a search box, your friends with a checkbox each
-  // (or what they've already said), and the button. `d` is { event,
-  // friends, onList: { personId: status }, phase }.
+  // Finding someone by their phone number or Instagram username: one
+  // field, an exact match (the account service's lookup, through GET
+  // /api/v1/people/lookup), and the person it finds, a name and a photo,
+  // offered with "Invite". Only for verified people (the API's rule);
+  // anyone else is told how to get it.
+  function lookupSection(d) {
+    let h = '<section class="card" id="lookup" data-section="lookup"><h3>' + tx('invite.lookupHeading') + '</h3>';
+    if (!d.me || !d.me.emailVerified) {
+      const verify = d.links && safeUrl(d.links.verify);
+      return h + '<p style="margin:0">' + (verify ? '<a href="' + esc(verify) + '">' + tx('invite.lookupVerify') + '</a>' : tx('invite.lookupVerify')) + '</p></section>';
+    }
+    h += '<p>' + tx('invite.lookupHint') + '</p>';
+    h += '<form class="lookup-row" id="lookupForm" novalidate>'
+      + '<input type="text" id="lookupQuery" placeholder="' + tx('invite.lookupPlaceholder') + '" aria-label="' + tx('invite.lookupHeading') + '" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="64">'
+      + '<button type="submit" id="lookupBtn">Find</button></form>';
+    h += '<div id="lookupResult"></div><div class="notice" id="lookupNotice" role="status"></div><div class="error" id="lookupError" role="alert"></div>';
+    return h + '</section>';
+  }
+
+  // The person a lookup found: their name and photo, and "Invite", or
+  // what they've already said.
+  function lookupResult(p, onList) {
+    const status = onList[p.id];
+    return '<ul class="people found"><li class="person">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div></div>'
+      + (status ? statusTag(status) : '<button type="button" class="small-btn" data-action="invite-found" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Invite</button>')
+      + '</li></ul>';
+  }
+
+  // Inviting: finding someone by phone or Instagram, then a search box,
+  // your friends with a checkbox each (or what they've already said), and
+  // the button. `d` is { event, me, links, friends, onList: { personId:
+  // status }, phase }.
   function invitePage(d) {
     const e = d.event;
     let h = '<a class="back-link" href="/e/' + esc(e.id) + '">‹ ' + esc(e.title) + '</a>';
-    h += '<section class="card" id="invite" data-section="invite"><h2>' + tx('invite.heading') + '</h2>';
-    h += '<p>' + tx('invite.hint') + '</p>';
-    // Finding people by phone number or Instagram goes here, once the
-    // account service's lookup is open to events (docs/decisions.md,
-    // "Later"): one field, an exact match, and the person it finds
-    // offered like a friend below. The API's invites already take any
-    // person id.
     if (d.phase === 'cancelled' || d.phase === 'over') {
+      h += '<section class="card" id="invite" data-section="invite"><h2>' + tx('invite.heading') + '</h2>';
       h += '<p class="state-line" style="margin:0">' + tx('invite.closed') + '</p>';
       return h + '</section>';
     }
+    h += lookupSection(d);
+    h += '<section class="card" id="invite" data-section="invite"><h2>' + tx('invite.heading') + '</h2>';
+    h += '<p>' + tx('invite.hint') + '</p>';
     if (!d.friends.length) {
       h += '<p class="empty" style="margin:0">' + tx('invite.noFriends') + '</p>';
       return h + '</section>';
@@ -479,6 +720,37 @@
       + '<div class="notice" id="inviteNotice" role="status"></div><div class="error" id="inviteError" role="alert"></div>'
       + '<button type="button" id="sendBtn" data-action="send" disabled>Invite</button></div></div>';
     return h;
+  }
+
+  // ---------------- Adding co-hosts ----------------
+
+  // A friend to make a co-host: "Add", or that they already are.
+  function cohostRow(f, e) {
+    const p = f.person;
+    const role = ((e.hosts || []).find((x) => x.person.id === p.id) || {}).role;
+    const right = role
+      ? '<span class="tag off">' + tx(role === 'creator' ? 'status.hosting' : 'status.cohosting') + '</span>'
+      : '<button type="button" class="small-btn" data-action="add-cohost" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Add</button>';
+    return '<li class="person" data-id="' + esc(p.id) + '" data-name="' + esc(fullName(p).toLowerCase()) + '">' + avatar(p)
+      + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div><div class="sub">' + esc(together(f, 'invite')) + '</div></div>' + right + '</li>';
+  }
+
+  // The creator picks co-hosts from their friends, the same way as
+  // inviting: a search box and a row each. `d` is { event, friends, phase }.
+  function cohostPage(d) {
+    const e = d.event;
+    let h = '<a class="back-link" href="/e/' + esc(e.id) + '">‹ ' + esc(e.title) + '</a>';
+    h += '<section class="card" id="addCohosts" data-section="cohosts"><h2>' + tx('cohosts.heading') + '</h2>';
+    if (d.phase === 'cancelled' || d.phase === 'over') {
+      return h + '<p class="state-line" style="margin:0">' + tx('cohosts.closed') + '</p></section>';
+    }
+    h += '<p>' + tx('cohosts.hint') + '</p>';
+    h += '<div class="error" id="cohostError" role="alert"></div>';
+    if (!d.friends.length) return h + '<p class="empty" style="margin:0">' + tx('cohosts.noFriends') + '</p></section>';
+    h += '<input type="search" id="search" placeholder="' + tx('invite.search') + '" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="' + tx('invite.search') + '">';
+    h += '<ul class="people" id="pickList">' + d.friends.map((f) => cohostRow(f, e)).join('') + '</ul>';
+    h += '<p class="hidden" id="noMatch" style="margin:10px 0 0">' + tx('cohosts.noMatch') + '</p>';
+    return h + '</section>';
   }
 
   // ---------------- The editor ----------------
@@ -518,9 +790,30 @@
       + '<div class="error" id="' + id + 'Error" role="alert"></div></div>';
   }
 
-  // The form for making an event (d.event null) or editing one. Grouped
-  // in fieldsets so the fields still to come have a place: the cover
-  // image (What), co-hosts, plus-ones and capacity (Guests).
+  // Plus-ones a host may allow: the same as lib/eventInput.js's
+  // MAX_GUESTS_ALLOWED (a test holds them together).
+  const MAX_GUESTS_ALLOWED = 10;
+
+  // The cover: a preview (the current one, or a photo just picked), a
+  // button to pick one and one to take it off. Nothing is sent until the
+  // form is saved (views/editor.html); the server re-encodes what it gets.
+  function coverField(url) {
+    return '<div class="field" id="coverField"><span class="field-label">' + tx('editor.cover') + '</span>'
+      + '<div class="cover-pick' + (url ? ' has-cover' : '') + '">'
+      + '<img class="cover-preview" id="coverPreview" alt=""' + (url ? ' src="' + esc(url) + '"' : '') + '>'
+      + '<p class="field-hint hidden" id="coverNoPreview">' + tx('editor.coverNoPreview') + '</p>'
+      + '<div class="cover-buttons">'
+      + '<label class="button secondary file-btn"><span id="coverPickLabel">' + (url ? 'Replace photo' : 'Choose photo') + '</span>'
+      + '<input type="file" id="coverFile" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"></label>'
+      + '<button type="button" class="secondary" id="coverRemove" data-action="remove-cover"' + (url ? '' : ' hidden') + '>Remove</button>'
+      + '</div></div>'
+      + '<p class="field-hint">' + tx('editor.coverHint') + '</p>'
+      + '<div class="error" id="coverError" role="alert"></div></div>';
+  }
+
+  // The form for making an event (d.event null) or editing one, in
+  // fieldsets: what (title, description, cover), when, where, and guests
+  // (plus-ones, capacity, who sees the list).
   function editorForm(d, o) {
     o = o || {};
     const e = d.event || {};
@@ -534,6 +827,7 @@
     h += '<fieldset><legend>' + tx('editor.what') + '</legend>';
     h += field('title', 'editor.title', '<input type="text" id="title" maxlength="120" required value="' + esc(e.title || '') + '">');
     h += field('description', 'editor.description', '<textarea id="description" maxlength="5000" placeholder="' + tx('editor.descriptionPlaceholder') + '">' + esc(e.description || '') + '</textarea>');
+    h += coverField(coverUrl(e));
     h += '</fieldset>';
 
     h += '<fieldset><legend>' + tx('editor.when') + '</legend>';
@@ -552,6 +846,15 @@
     h += '</fieldset>';
 
     h += '<fieldset><legend>' + tx('editor.guests') + '</legend>';
+    const allowed = e.guestsAllowed || 0;
+    let options = '';
+    for (let n = 0; n <= MAX_GUESTS_ALLOWED; n++) {
+      options += '<option value="' + n + '"' + (n === allowed ? ' selected' : '') + '>' + (n ? n : tx('editor.noGuests')) + '</option>';
+    }
+    h += '<div class="field-row">';
+    h += field('guestsAllowed', 'editor.guestsAllowed', '<select id="guestsAllowed">' + options + '</select>', 'editor.guestsAllowedHint');
+    h += field('capacity', 'editor.capacity', '<input type="number" id="capacity" inputmode="numeric" min="1" max="10000" step="1" placeholder="' + tx('editor.capacityPlaceholder') + '" value="' + esc(e.capacity == null ? '' : e.capacity) + '">', 'editor.capacityHint');
+    h += '</div>';
     h += '<div class="field" id="visibilityField"><span class="field-label">' + tx('editor.guestList') + '</span>';
     ['everyone', 'responded'].forEach((v) => {
       h += '<label class="choice"><input type="radio" name="guestListVisibility" value="' + v + '"' + (vis === v ? ' checked' : '') + '><span>' + tx('editor.' + v) + '</span></label>';
@@ -569,10 +872,10 @@
   }
 
   return {
-    esc, tx, localInput, fromLocalInput, editorForm, safeUrl, fmt, when, whenShort, whenPreview, phaseOf, zoneAbbr, zoneCity, sameClock,
-    fullName, initials, avatar, personRow, coverUrl,
-    eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, signedOutSection,
-    eventRow, homeLists, homeList, friendRows, inviteRow, invitePage,
-    ASSUMED_LENGTH_MS, HOME_LISTS
+    esc, tx, txStrong, localInput, fromLocalInput, editorForm, coverField, safeUrl, fmt, when, whenShort, whenPreview, phaseOf, zoneAbbr, zoneCity, sameClock,
+    fullName, initials, avatar, personRow, coverUrl, plusGuests, spotsLine, countsLine, guestsShown,
+    eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, signedOutSection, wallSection, wallEntry, wallSentence, ago,
+    eventRow, homeLists, homeList, friendRows, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
+    ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED
   };
 });

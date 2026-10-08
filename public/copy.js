@@ -41,7 +41,11 @@ const COPY = {
     not_going: "Can't go",
     waitlisted: 'On the waitlist',
     invited: 'Invited',
+    // Only hosts ever see this one, on their own guest list; a removed
+    // person is told in event.removedHeading's words instead.
+    removed: 'Removed',
     hosting: 'Hosting',
+    cohosting: 'Co-hosting',
     cancelled: 'Cancelled',
     over: 'Ended',
     now: 'Happening now'
@@ -75,6 +79,8 @@ const COPY = {
     cancelConfirm: "Cancel this event? Everyone on the list will see it's off. You can bring it back later.",
     restoreConfirm: 'Bring this event back? It will show as on again for everyone.',
     restoreHint: 'This event is cancelled. You can bring it back.',
+    // A co-host can't cancel or bring back.
+    restoreHintCohost: 'This event is cancelled. Only the person who made it can bring it back.',
     // Friends going.
     friendsGoing: '{count} friends going',
     friendGoing: '1 friend going',
@@ -84,8 +90,105 @@ const COPY = {
     noAnswers: 'No answers yet.',
     hiddenList: "The host shows who's coming to people who've answered. Answer to see the list.",
     invitedGroup: "Invited, hasn't answered",
+    waitlistGroup: 'Waitlist',
+    removedGroup: 'Removed',
+    removedGroupHint: "Only hosts see this. They can't answer, or see the address, the guest list or the wall.",
+    // Plus-ones, in counts and on the guest list.
+    plusGuests: '+{count} guests',
+    plusGuest: '+1 guest',
+    overLimit: 'more than now allowed',
+    // Capacity.
+    spotsLeft: '{count} spots left',
+    spotLeft: '1 spot left',
+    full: 'Full. New answers join the waitlist.',
+    fullHint: "It's full. If you say going, you'll join the waitlist and move up if a spot opens.",
+    // The RSVP's plus-ones.
+    bringing: "Guests you're bringing",
+    bringingHint: 'You can bring up to {count}.',
+    bringingHintOne: 'You can bring 1 guest.',
+    overLimitNote: "The host now allows {allowed} guests each, and you're down for {guests}. That stands; if you change your answer, it'll be {allowed}.",
+    fewerGuest: 'One fewer guest',
+    moreGuest: 'One more guest',
+    nowWaitlisted: "It's full, so you're on the waitlist. You'll move up if a spot opens.",
+    // Someone a host removed from the event. Calm, and no details.
+    removedHeading: "You're not on the list for this event.",
+    removedHint: "A host has taken you off it, so you can't answer. If you think that's a mistake, ask whoever invited you.",
+    // Refusals when answering, by the API's `reason`. Anything not listed
+    // shows the API's own sentence.
+    errors: {
+      no_room: "There isn't room for that many guests. Your answer is as it was.",
+      too_many_guests: "That's more guests than the host allows.",
+      removed: "You're not on the list for this event.",
+      event_cancelled: 'This event has been cancelled.',
+      event_over: 'This event has ended.',
+      host_cannot_rsvp: "You're hosting this event."
+    },
+    // Co-hosts, in the host's area.
+    cohostingHeading: "You're co-hosting",
+    cohostingHint: 'You can edit the event, invite people and see everyone. Only the person who made it can cancel it or change its link.',
+    cohostsHeading: 'Co-hosts',
+    cohostsHint: 'Co-hosts can edit the event, invite people and see everyone.',
+    removeCohostConfirm: "Take {name} off as a co-host? They'll stay invited, and can answer like anyone else.",
+    stepDownConfirm: "Step down as a co-host? You'll stay invited, and can answer like anyone else.",
+    // Removing a guest, and undoing it.
+    removeGuestConfirm: "Remove {name} from this event? They won't be able to answer, or see the address, the guest list or the wall. You can undo this.",
+    // A new link.
+    newLinkConfirm: 'Make a new link? The link you have now stops working straight away, for everyone. Everyone on the list keeps their place, but anyone you sent the old link to will need the new one.',
+    newLinkMade: "New link made. The old one doesn't work anymore. Share this one:",
+    newLinkLabel: 'The new link',
     notFound: "There's no event at this link. Check it with whoever sent it.",
     notFoundHeading: 'Event not found'
+  },
+
+  // ---------------- The activity wall, on an event ----------------
+  wall: {
+    heading: 'Wall',
+    hidden: "The host shows the wall to people who've answered. Answer to see it.",
+    empty: 'Nothing here yet.',
+    emptyCanPost: 'Nothing here yet. Say hello to everyone coming.',
+    placeholder: 'Write something for everyone coming',
+    deleteConfirm: 'Delete this post?',
+    deleteEntryConfirm: 'Take this off the wall?',
+    justNow: 'just now',
+    minutesAgo: '{count}m',
+    hoursAgo: '{count}h',
+    // The server's own entries, by their type. {name} is who it's about
+    // (or the host who did it).
+    entries: {
+      going: '{name} is going.',
+      off_waitlist: '{name} got a spot off the waitlist.',
+      time_changed: '{name} moved it to {when}.',
+      place_changed: '{name} changed the place to {place}.',
+      place_cleared: '{name} took the place off.',
+      cancelled: '{name} cancelled the event.',
+      uncancelled: '{name} brought the event back.',
+      cohost_added: '{name} is co-hosting.'
+    },
+    errors: {
+      answer_first: "Say you're going or maybe to post here.",
+      bad_text: 'A post needs some text, up to 1,000 characters.',
+      rate_limited: "That's a lot of posts. Try again in a bit.",
+      not_yours: 'You can only delete your own posts.'
+    }
+  },
+
+  // ---------------- Adding co-hosts, at /e/<id>/cohosts ----------------
+  cohosts: {
+    heading: 'Add a Co-host',
+    hint: "Pick from your friends. Co-hosts can edit the event, invite people and see everyone. If they'd answered, hosting takes the place of their answer.",
+    added: '{name} is now a co-host.',
+    creatorOnly: 'Only the person who made this event can add co-hosts.',
+    closed: "Co-hosts can't be added: this event is over or cancelled.",
+    noFriends: "You don't have friends here yet. Friends are people you've been to an event with.",
+    noMatch: 'No friends by that name.',
+    errors: {
+      email_unverified: "{name} can't co-host yet. A co-host needs a confirmed email, and to have opened Canopy Events with it at least once.",
+      too_many_cohosts: 'An event can have at most 10 co-hosts.',
+      creator_only: 'Only the person who made this event can add co-hosts.',
+      event_cancelled: 'This event has been cancelled.',
+      event_over: 'This event has ended.',
+      is_creator: "You're already this event's host."
+    }
   },
 
   // ---------------- Your events, at / ----------------
@@ -131,6 +234,18 @@ const COPY = {
     everyone: 'Everyone with the link sees who is coming.',
     responded: "People see who is coming once they've answered. Before that, only how many.",
     hostsSeeAll: 'You always see everyone.',
+    // The cover image.
+    cover: 'Cover image (optional)',
+    coverHint: "Shown at the top of the event and in link previews. It's public: anyone with the image's address can see it.",
+    coverNoPreview: "This photo can't be previewed here. It will show once it's saved.",
+    coverNotSaved: "The event is saved, but its cover didn't upload.",
+    // Plus-ones and capacity.
+    guestsAllowed: 'Guests each person can bring',
+    guestsAllowedHint: 'Plus-ones. Lowering it later keeps the answers people already gave.',
+    noGuests: 'None',
+    capacity: 'Capacity (optional)',
+    capacityPlaceholder: 'No limit',
+    capacityHint: 'The most people going, guests included. Past it, people join a waitlist and move up when a spot opens.',
     // Unverified people get this instead of the form.
     verifyHeading: 'Confirm your email first',
     verifyHint: 'To make events, confirm your email. It takes a minute: we email you a code.',
@@ -143,7 +258,15 @@ const COPY = {
       bad_ends_at: "That end time doesn't look right.",
       ends_before_start: 'It has to end after it starts.',
       bad_time_zone: 'Pick a time zone.',
-      rate_limited: "That's a lot of events for one day. Try again tomorrow."
+      rate_limited: "That's a lot of events for one day. Try again tomorrow.",
+      bad_guests_allowed: 'Pick from 0 to 10 guests.',
+      bad_capacity: 'Capacity is a whole number from 1 to 10,000, or empty for no limit.'
+    },
+    // The cover's own refusals, by the API's `reason`.
+    coverErrors: {
+      too_large: 'That photo is too big. A cover can be up to 15 MB.',
+      bad_image: "That file isn't a photo we can use. Try a JPEG, PNG, WebP or HEIC.",
+      rate_limited: "That's a lot of covers for one day. Try again tomorrow."
     }
   },
 
@@ -161,6 +284,22 @@ const COPY = {
     togetherOne: '1 event together',
     closed: "This event isn't taking invitations: it's over or cancelled.",
     notHost: 'Only a host can invite people to this event.',
+    // Finding someone by phone number or Instagram.
+    lookupHeading: 'Invite by phone number or Instagram',
+    lookupHint: 'Type their number or Instagram username exactly. Only people who let themselves be found will show up.',
+    lookupPlaceholder: 'Phone number or @username',
+    lookupVerify: 'Confirm your email to find people by phone number or Instagram.',
+    lookupOff: "Finding people by phone number or Instagram isn't available yet.",
+    lookupNone: 'No one found. Check the number or username, or share the link with them instead.',
+    lookupInvited: 'Invited {name}.',
+    lookupRemoved: "You've removed them from this event. Undo that from the guest list first.",
+    lookupErrors: {
+      bad_phone: "That doesn't look like a phone number.",
+      bad_instagram: 'An Instagram username is letters, numbers, dots and underscores.',
+      one_of: 'Type a phone number or an Instagram username.',
+      rate_limited: "That's a lot of lookups. Try again later.",
+      email_unverified: 'Confirm your email to find people by phone number or Instagram.'
+    },
     back: 'Back to the event'
   },
 

@@ -39,19 +39,23 @@ document.addEventListener('error', (e) => {
 // look at, except the answers every page treats the same way:
 //
 //   401 sign_in_required -> off to sign in, and back here;
-//   403 email_unverified -> off to confirm the email, and back here;
+//   403 email_unverified -> off to confirm the email, and back here
+//                           (unless opts.stay: the page says it instead);
 //   503 accounts_unreachable -> throws, and busy() says so.
+//
+// `body` is JSON, or a FormData (a file upload), sent as it is.
 class AccountsDown extends Error {}
 
-async function api(method, path, body){
+async function api(method, path, body, opts){
+  const form = typeof FormData !== 'undefined' && body instanceof FormData;
   const res = await fetch('/api/v1' + path, {
     method,
-    headers: Object.assign({ Accept: 'application/json' }, body === undefined ? {} : { 'Content-Type': 'application/json' }),
-    body: body === undefined ? undefined : JSON.stringify(body)
+    headers: Object.assign({ Accept: 'application/json' }, body === undefined || form ? {} : { 'Content-Type': 'application/json' }),
+    body: body === undefined ? undefined : (form ? body : JSON.stringify(body))
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && data.signIn){ window.location.href = data.signIn; return new Promise(() => {}); }
-  if (res.status === 403 && data.reason === 'email_unverified' && data.verify){ window.location.href = data.verify; return new Promise(() => {}); }
+  if (res.status === 403 && data.reason === 'email_unverified' && data.verify && !(opts && opts.stay)){ window.location.href = data.verify; return new Promise(() => {}); }
   if (res.status === 503) throw new AccountsDown(data.error || '');
   return { res, data };
 }

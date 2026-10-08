@@ -399,3 +399,289 @@ test('pages when Canopy accounts can\'t be reached: a page that says so', async 
   assert.equal(r.status, 503);
   assert.ok(r.body.includes("Canopy accounts can&#39;t be reached right now."));
 });
+
+// ---------------- The features: covers, capacity and plus-ones, co-hosts,
+// the wall, moderation and lookup, each section as every kind of viewer.
+
+test('ui.js: the features, drawn', async (t) => {
+  await t.test('plus-ones allowed in the editor are the API\'s', () => {
+    assert.equal(UI.MAX_GUESTS_ALLOWED, require('../lib/eventInput').MAX_GUESTS_ALLOWED);
+  });
+
+  await t.test('counts are people, plus the guests they bring', () => {
+    const counts = { going: 4, maybe: 1, notGoing: 0, invited: 2, waitlisted: 1, guests: { going: 2, maybe: 1, waitlisted: 0 } };
+    assert.equal(UI.countsLine({ counts }, false), '4 going +2 guests · 1 maybe +1 guest · 1 on the waitlist');
+    assert.equal(UI.countsLine({ counts }, true), '4 going +2 guests · 1 maybe +1 guest · 1 on the waitlist · 2 invited');
+  });
+
+  await t.test('wall entries: names escaped and in bold, unknown types left out', () => {
+    const person = { id: 'p', firstName: '<i>Ana', lastName: 'L', shortName: 'A', photoUrl: null };
+    const entry = { id: '1', type: 'going', createdAt: new Date().toISOString(), person, text: null, details: null, canDelete: false };
+    const html = UI.wallEntry(entry, { timeZone: 'UTC' }, {});
+    assert.ok(html.includes('<strong>&lt;i&gt;Ana L</strong> is going.'), html);
+    assert.ok(!html.includes('<i>'));
+    assert.equal(UI.wallEntry({ ...entry, type: 'something_new' }, { timeZone: 'UTC' }, {}), '');
+    const place = UI.wallEntry({ ...entry, type: 'place_changed', details: { locationName: null, locationAddress: null } }, { timeZone: 'UTC' }, {});
+    assert.ok(place.includes('took the place off.'));
+    assert.equal(UI.ago(new Date(Date.now() - 5 * 60e3).toISOString(), 'UTC'), '5m');
+    assert.equal(UI.ago(new Date(Date.now() - 3 * 3600e3).toISOString(), 'UTC'), '3h');
+    assert.equal(UI.ago('2030-01-02T12:00:00.000Z', 'UTC', Date.parse('2030-01-09T12:00:00.000Z')), 'Jan 2');
+  });
+
+  await t.test('someone removed never sees a raw copy key, whatever the event\'s state', () => {
+    const e = { id: 'AAAAAAAAAAAA', guestsAllowed: 0, capacity: null, viewer: { role: null, canEdit: false, rsvp: { status: 'removed', guests: 0, guestsOverLimit: false } } };
+    for (const phase of ['upcoming', 'cancelled', 'over']) {
+      const html = UI.rsvpSection(e, phase, {});
+      assert.ok(html.includes('You&#39;re not on the list for this event.'), phase);
+      assert.ok(!/(status|event|wall)\.[a-zA-Z]/.test(html), phase);
+    }
+  });
+
+  await t.test('a lookup shows a name and a photo, and nothing else of theirs', () => {
+    const p = { id: 'x', firstName: 'Ana', lastName: 'Lima', shortName: 'Ana L', photoUrl: 'https://a/photo/x', phone: '+14155550000', instagram: 'ana.insta' };
+    const html = UI.lookupResult(p, {});
+    assert.ok(html.includes('Ana Lima') && html.includes('https://a/photo/x') && html.includes('data-action="invite-found"'));
+    assert.ok(!html.includes('4155550000') && !html.includes('ana.insta'));
+    assert.ok(UI.lookupResult(p, { x: 'removed' }).includes('class="tag off">Removed<'));
+  });
+
+  await t.test('lookup is for verified hosts; anyone else is told how', () => {
+    const event = { id: 'AAAAAAAAAAAA', title: 'T' };
+    const quick = UI.invitePage({ event, me: { emailVerified: false }, links: { verify: 'https://a/profile?verify=1' }, friends: [], onList: {}, phase: 'upcoming' });
+    assert.ok(quick.includes('href="https://a/profile?verify=1"') && !quick.includes('lookupForm'));
+    const verified = UI.invitePage({ event, me: { emailVerified: true }, friends: [], onList: {}, phase: 'upcoming' });
+    assert.ok(verified.includes('id="lookupForm"'));
+    const over = UI.invitePage({ event, me: { emailVerified: true }, friends: [], onList: {}, phase: 'over' });
+    assert.ok(!over.includes('lookupForm'));
+  });
+});
+
+test('pages: the features, as everyone who might look', async (t) => {
+  const sharp = require('sharp');
+  const server = await startServer();
+  t.after(() => server.stop());
+  const P = server.people;
+  const [ana, ben, cy, dee, eve, fay, una] = ['ana', 'ben', 'cy', 'dee', 'eve', 'fay', 'una'].map((n) => client(server, n));
+  const anon = client(server, null);
+  const ADDRESS = '1 Market St';
+
+  // Fay has opened events with a confirmed email, so she can co-host.
+  await fay.get('/api/v1/me');
+  // Friends: ana hosted a picnic ben, cy, dee and fay went to.
+  const before = await makeEvent(ana, { title: 'Picnic before' });
+  for (const who of [ben, cy, dee, fay]) await who.put(`/api/v1/events/${before.id}/rsvp`, { status: 'going' });
+  server.setTimes(before.id, { startedAgoMs: 9 * 86400e3, overInMs: -8 * 86400e3 });
+
+  // The party: room for 2, up to 2 guests each, a cover, fay co-hosting.
+  // Ben goes with a guest (full), cy is waitlisted, una says maybe, and
+  // dee was invited and then removed.
+  const party = await makeEvent(ana, { title: 'Garden party', capacity: 2, guestsAllowed: 2 });
+  const jpeg = await sharp({ create: { width: 1200, height: 675, channels: 3, background: '#0A3800' } }).jpeg().toBuffer();
+  const up = await ana.upload('PUT', `/api/v1/events/${party.id}/cover`, jpeg, { type: 'image/jpeg', filename: 'cover.jpg' });
+  assert.equal(up.status, 200, up.text);
+  const cover = up.data.event.coverImageUrl;
+  assert.equal((await ana.post(`/api/v1/events/${party.id}/cohosts`, { personId: P.fay.id })).status, 200);
+  await ana.post(`/api/v1/events/${party.id}/invites`, { personIds: [P.dee.id] });
+  await ben.put(`/api/v1/events/${party.id}/rsvp`, { status: 'going', guests: 1 });
+  assert.equal((await cy.put(`/api/v1/events/${party.id}/rsvp`, { status: 'going' })).data.waitlisted, true);
+  await una.put(`/api/v1/events/${party.id}/rsvp`, { status: 'maybe' });
+  assert.equal((await ana.put(`/api/v1/events/${party.id}/removed/${P.dee.id}`)).status, 200);
+  assert.equal((await ben.post(`/api/v1/events/${party.id}/wall`, { text: 'See you there! <b>bold</b>' })).status, 201);
+  await ana.patch(`/api/v1/events/${party.id}`, { locationName: 'The garden' });
+
+  await t.test('signed out: the cover as the hero and in the preview, the spots, no wall', async () => {
+    const r = await page(server, anon, `/e/${party.id}`);
+    const details = section(r.body, 'details');
+    assert.ok(details.includes(`<img class="cover" src="${cover}" alt="">`), details);
+    assert.equal(meta(r.text, 'og:image'), cover);
+    assert.equal(meta(r.text, 'twitter:image'), cover);
+    assert.equal(meta(r.text, 'twitter:card'), 'summary_large_image');
+    assert.ok(details.includes('1 going +1 guest · 1 maybe · 1 on the waitlist'), details);
+    assert.ok(details.includes('Full. New answers join the waitlist.'));
+    assert.ok(details.includes('Hosted by Ana Lima and Fay Tran'));
+    assert.equal(section(r.body, 'wall'), null);
+    assert.ok(!r.body.includes('data-action="remove-guest"') && !r.body.includes('data-action="guests"'));
+    assert.equal(pageData(r.text).wall, null);
+  });
+
+  await t.test('without a cover, the preview has no image', async () => {
+    const plain = await makeEvent(ana, { title: 'No picture' });
+    const html = (await page(server, anon, `/e/${plain.id}`)).text;
+    assert.equal(meta(html, 'og:image'), null);
+    assert.equal(meta(html, 'twitter:card'), 'summary');
+    assert.ok(!html.slice(0, html.indexOf('id="pageData"')).includes('<img class="cover"'));
+  });
+
+  await t.test('unverified, maybe: the guests stepper, and the wall with a box to post in', async () => {
+    const html = (await page(server, una, `/e/${party.id}`)).body;
+    assert.ok(html.includes('id="verifyBanner"'));
+    const rsvp = section(html, 'rsvp');
+    assert.ok(rsvp.includes('data-status="maybe" aria-pressed="true"'));
+    assert.ok(rsvp.includes('data-action="guests" data-delta="1"') && rsvp.includes('<output id="guestCount" aria-live="polite">0</output>'), rsvp);
+    assert.ok(rsvp.includes('You can bring up to 2.'));
+    const wall = section(html, 'wall');
+    assert.ok(wall.includes('id="wallForm"'));
+    assert.ok(wall.includes('See you there! &lt;b&gt;bold&lt;/b&gt;'), 'posts are escaped');
+    assert.ok(!wall.includes('data-action="delete-entry"'), 'nothing of hers to delete');
+  });
+
+  await t.test('a guest going with a plus-one: their count, the waitlist group, their own post to delete', async () => {
+    const r = await page(server, ben, `/e/${party.id}`);
+    const rsvp = section(r.body, 'rsvp');
+    assert.ok(rsvp.includes('data-status="going" aria-pressed="true"'));
+    assert.ok(rsvp.includes('<output id="guestCount" aria-live="polite">1</output>'));
+    assert.ok(!rsvp.includes('It&#39;s full.'), 'already going');
+    const guests = section(r.body, 'guests');
+    assert.ok(guests.includes('Going · 1 +1 guest') && guests.includes('Ben Okafor'), guests);
+    assert.match(guests, /Ben Okafor<\/div><div class="sub">\+1 guest</);
+    assert.ok(guests.includes('Waitlist · 1') && guests.includes('Cy Park'));
+    assert.ok(!guests.includes('Dee Ruiz'), 'the removed are only for hosts');
+    assert.ok(!guests.includes('data-action="remove-guest"') && !guests.includes('removedGroup'));
+    const wall = section(r.body, 'wall');
+    assert.ok(wall.includes('<strong>Ben Okafor</strong> is going.'), wall);
+    assert.ok(wall.includes('<strong>Ana Lima</strong> changed the place to <strong>The garden</strong>.'));
+    assert.ok(wall.includes('<strong>Fay Tran</strong> is co-hosting.'));
+    assert.equal((wall.match(/data-action="delete-entry"/g) || []).length, 1, 'only his own post');
+    const d = pageData(r.text);
+    assert.deepEqual(d.wall, (await ben.get(`/api/v1/events/${party.id}/wall?limit=20`)).data);
+    assert.equal(d.removed, null);
+  });
+
+  await t.test('waitlisted: their place, and no "it\'s full" warning; someone new gets the warning', async () => {
+    const rsvp = section((await page(server, cy, `/e/${party.id}`)).body, 'rsvp');
+    assert.ok(rsvp.includes('You&#39;re on the waitlist.'));
+    assert.ok(rsvp.includes('data-status="going" aria-pressed="true"'));
+    assert.ok(!rsvp.includes('It&#39;s full.'));
+    const fresh = section((await page(server, eve, `/e/${party.id}`)).body, 'rsvp');
+    assert.ok(fresh.includes('It&#39;s full. If you say going, you&#39;ll join the waitlist'), fresh);
+  });
+
+  await t.test('removed: a calm line, and nothing about who\'s coming', async () => {
+    const r = await page(server, dee, `/e/${party.id}`);
+    assert.equal(r.status, 200);
+    const rsvp = section(r.body, 'rsvp');
+    assert.ok(rsvp.includes('You&#39;re not on the list for this event.'), rsvp);
+    assert.ok(!r.body.includes('status.removed') && !/>\s*(status|event|wall)\.[a-zA-Z]/.test(r.body), 'no raw copy keys');
+    assert.ok(!r.body.includes('data-action="answer"') && !r.body.includes('Take back my answer'));
+    for (const id of ['guests', 'wall', 'friends-going', 'host']) assert.equal(section(r.body, id), null, id);
+    assert.ok(!r.body.includes(ADDRESS), 'no address');
+    for (const name of ['Ben Okafor', 'Cy Park', 'Una Quick']) assert.ok(!r.body.includes(name), name);
+    const d = pageData(r.text);
+    assert.equal(d.event.viewer.rsvp.status, 'removed');
+    assert.equal(d.guests, null);
+    assert.equal(d.wall, null);
+  });
+
+  await t.test('a co-host: running it, removing and undoing, stepping down, but not cancelling or relinking', async () => {
+    const r = await page(server, fay, `/e/${party.id}`);
+    const host = section(r.body, 'host');
+    assert.ok(host.includes('You&#39;re co-hosting'));
+    assert.ok(host.includes(`href="/e/${party.id}/invite"`) && host.includes(`href="/e/${party.id}/edit"`));
+    assert.ok(!host.includes('data-action="cancel"') && !host.includes('data-action="new-link"'));
+    assert.ok(host.includes('data-action="step-down"') && !host.includes('data-action="remove-cohost"'));
+    assert.equal(section(r.body, 'rsvp'), null);
+    const guests = section(r.body, 'guests');
+    assert.ok(guests.includes(`data-action="remove-guest" data-person="${P.ben.id}" data-name="Ben Okafor"`), guests);
+    assert.match(guests, /id="removedGroup"[\s\S]*Removed · 1[\s\S]*Dee Ruiz[\s\S]*data-action="undo-remove"/);
+    const wall = section(r.body, 'wall');
+    assert.equal((wall.match(/data-action="delete-entry"/g) || []).length, (wall.match(/class="wall-entry/g) || []).length, 'hosts delete anything');
+    assert.deepEqual(pageData(r.text).removed, (await fay.get(`/api/v1/events/${party.id}/guests?status=removed&limit=50`)).data);
+    assert.equal((await page(server, fay, `/e/${party.id}/edit`)).status, 200);
+    const pick = await page(server, fay, `/e/${party.id}/cohosts`);
+    assert.equal(pick.status, 403);
+    assert.ok(pick.body.includes('Only the person who made this event can add co-hosts.'));
+  });
+
+  await t.test('the creator: co-hosts, a new link, cancelling, and the removed', async () => {
+    const r = await page(server, ana, `/e/${party.id}`);
+    const host = section(r.body, 'host');
+    assert.ok(host.includes('You&#39;re hosting'));
+    assert.ok(host.includes('data-action="new-link"') && host.includes('data-action="cancel"'));
+    assert.ok(!host.includes('data-action="step-down"'));
+    assert.match(host, /Co-hosts · 1[\s\S]*Fay Tran[\s\S]*data-action="remove-cohost" data-person="[^"]+" data-name="Fay Tran"/);
+    assert.ok(host.includes(`href="/e/${party.id}/cohosts">Add co-host</a>`));
+    assert.ok(section(r.body, 'guests').includes('Dee Ruiz'));
+    // A new link: the page's data is the event under it, and the old one
+    // is gone.
+    const relinked = await makeEvent(ana, { title: 'Relinked' });
+    const moved = (await ana.post(`/api/v1/events/${relinked.id}/new-link`)).data.event;
+    assert.equal((await page(server, ana, `/e/${relinked.id}`)).status, 404);
+    assert.equal(pageData((await page(server, ana, `/e/${moved.id}`)).text).event.url, `${server.base}/e/${moved.id}`);
+    // The new link's box, as the page draws it after making one.
+    const drawn = UI.eventPage({ me: { id: P.ana.id }, event: moved, guests: null, wall: null, newLink: true }, {});
+    assert.ok(drawn.includes('id="newLink"') && drawn.includes(`value="${moved.url}"`) && drawn.includes('data-action="copy"'));
+  });
+
+  await t.test('adding co-hosts: the creator\'s friends, those hosting marked', async () => {
+    const r = await page(server, ana, `/e/${party.id}/cohosts`);
+    assert.equal(r.status, 200);
+    const list = section(r.body, 'addCohosts');
+    assert.match(list, /Ben Okafor[\s\S]*?data-action="add-cohost" data-person="[^"]+" data-name="Ben Okafor"/);
+    assert.match(list, /Fay Tran[\s\S]*?class="tag off">Co-hosting</);
+    assert.equal((await page(server, ben, `/e/${party.id}/cohosts`)).status, 403);
+    assert.equal((await page(server, anon, `/e/${party.id}/cohosts`)).status, 302);
+    assert.ok((await page(server, ana, `/e/${before.id}/cohosts`)).body.includes('Co-hosts can&#39;t be added'));
+  });
+
+  await t.test('stepping down leaves a co-host a guest, and their page a guest\'s', async () => {
+    const e = await makeEvent(ana, { title: 'Brief co-host' });
+    await ana.post(`/api/v1/events/${e.id}/cohosts`, { personId: P.fay.id });
+    assert.ok(section((await page(server, fay, `/e/${e.id}`)).body, 'host'));
+    await fay.del(`/api/v1/events/${e.id}/cohosts/${P.fay.id}`);
+    const html = (await page(server, fay, `/e/${e.id}`)).body;
+    assert.equal(section(html, 'host'), null);
+    assert.ok(section(html, 'rsvp').includes('You&#39;re invited. Are you going?'));
+  });
+
+  await t.test('the editor: the cover, plus-ones and capacity', async () => {
+    const edit = await page(server, ana, `/e/${party.id}/edit`);
+    const form = edit.body;
+    assert.ok(form.includes(`id="coverPreview" alt="" src="${cover}"`), 'the cover, previewed');
+    assert.ok(form.includes('Replace photo') && form.includes('id="coverFile"') && !/id="coverRemove"[^>]*hidden/.test(form));
+    assert.ok(form.includes('<option value="2" selected>2</option>'));
+    assert.ok(/id="capacity"[^>]*value="2"/.test(form));
+    const fresh = (await page(server, ana, '/new')).body;
+    assert.ok(fresh.includes('Choose photo') && /id="coverRemove"[^>]*hidden/.test(fresh));
+    assert.ok(fresh.includes('<option value="0" selected>None</option>'));
+    assert.ok(/id="capacity"[^>]*value=""/.test(fresh));
+    // A new event whose cover didn't upload comes back here to say so.
+    assert.equal(pageData((await page(server, ana, `/e/${party.id}/edit?coverError=too_large`)).text).coverError, 'too_large');
+    assert.equal(pageData((await page(server, ana, `/e/${party.id}/edit?coverError=%3Cb%3E`)).text).coverError, null);
+  });
+
+  await t.test('plus-ones over a lowered limit: kept, and said gently', async () => {
+    const e = await makeEvent(ana, { title: 'Dinner', guestsAllowed: 3 });
+    await ben.put(`/api/v1/events/${e.id}/rsvp`, { status: 'going', guests: 2 });
+    await ana.patch(`/api/v1/events/${e.id}`, { guestsAllowed: 1 });
+    const rsvp = section((await page(server, ben, `/e/${e.id}`)).body, 'rsvp');
+    assert.ok(rsvp.includes('The host now allows 1 guests each, and you&#39;re down for 2.'), rsvp);
+    assert.ok(rsvp.includes('<output id="guestCount" aria-live="polite">2</output>'));
+    assert.ok(section((await page(server, ana, `/e/${e.id}`)).body, 'guests').includes('+2 guests · more than now allowed'));
+  });
+
+  await t.test('a wall the host shows only to people who\'ve answered', async () => {
+    const quiet = await makeEvent(ana, { title: 'Quiet one', guestListVisibility: 'responded' });
+    await ana.post(`/api/v1/events/${quiet.id}/invites`, { personIds: [P.eve.id] });
+    const wall = section((await page(server, eve, `/e/${quiet.id}`)).body, 'wall');
+    assert.ok(wall.includes('The host shows the wall to people who&#39;ve answered.'), wall);
+    assert.ok(!wall.includes('wallForm'));
+  });
+
+  await t.test('inviting: lookup by phone or Instagram, with the hosts and the removed marked', async () => {
+    const r = await page(server, ana, `/e/${party.id}/invite`);
+    const lookup = section(r.body, 'lookup');
+    assert.ok(lookup.includes('Invite by phone number or Instagram') && lookup.includes('id="lookupForm"'));
+    const list = section(r.body, 'invite');
+    assert.match(list, /Dee Ruiz[\s\S]*?class="tag off">Removed</);
+    assert.match(list, /Fay Tran[\s\S]*?class="tag off">Co-hosting</);
+    const d = pageData(r.text);
+    assert.equal(d.onList[P.dee.id], 'removed');
+    assert.equal(d.links, null);
+  });
+
+  await t.test('home: a cover is the list row\'s thumbnail', async () => {
+    const hosting = section((await page(server, ana, '/')).body, 'list-hosting');
+    assert.ok(hosting.includes(`<span class="when-tile thumb"><img src="${cover}" alt="" loading="lazy">`), hosting);
+    assert.ok(section((await page(server, fay, '/')).body, 'list-hosting').includes('Garden party'));
+  });
+});

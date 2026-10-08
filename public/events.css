@@ -126,7 +126,7 @@ p{
   text-decoration:none;
 }
 /* 16px: iOS Safari zooms the page in when a smaller control takes focus. */
-input[type="email"], input[type="text"], input[type="search"], input[type="datetime-local"], select, textarea{
+input[type="email"], input[type="text"], input[type="search"], input[type="datetime-local"], input[type="number"], select, textarea{
   width:100%;
   background:var(--field);
   color:var(--text);
@@ -341,6 +341,80 @@ select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(
 .pick .person{cursor:pointer;}
 .pick input[type="checkbox"]{width:20px;height:20px;margin:0;flex:0 0 auto;accent-color:var(--accent);}
 .sticky-send{position:sticky;bottom:12px;z-index:5;}
+
+/* ---------------- Capacity and plus-ones ---------------- */
+.spots{font-size:13px;color:var(--accent-text);font-weight:600;margin:6px 0 0;}
+.spots.full{color:var(--text);}
+.full-hint{margin:-4px 0 12px;}
+.note{margin:10px 0 0;}
+/* "Guests you're bringing": the words, and − 2 + on the right. */
+.bringing{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line);}
+.bringing .label{font-size:14px;font-weight:600;}
+.bringing .sub{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px;}
+.stepper{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+.stepper button{width:40px;height:40px;padding:0;border-radius:50%;font-size:20px;line-height:1;}
+.stepper output{min-width:24px;text-align:center;font-size:17px;font-weight:700;}
+
+/* A small button at the end of a person's row: remove, undo, add, invite. */
+.small-btn, .button.small-btn{width:auto;flex:0 0 auto;padding:7px 12px;font-size:13px;border-radius:10px;}
+.link-btn.quiet{color:var(--muted);font-weight:600;font-size:12px;flex:0 0 auto;}
+
+/* ---------------- The host's area ---------------- */
+.cohosts{margin-top:16px;padding-top:4px;border-top:1px solid var(--line);}
+.cohosts .group-heading{margin-top:12px;}
+.cohosts .people{margin-bottom:10px;}
+.cohosts > .link-btn{margin-top:12px;}
+.new-link{border:1px solid var(--accent);border-radius:12px;padding:12px;margin:0 0 14px;}
+.new-link p{color:var(--text);margin:0 0 10px;}
+.new-link input{font-size:14px;margin-bottom:10px;}
+.new-link .row{display:flex;gap:8px;}
+.removed-group{margin-top:14px;}
+
+/* ---------------- The wall ---------------- */
+.wall-form textarea{min-height:0;margin-bottom:8px;}
+.wall-form-row{display:flex;align-items:center;justify-content:flex-end;gap:10px;}
+.wall-form-row .error{flex:1;margin:0;}
+.wall-form-row button{width:auto;padding:10px 22px;}
+.wall-list{list-style:none;margin:14px 0 0;padding:0;}
+.wall-entry{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);}
+.wall-entry:first-child{border-top:none;}
+.wall-entry .body{flex:1;min-width:0;font-size:14px;line-height:1.4;overflow-wrap:anywhere;}
+.wall-entry .when{font-size:12px;color:var(--muted);white-space:nowrap;}
+.wall-meta{display:flex;align-items:baseline;gap:8px;}
+.wall-meta .name{font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wall-text{white-space:pre-wrap;margin-top:2px;}
+.wall-entry.auto{align-items:center;}
+.wall-entry.auto .body{color:var(--muted);font-size:13px;}
+.wall-entry.auto strong{color:var(--text);font-weight:600;}
+
+/* ---------------- The cover, in the editor and on lists ---------------- */
+.cover-pick .cover-preview{display:none;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;border:1px solid var(--line);margin-bottom:10px;}
+.cover-pick.has-cover .cover-preview{display:block;}
+.cover-buttons{display:flex;gap:8px;}
+.cover-buttons > *{flex:1;}
+.cover-buttons button[hidden]{display:none;}
+/* The file input stays in the label (so a tap opens the picker) but out
+   of sight; the label is the button. */
+.file-btn{position:relative;overflow:hidden;}
+.file-btn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0;}
+.file-btn:focus-within{outline:2px solid var(--text);outline-offset:2px;}
+/* A list row with a cover: the photo in the date's place, the date on it. */
+.event-row .when-tile.thumb{position:relative;overflow:hidden;padding:0;height:54px;border:1px solid var(--line);}
+.when-tile.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+.when-tile.thumb .date{position:absolute;inset:auto 0 0 0;padding:10px 0 3px;background:linear-gradient(to top, rgba(3,18,12,.85), rgba(3,18,12,0));}
+.when-tile.thumb .mon{font-size:9px;line-height:1;color:#fff;}
+.when-tile.thumb .day{font-size:15px;line-height:1.05;color:#fff;}
+
+/* ---------------- Inviting by phone or Instagram ---------------- */
+.lookup-row{display:flex;gap:8px;}
+.lookup-row input{margin:0;flex:1;min-width:0;}
+.lookup-row button{width:auto;flex:0 0 auto;padding:12px 18px;}
+.found{margin-top:10px;}
+#lookup .notice, #lookup .error{margin-top:8px;}
+/* What happened, under a row of a long list. */
+.row-note{list-style:none;font-size:13px;padding:0 0 10px 52px;}
+.row-note.error{color:var(--danger);}
+.row-note.notice{color:var(--accent-text);}
 
 /* iPad and up: a little more room, and the editor's paired fields side
    by side. On a phone each keeps its own line. */

@@ -8,11 +8,11 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/events.css">
 </head>
-<!-- Inviting friends to an event (/e/<id>/invite, hosts only): your
-     friends (GET /api/v1/me/friends), the ones already on the list marked
-     with what they said, a search box, and POST .../invites. Drawn by
-     public/ui.js (invitePage), which also marks where finding people by
-     phone number or Instagram goes later. -->
+<!-- Inviting people to an event (/e/<id>/invite, hosts only): finding
+     someone by phone number or Instagram (GET /api/v1/people/lookup, an
+     exact match), then your friends (GET /api/v1/me/friends), the ones
+     already on the list (or removed) marked with what they said, a search
+     box, and POST .../invites. Drawn by public/ui.js (invitePage). -->
 <body class="mesh-bg">
 <!-- PAGE:HEADER -->
 <main class="wrap">
@@ -84,7 +84,77 @@ if (list){
   }
 })();
 
+// ---------------- Finding someone by phone or Instagram ----------------
+//
+// One exact match from GET /api/v1/people/lookup: a name and a photo,
+// offered with "Invite". What's typed decides which to ask: anything
+// with a letter or starting with @ is an Instagram username, otherwise
+// it's a phone number (the account service cleans either).
+const lookupForm = document.getElementById('lookupForm');
+let found = null;
+
+function lookupShow(id, text){
+  ['lookupNotice', 'lookupError'].forEach((x) => { const el = document.getElementById(x); if (el) el.textContent = ''; });
+  if (id) document.getElementById(id).textContent = text;
+}
+
+function drawFound(){
+  document.getElementById('lookupResult').innerHTML = found ? UI.lookupResult(found, data.onList) : '';
+}
+
+if (lookupForm){
+  lookupForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = document.getElementById('lookupQuery').value.trim();
+    found = null;
+    drawFound();
+    if (!q){ lookupShow('lookupError', COPY.invite.lookupErrors.one_of); return; }
+    const kind = /^@|[a-z]/i.test(q) ? 'instagram' : 'phone';
+    let after = null;
+    busy(document.getElementById('lookupBtn'), document.getElementById('lookupError'), async () => {
+      const { res, data: d } = await api('GET', '/people/lookup?' + kind + '=' + encodeURIComponent(q), undefined, { stay: true });
+      if (res.ok){
+        found = d.person;
+        drawFound();
+        if (!found) after = ['lookupNotice', t('invite.lookupNone')];
+        return;
+      }
+      // This site isn't allowed to look people up: the box goes, quietly.
+      if (d.reason === 'lookup_not_allowed'){
+        document.getElementById('lookup').innerHTML = '<h3>' + UI.tx('invite.lookupHeading') + '</h3><p style="margin:0">' + UI.tx('invite.lookupOff') + '</p>';
+        return;
+      }
+      after = ['lookupError', COPY.invite.lookupErrors[d.reason] || sentence(d.error)];
+    }).then(() => { if (after) lookupShow(after[0], after[1]); });
+  });
+}
+
+// Inviting the person a lookup found.
+function inviteFound(btn){
+  const id = btn.getAttribute('data-person');
+  const name = btn.getAttribute('data-name');
+  let after = null;
+  busy(btn, document.getElementById('lookupError'), async () => {
+    const { res, data: d } = await api('POST', '/events/' + encodeURIComponent(data.event.id) + '/invites', { personIds: [id] });
+    if (!res.ok){ after = ['lookupError', sentence(d.error)]; return; }
+    if (d.invited.length){
+      data.onList[id] = 'invited';
+      after = ['lookupNotice', t('invite.lookupInvited', { name })];
+    } else {
+      const skip = d.skipped[0] || {};
+      if (skip.reason === 'removed'){ data.onList[id] = 'removed'; after = ['lookupError', t('invite.lookupRemoved')]; }
+      else if (skip.reason === 'is_host') data.onList[id] = 'hosting';
+      else if (skip.reason === 'already_on_list'){ if (!data.onList[id]) data.onList[id] = 'invited'; }
+      else after = ['lookupError', t('common.failed')];
+    }
+    drawFound();
+    drawList();
+  }).then(() => { if (after) lookupShow(after[0], after[1]); });
+}
+
 onActions({
+  'invite-found': inviteFound,
+
   // Up to 100 at a time, which is what the API takes in one request.
   send: (btn) => {
     const ids = checkedIds();
@@ -98,7 +168,11 @@ onActions({
         if (!res.ok){ refusal = sentence(d.error); break; }
         d.invited.forEach((p) => { data.onList[p.id] = 'invited'; invited++; });
         // Already on the list (they answered meanwhile): not one to offer.
-        d.skipped.forEach((s) => { if (s.reason === 'already_on_list' && !data.onList[s.personId]) data.onList[s.personId] = 'invited'; });
+        d.skipped.forEach((s) => {
+          if (s.reason === 'removed') data.onList[s.personId] = 'removed';
+          else if (s.reason === 'is_host') data.onList[s.personId] = 'hosting';
+          else if (s.reason === 'already_on_list' && !data.onList[s.personId]) data.onList[s.personId] = 'invited';
+        });
       }
       drawList();
     }).then(() => {
