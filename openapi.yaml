@@ -37,6 +37,8 @@ tags:
     description: Co-hosts.
   - name: Wall
     description: The activity wall, posts and the server's own entries.
+  - name: Notifications
+    description: Your inbox, and the phones push goes to.
   - name: Me
     description: You, your friends and your events.
   - name: Docs
@@ -660,6 +662,156 @@ paths:
         - $ref: '#/components/parameters/Limit'
       responses: *eventListResponses
 
+  /api/v1/me/notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: Your inbox
+      description: |
+        Newest first (by when the latest thing in each happened), with how
+        many are unread. Each is typed with structured `details`, never a
+        sentence: see `Notification` for the types and how to word them.
+        Every push you get is also here.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of your inbox.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/notifications/unread:
+    get:
+      tags: [Notifications]
+      operationId: unreadCount
+      summary: How many are unread
+      description: Just the number, for a badge. Cheap enough to ask whenever the app comes to the front.
+      responses:
+        '200':
+          description: The unread count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnreadCount' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/notifications/read:
+    post:
+      tags: [Notifications]
+      operationId: markNotificationsRead
+      summary: Mark some read
+      description: |
+        `{"ids": [...]}`, 1 to 100 notification ids (400 `bad_ids`). Ids
+        that aren't yours, or are already read, are ignored. Answers with
+        the unread count after.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { type: string }
+            examples:
+              two:
+                value: { ids: ['17', '18'] }
+      responses:
+        '200':
+          description: The unread count after.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnreadCount' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      summary: Mark everything read
+      responses:
+        '200':
+          description: Zero.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnreadCount' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/devices:
+    post:
+      tags: [Notifications]
+      operationId: registerDevice
+      summary: Register a phone for push
+      description: |
+        `{"platform": "ios" | "android", "token": "…"}`: the APNs device
+        token (hex) or the FCM registration token. Send it after sign-in
+        and whenever the OS hands you a new one; sending the same one
+        again is fine. A token is one phone, so a token someone else
+        registered moves to you. Up to 10 phones each; registering an
+        11th drops the one registered longest ago. 400 `bad_platform` or
+        `bad_token`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceInput' }
+            examples:
+              iphone:
+                value: { platform: ios, token: 5f2a9c0e7d4b1a3f6e8c2d9b0a7f4e1c3b6d8a0f2e5c7b9d1a4f6e8c0b2d4a6f }
+      responses:
+        '200':
+          description: Registered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [Notifications]
+      operationId: unregisterDevice
+      summary: Stop pushing to a phone
+      description: |
+        `{"token": "…"}`, in the body. Call it when someone signs out on
+        the phone. A token that isn't yours (or isn't registered) is
+        left alone and still answers 200.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Done.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
   /api/v1/me/events/declined:
     get:
       tags: [Me]
@@ -739,7 +891,8 @@ components:
         `bad_location_name`, `bad_location_address`, `bad_status`,
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
         `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`,
-        `bad_image`, `bad_cursor`, `bad_limit`.
+        `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `bad_cursor`,
+        `bad_limit`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1306,6 +1459,113 @@ components:
           items: { $ref: '#/components/schemas/WallEntry' }
         canPost: { type: boolean }
         nextCursor: { $ref: '#/components/schemas/NextCursor' }
+
+    Notification:
+      description: |
+        One thing in your inbox. `type` says what; the app words it (and
+        the push it came with carries the same type and fields):
+
+        | type | means | `actor` | `details` |
+        |---|---|---|---|
+        | `invited` | you were invited | the host | null |
+        | `event_changed` | it moved, or the place changed | the host | `{changed: ["time", "place"]}` (one or both) |
+        | `event_cancelled` | it's cancelled | the host | null |
+        | `event_uncancelled` | it's back on | the host | null |
+        | `cohost_added` | you're a co-host now | the creator | null |
+        | `waitlist_promoted` | you got a spot: you're going | null | null |
+        | `wall_post` | a host posted on the wall | the host | `{entryId, text}` (the first 200 characters) |
+        | `rsvp` | someone answered your event (hosts) | the latest to answer | `{status}`, theirs |
+
+        Event changes, cancelling and host posts go to everyone going,
+        maybe or waitlisted, and to the other hosts. `rsvp` ones fold
+        together while unread: `count` is how many answers ("Ana and 3
+        others answered"), and only the first of a batch pushes. Nobody
+        is ever notified of their own doing. Expect new types later: skip
+        one you don't know.
+      type: object
+      additionalProperties: false
+      required: [id, type, createdAt, read, actor, event, details, count]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [invited, event_changed, event_cancelled, event_uncancelled, cohost_added, waitlist_promoted, wall_post, rsvp]
+        createdAt: { type: string, format: date-time, description: When it (or the latest folded into it) happened. }
+        read: { type: boolean }
+        actor:
+          oneOf:
+            - $ref: '#/components/schemas/Person'
+            - type: 'null'
+        event:
+          oneOf:
+            - $ref: '#/components/schemas/EventSummary'
+            - type: 'null'
+        details:
+          type: [object, 'null']
+          additionalProperties: false
+          properties:
+            changed:
+              type: array
+              items: { type: string, enum: [time, place] }
+            entryId: { type: string }
+            text: { type: string }
+            status: { $ref: '#/components/schemas/RsvpStatus' }
+        count: { type: integer, minimum: 1 }
+      example:
+        id: '17'
+        type: rsvp
+        createdAt: '2026-10-08T17:12:00.000Z'
+        read: false
+        actor: { id: 0b7e5a1f-9c2d-4e8b-8f3a-1d2c3b4a5e6f, firstName: Ben, lastName: Okafor, shortName: Ben O, photoUrl: null }
+        event:
+          id: 4fQ9xKpL2mZa
+          url: https://events.canopysf.com/e/4fQ9xKpL2mZa
+          title: Rooftop dinner
+          startsAt: '2026-11-01T02:30:00.000Z'
+          timeZone: America/Los_Angeles
+          status: active
+          coverImageUrl: null
+        details: { status: going }
+        count: 4
+
+    EventSummary:
+      description: An event as a notification mentions it. Open it by `id` for the rest.
+      type: object
+      additionalProperties: false
+      required: [id, url, title, startsAt, timeZone, status, coverImageUrl]
+      properties:
+        id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
+        url: { type: string, format: uri }
+        title: { type: string }
+        startsAt: { type: string, format: date-time }
+        timeZone: { type: string }
+        status: { type: string, enum: [active, cancelled] }
+        coverImageUrl: { type: [string, 'null'], format: uri }
+
+    NotificationList:
+      type: object
+      additionalProperties: false
+      required: [notifications, unreadCount, nextCursor]
+      properties:
+        notifications:
+          type: array
+          items: { $ref: '#/components/schemas/Notification' }
+        unreadCount: { type: integer, minimum: 0 }
+        nextCursor: { $ref: '#/components/schemas/NextCursor' }
+
+    UnreadCount:
+      type: object
+      additionalProperties: false
+      required: [unreadCount]
+      properties:
+        unreadCount: { type: integer, minimum: 0 }
+
+    DeviceInput:
+      type: object
+      required: [platform, token]
+      properties:
+        platform: { type: string, enum: [ios, android] }
+        token: { type: string, minLength: 16, maxLength: 4096, description: 'The APNs device token (hex) or FCM registration token.' }
 
     InviteInput:
       type: object

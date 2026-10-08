@@ -363,6 +363,66 @@ still takes posts. 5 posts a minute, 100 a day per person.
 own posts; hosts, anything, the server's entries included. `canDelete` on
 each entry says which.
 
+## Notifications and push
+
+Push is how people hear about things (there's no email or text). Every
+push also lands in the person's **inbox**, `GET /api/v1/me/notifications`,
+so an app that missed one, or was offline, catches up there.
+
+**Register the phone** after sign-in, and again whenever iOS or Android
+hands you a new token:
+
+```bash
+curl -s "${auth[@]}" -H 'Content-Type: application/json' -X POST $API/me/devices \
+  -d '{"platform": "ios", "token": "5f2a9c0e…"}'
+```
+
+`platform` is `ios` (an APNs device token, hex) or `android` (an FCM
+registration token). Registering again is fine. A token is one phone: if
+someone else signs in on it and registers it, it's theirs from then on.
+Up to 10 phones each. On sign-out, `DELETE /api/v1/me/devices` with
+`{"token": "…"}` in the body.
+
+**The real push senders aren't built yet** (they need the APNs and FCM
+keys, which come with the apps). Until then the server logs each push
+instead of sending it. Everything else (the inbox, registration, who gets
+what) is real, so build against it.
+
+**Notifications are typed, not sentences.** Each has a `type`, the
+`actor` (a `Person`, or null), the `event` (a short summary with `id`,
+`title`, `startsAt`, `timeZone`, `status`, `coverImageUrl`), `details`,
+and `count`. Word them in the app:
+
+| `type` | Say something like | Who gets it |
+|---|---|---|
+| `invited` | "Ana invited you to Rooftop dinner" | the person invited |
+| `event_changed` | "Ana changed the time and place" (`details.changed`: `time`, `place`) | everyone going, maybe or waitlisted, and the other hosts |
+| `event_cancelled` | "Rooftop dinner is cancelled" | the same |
+| `event_uncancelled` | "Rooftop dinner is back on" | the same |
+| `cohost_added` | "Ana made you a co-host" | the new co-host |
+| `waitlist_promoted` | "You got a spot! You're going" | whoever got it |
+| `wall_post` | "Ana posted: Parking is round the back…" (`details.text`, the first 200 characters; `details.entryId`) | everyone going, maybe or waitlisted, and the other hosts, when a host posts |
+| `rsvp` | "Ben and 3 others answered" (`count`; `actor` and `details.status` are the latest) | the hosts |
+
+- **Nobody is notified of their own doing.** A host who moves the event
+  isn't told it moved.
+- **Answers to your event fold together** while unread: the next answer
+  updates the unread `rsvp` notification (`count` goes up, `actor` is the
+  newest, it moves to the top) instead of making another, and only the
+  first one of a batch pushes. Once it's read, the next answer starts a
+  new one. A change of plus-ones alone isn't news.
+- The push carries the same `type`, the notification's id, the event's id
+  and title, and `badge` (the unread count). The senders will turn it into
+  a localized alert (`loc-key` and its arguments) for the app to word.
+- Skip a type you don't know: more will come.
+
+The inbox is newest first (by when the latest thing in each happened),
+with `unreadCount`. `GET /api/v1/me/notifications/unread` is just the
+count, for the badge. `POST /api/v1/me/notifications/read` with
+`{"ids": [...]}` (up to 100) marks some read, and
+`POST /api/v1/me/notifications/read-all` marks the lot. Both answer with
+the unread count.
+
 ## Friends and invitations
 
 There are no friend requests. **Two people are friends once they've both
@@ -424,7 +484,7 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |

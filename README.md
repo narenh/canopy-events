@@ -45,15 +45,26 @@ room for all of them, and the pages have a place for each.
   handler that keeps every API error in one shape.
 - `routes/` is the API, one file per subject, each mounted at `/api/v1`:
   `events.js` (making, reading, editing and cancelling events),
-  `rsvps.js` (answers, the guest list, invitations), `me.js` (you, your
-  friends, your events) and `docs.js` (the spec and `/docs`). A new
+  `rsvps.js` (answers, the guest list, invitations), `hosts.js`
+  (co-hosts), `wall.js` (the activity wall), `covers.js` (cover images,
+  and serving them at `/covers/`), `notifications.js` (your inbox and
+  your phones), `me.js` (you, your friends, your events) and `docs.js`
+  (the spec and `/docs`). A new
   subject is a new file here, so work on different subjects doesn't
   collide. `pages.js` is the web pages (see "The pages").
 - `lib/` is what the routes share:
   - `db.js` is persistence: one SQLite file, `DATA_DIR/events.db`, with
     the schema, its version and upgrades, and the daily snapshots. The
     queries are in `lib/store/`, one file per subject (`events.js`,
-    `rsvps.js`, `friends.js`), and `init()` hands them back as one store.
+    `rsvps.js`, `hosts.js`, `waitlist.js`, `wall.js`, `notifications.js`,
+    `friends.js`, `people.js`), and `init()` hands them back as one store.
+  - `notify.js` is the one way anyone hears about anything: it writes
+    the inbox entry and queues the push in one call, and never tells the
+    person who did it. `push.js` sends to their phones; for now its
+    sender only logs (the APNs and FCM senders need the apps' keys).
+  - `coverImage.js` turns an uploaded photo into the stored JPEG (with
+    `sharp`, and `heic-decode` for iPhone photos), and `coverStore.js`
+    keeps them in `DATA_DIR/covers`.
   - `people.js` is **the only place a person is turned into JSON**:
     `publicPerson` (the five public fields, copied by name), the former
     member, and `ownPerson` for `/me`.
@@ -205,6 +216,9 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `DELETE /api/v1/events/{id}/wall/{entryId}` | delete a post (its author) or any entry (hosts) |
 | `PUT`, `DELETE /api/v1/events/{id}/cover` | upload or remove the cover image (hosts) |
 | `GET /covers/<key>.jpg` | a cover image, public (for link previews) |
+| `GET /api/v1/me/notifications`, `/unread` | your inbox, and its unread count |
+| `POST /api/v1/me/notifications/read`, `/read-all` | mark some, or all, read |
+| `POST`, `DELETE /api/v1/me/devices` | register a phone for push, or stop |
 | `PUT /api/v1/events/{id}/rsvp` | answer: going, maybe, not_going |
 | `DELETE /api/v1/events/{id}/rsvp` | take the answer back |
 | `GET /api/v1/events/{id}/guests` | the guest list, by the visibility rule |
@@ -366,7 +380,8 @@ Everything is in `DATA_DIR` (`/app/data` in the container):
 Its tables are `events`, `hosts` (who hosts each event: the creator and
 any co-hosts), `rsvps` (one row per person per event: invited, or their
 answer), `wall` (the activity wall: posts, and the server's typed
-entries) and `verified_people` (who events has seen signed in with a
+entries), `notifications` (each person's inbox), `devices` (push tokens,
+one phone each) and `verified_people` (who events has seen signed in with a
 proven email, since only they may co-host and the account service doesn't
 say so about anyone but the visitor). There are no names, emails or
 photos: only person ids.

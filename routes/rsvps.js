@@ -33,9 +33,14 @@ const inviteLimits = guessLimits({ perWho: [300, DAY], perIp: [600, DAY], overal
 const MAX_INVITES_PER_REQUEST = 100;
 
 module.exports = function rsvpsRoutes(ctx) {
-  const { store, auth } = ctx;
+  const { store, auth, notify } = ctx;
   const router = express.Router();
   const withEvent = loadEvent(store);
+
+  // People who got a spot off the waitlist hear about it.
+  function promotedAll(eventId, promoted) {
+    if (promoted.length) notify('waitlist_promoted', { to: promoted, eventId });
+  }
 
   function refuse(res, [status, reason, error]) {
     return fail(res, status, reason, error);
@@ -61,6 +66,13 @@ module.exports = function rsvpsRoutes(ctx) {
     if (result.outcome === 'no_room') {
       return fail(res, 409, 'no_room', `there isn't room for that many guests -- you're still going with ${result.before.guests}`);
     }
+    // The hosts hear about a new answer, or a changed one (not a change of
+    // plus-ones alone). Repeats fold together while unread.
+    if (!result.before || result.before.status !== result.rsvp.status) {
+      notify('rsvp', { to: store.hostIdsOf(req.event.id), actorId: req.person.id, eventId: req.event.id,
+        details: { status: result.rsvp.status } });
+    }
+    promotedAll(req.event.id, result.promoted);
     res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }), waitlisted: result.outcome === 'waitlisted' });
   }));
 
@@ -69,7 +81,8 @@ module.exports = function rsvpsRoutes(ctx) {
   router.delete('/events/:id/rsvp', auth.requirePerson, withEvent, handle(async (req, res) => {
     const refusal = answerRefusal(req.event, req.role);
     if (refusal) return refuse(res, refusal);
-    store.withdrawAnswer(req.event.id, req.person.id);
+    const { promoted } = store.withdrawAnswer(req.event.id, req.person.id);
+    promotedAll(req.event.id, promoted);
     res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }) });
   }));
 
@@ -127,6 +140,7 @@ module.exports = function rsvpsRoutes(ctx) {
       else skipped.push({ personId, reason: outcome });
     });
     if (invited.length) inviteLimits.hit(req, req.person.id, invited.length);
+    notify('invited', { to: invited.map((p) => p.id), actorId: req.person.id, eventId: req.event.id });
     res.json({ invited, skipped });
   }));
 

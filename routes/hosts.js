@@ -19,7 +19,7 @@ const { eventView } = require('../lib/views');
 const { MAX_COHOSTS } = require('../lib/store/hosts');
 
 module.exports = function hostsRoutes(ctx) {
-  const { store, auth } = ctx;
+  const { store, auth, notify } = ctx;
   const router = express.Router();
   const withEvent = loadEvent(store);
 
@@ -42,9 +42,11 @@ module.exports = function hostsRoutes(ctx) {
       return fail(res, 403, 'email_unverified',
         "they can't co-host yet: a co-host needs a verified email, and to have opened Canopy Events with it at least once");
     }
-    const { outcome } = store.addCohost(req.event.id, personId, req.person.id);
+    const { outcome, promoted } = store.addCohost(req.event.id, personId, req.person.id);
     if (outcome === 'is_creator') return fail(res, 409, 'is_creator', "you're already this event's host");
     if (outcome === 'too_many') return fail(res, 409, 'too_many_cohosts', `an event can have at most ${MAX_COHOSTS} co-hosts`);
+    if (outcome === 'added') notify('cohost_added', { to: [personId], actorId: req.person.id, eventId: req.event.id });
+    if (promoted && promoted.length) notify('waitlist_promoted', { to: promoted, eventId: req.event.id });
     res.json({ event: await eventView(ctx, req, store.getEvent(req.event.id), { friendsGoing: true }) });
   }));
 

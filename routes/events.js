@@ -22,7 +22,7 @@ const DAY = 24 * 60 * 60 * 1000;
 const createLimits = guessLimits({ perWho: [20, DAY], perIp: [60, DAY], overall: [1000, DAY] });
 
 module.exports = function eventsRoutes(ctx) {
-  const { store, auth } = ctx;
+  const { store, auth, notify } = ctx;
   const router = express.Router();
   const withEvent = loadEvent(store);
 
@@ -61,7 +61,15 @@ module.exports = function eventsRoutes(ctx) {
     if (fields.status !== undefined && req.role !== 'creator') {
       return fail(res, 403, 'creator_only', 'only the person who made this event can cancel it');
     }
-    const { event } = store.editEvent(req.event.id, fields, req.person.id);
+    const { event, happened, promoted } = store.editEvent(req.event.id, fields, req.person.id);
+    // Everyone coming (going, maybe, waitlisted) and the other hosts hear
+    // about a new time or place, and about cancelling or taking it back.
+    const tell = { to: store.audienceOf(event.id), actorId: req.person.id, eventId: event.id };
+    const changed = ['time', 'place'].filter((k) => happened[k]);
+    if (changed.length) notify('event_changed', { ...tell, details: { changed } });
+    if (happened.cancelled) notify('event_cancelled', tell);
+    if (happened.uncancelled) notify('event_uncancelled', tell);
+    if (promoted.length) notify('waitlist_promoted', { to: promoted, eventId: event.id });
     res.json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });
   }));
 

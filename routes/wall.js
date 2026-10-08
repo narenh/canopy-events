@@ -13,7 +13,7 @@
 const express = require('express');
 const { handle, fail, loadEvent, pageParams, paginate } = require('../lib/api');
 const { guessLimits } = require('../lib/limits');
-const { canReadWall, canPost, canDeleteWallEntry } = require('../lib/rules');
+const { isHost, canReadWall, canPost, canDeleteWallEntry } = require('../lib/rules');
 const { loadPeople } = require('../lib/people');
 const { wallEntryView } = require('../lib/views');
 
@@ -21,6 +21,8 @@ const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
 const MAX_POST = 1000;
 const ENTRY_ID_RE = /^[1-9][0-9]{0,15}$/;
+// How much of a host's post a notification carries (for the push's text).
+const NOTIFIED_TEXT = 200;
 
 // Posting: 5 a minute and 100 a day per person; per address 20 a minute
 // and 300 a day; and across everyone 300 a minute and 5,000 a day. A
@@ -30,7 +32,7 @@ const burstLimits = guessLimits({ perWho: [5, MINUTE], perIp: [20, MINUTE], over
 const dailyLimits = guessLimits({ perWho: [100, DAY], perIp: [300, DAY], overall: [5000, DAY] });
 
 module.exports = function wallRoutes(ctx) {
-  const { store, auth } = ctx;
+  const { store, auth, notify } = ctx;
   const router = express.Router();
   const withEvent = loadEvent(store);
 
@@ -67,6 +69,11 @@ module.exports = function wallRoutes(ctx) {
     burstLimits.hit(req, req.person.id);
     dailyLimits.hit(req, req.person.id);
     const entry = store.addPost(req.event.id, req.person.id, text);
+    // A host's post is news for everyone coming (and the other hosts).
+    if (isHost(viewer.role)) {
+      notify('wall_post', { to: store.audienceOf(req.event.id), actorId: req.person.id, eventId: req.event.id,
+        details: { entryId: String(entry.id), text: text.slice(0, NOTIFIED_TEXT) } });
+    }
     const people = await loadPeople(ctx.canopy, [req.person.id]);
     res.status(201).json({ entry: wallEntryView(entry, people, viewer) });
   }));

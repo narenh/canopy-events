@@ -86,6 +86,10 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   // Version 4: cover keys.
   assert.equal(upgraded.setCover('AAAAAAAAAAAA', 'CoverKey1234').coverKey, 'CoverKey1234');
   assert.equal(upgraded.getEventByCoverKey('CoverKey1234').id, 'AAAAAAAAAAAA');
+  // Version 5: notifications and devices.
+  assert.equal(upgraded.addNotifications('invited', ['00000000-0000-4000-8000-000000000002'], { eventId: 'AAAAAAAAAAAA' })[0].isNew, true);
+  upgraded.registerDevice('00000000-0000-4000-8000-000000000002', 'ios', 'a'.repeat(64));
+  assert.equal(upgraded.devicesOf('00000000-0000-4000-8000-000000000002').length, 1);
   assert.equal(upgraded.isKnownVerified('00000000-0000-4000-8000-000000000001'), true);
   upgraded.db.close();
   fresh.db.close();

@@ -7,6 +7,8 @@ const createAuth = require('./lib/auth');
 const { fail } = require('./lib/api');
 const { isCanopyOrigin } = require('./lib/domain');
 const { isVerified } = require('./lib/people');
+const { createPush } = require('./lib/push');
+const { createNotifier } = require('./lib/notify');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -80,10 +82,12 @@ app.use((req, res, next) => {
 //
 // Everything under /api/v1, JSON in and out (openapi.yaml is the
 // contract, docs/api.md the guide). Each subject is its own file in
-// routes/, all given the same few things: the store, the account client
-// and the auth checks.
+// routes/, all given the same few things: the store, the account client,
+// the auth checks, and notify() (lib/notify.js: the inbox and push, in
+// one call).
 
-const ctx = { store, canopy, auth };
+const notify = createNotifier({ store, push: createPush({ store }) });
+const ctx = { store, canopy, auth, notify };
 const docsRouter = require('./routes/docs')();
 const apiRouters = [
   require('./routes/events'),
@@ -91,6 +95,7 @@ const apiRouters = [
   require('./routes/hosts'),
   require('./routes/wall'),
   require('./routes/covers'),
+  require('./routes/notifications'),
   require('./routes/me')
 ].map((make) => make(ctx));
 

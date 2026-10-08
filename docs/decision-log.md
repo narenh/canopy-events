@@ -486,3 +486,52 @@ waitlist, notifications, host moderation and lookup, built on branch
 - Events get `capacity`, `spotsLeft` (never below 0) and
   `coverImageUrl`, shown to everyone including signed out (a preview can
   say "3 spots left"). · n/a
+
+### Notifications, server side (schema version 5)
+
+- **One `notify(type, {to, actorId, eventId, details})`** (lib/notify.js)
+  writes the inbox rows and queues the pushes; routes never touch either
+  directly. It drops the actor from `to` and de-duplicates. · The spec:
+  nothing can push without landing in the inbox. · n/a
+- **Typed, not worded**: `invited`, `event_changed` (`{changed: [time,
+  place]}`, one notification for both), `event_cancelled`,
+  `event_uncancelled`, `cohost_added`, `waitlist_promoted`, `wall_post`
+  (`{entryId, text}`, text cut to 200 characters), `rsvp` (`{status}`).
+  · Clients render the text, in their own language. · n/a
+- `event_uncancelled` is added beside the spec's "cancelled". · Someone
+  told it's off needs telling it's back on. · Drop the notify call in
+  routes/events.js.
+- **Who hears event changes, cancelling and host posts: going, maybe and
+  waitlisted, plus the other hosts.** Invited-but-silent and can't-go
+  don't. · The spec says "going to or maybe at"; the waitlisted still
+  hope to be there, and co-hosts need to know what the creator did. ·
+  `audienceOf` in lib/store/notifications.js.
+- Only a **host's** post notifies; a guest's doesn't. · The spec ("a
+  host posted"), and a busy wall would buzz everyone constantly. · n/a
+- **RSVPs to hosts fold together while unread**: the unread `rsvp`
+  notification for that event gets `count + 1`, the newest `actor` and
+  status, and moves to the top; only the first of a batch pushes. Read
+  it and the next answer starts a new one. A change of plus-ones alone
+  isn't news; any change of status is (including to `not_going` and to
+  the waitlist). · "May be batched", and one buzz per guest is too many
+  for a big party. · `COLLAPSE` in lib/store/notifications.js.
+- Inbox order is by when the latest thing in a notification happened
+  (`updated_at`), so a folded one rises. There's no pruning of old
+  notifications yet. · Not needed at this size. · Add a startup DELETE
+  of read ones past N days.
+- Marking read is `POST /me/notifications/read {ids}` (1 to 100;
+  others' ids silently ignored) and `POST /me/notifications/read-all`,
+  plus `GET /me/notifications/unread` for a badge. · Simple for apps;
+  ignoring others' ids gives nothing away. · n/a
+- **Devices**: `POST /me/devices {platform, token}` upserts by token, so
+  a token registered by someone else moves to the new person (one phone,
+  whoever signed in last). `DELETE /me/devices` takes `{token}` in the
+  body, as the spec's path has no token in it, and only removes the
+  caller's own. Up to 10 phones each, least recently registered dropped.
+  Tokens are 16 to 4,096 of `A-Za-z0-9:_.-`. · n/a
+- **Push**: `lib/push.js` takes a sender `{name, send(device, message)}`;
+  the default logs `[push] ios …abc123 invited #17`, never the whole
+  token. A sender answering `invalidToken` unregisters it. Pushes are
+  sent after the response, on `setImmediate`; failures are logged, never
+  surfaced. The message is typed (`type`, ids, event title, `badge`) for
+  APNs `loc-key` / FCM `body_loc_key` later. · No keys tonight. · n/a
