@@ -2208,3 +2208,8 @@ events together) and that it's one way, like following. The rest:
   unless themeGrayscale is on, and cleared when an event leaves
   greyscale. Queued after friends and calendar invitations (schema
   order).
+- **(You)** Refinement: the accent is never grey. A greyscale event's
+  accent is **white** (the default, `accentHue: null`) or a hue, so a
+  black-and-white event's buttons don't look disabled. The Accent slider
+  runs from white through the hue wheel. Existing grey events switch from
+  today's grey accent to white.
