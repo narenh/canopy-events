@@ -1536,3 +1536,11 @@ Fixes for the security review's events findings (branch `fix/review`).
   Time." under the time, and the wall's "moved it to Sat, Oct 31 · 7:30
   PM Pacific Time". List rows and link previews keep the short "PDT":
   they're one tight line. · n/a · `whenHead`, `whenShort`.
+
+## iOS: following the web designs
+
+- **(You)** The iOS app adopts the new web designs. Its top card has
+  **no border at all**, because the cover is edge to edge. The theme
+  colours are derived exactly as docs/api.md describes (OKLCH). The app
+  stays fully mocked. The iOS agent's own judgment calls go in the iOS
+  repo's ARCHITECTURE.md ("Decisions").
