@@ -153,7 +153,9 @@ app.use((err, req, res, next) => {
     console.error(`[canopy-events] ${err.message}`);
     return fail(res, 503, err.reason, err.expose);
   }
-  console.error(err);
+  // The stack, not the error object: an error can carry what it was about
+  // (an answer from the account service, say), and that stays out of logs.
+  console.error((err && err.stack) || String(err));
   if (res.headersSent) return next(err);
   fail(res, 500, 'server_error', 'something went wrong on our side');
 });

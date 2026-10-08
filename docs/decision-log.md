@@ -752,3 +752,33 @@ The review found no critical or high issues. Fixes are in progress
   self-serve account deletion, and a lookup audit log. They're on
   `feat/data-security` in both repos, for your review. Their judgment
   calls get logged on that branch.
+
+## Contact data security (feat/data-security)
+
+On `feat/data-security` in both repos, not merged. Newest at the bottom.
+
+### 1. Lookup by POST
+
+- The lookup is `POST` in both services (`/api/people/lookup` in the
+  account service, `/api/v1/people/lookup` here), with `{phone}` or
+  `{instagram}` in a JSON body. The GET forms are gone, with no
+  compatibility period. · Numbers and handles in a URL end up in access
+  and error logs along the way; neither service is public yet, so nobody
+  depends on the GET. · Put the GET routes back next to the POSTs.
+- A site's key (`Authorization: Bearer cnp_…`) lets `POST
+  /api/people/lookup` skip the account service's Origin check. · The
+  same reasoning as the apps' bearer exemption: a header no browser
+  attaches by itself, on a route that never reads the cookie. Only that
+  one path is exempt. · `SITE_POSTS` in server.js.
+- Body values must be strings; a number, an array or an object is `400
+  one_of`. · No type guessing on what's typed into a phone field. ·
+  Accept numbers in both routes.
+- Error log lines carry the path without its query string (account
+  service), and events logs an error's stack rather than the whole error
+  object (an `ApiFailed` carries the API's whole answer). · Nothing that
+  could hold contact details goes in a log. · Revert the log lines.
+- Left as they are: the account service's three development-only mail
+  lines that print an address ("code for ana@…: 123456"). They never run
+  in production (no SMTP there means the request fails instead), and the
+  tests read codes from them. · Mask the address there if that's ever
+  wanted; the test harness matches on it.

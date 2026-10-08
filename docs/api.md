@@ -472,8 +472,10 @@ A host invites with `POST /api/v1/events/{id}/invites` and
 any Canopy person id, so the lookup below feeds straight into it.
 
 **Finding someone by phone or Instagram**:
-`GET /api/v1/people/lookup?phone=(415) 555-1234` or
-`?instagram=@ana.lima` (URL-encoded), exactly one of them, as typed. It
+`POST /api/v1/people/lookup` with `{"phone": "(415) 555-1234"}` or
+`{"instagram": "@ana.lima"}`, exactly one of them, as typed, as a string.
+It's a POST so the number never sits in a URL (URLs end up in logs; don't
+log the body in the app either). It
 answers `{"person": {...}}` (the public `Person`, never the number or
 handle asked about) or `{"person": null}`, with no hint why. Matches are
 exact, never by prefix, and only find people who let themselves be found.

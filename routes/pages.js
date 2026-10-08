@@ -106,7 +106,9 @@ module.exports = function pagesRoutes(ctx) {
 
   function failed(req, res, err) {
     if (err instanceof ApiFailed && err.answer.status === 503) return accountsDown(req, res);
-    console.error(err);
+    // The stack only: an ApiFailed carries the API's whole answer, which
+    // has no business in a log.
+    console.error((err && err.stack) || String(err));
     if (res.headersSent) return;
     render.message(req, res, 500, { heading: 'Canopy', text: t('common.failed') });
   }

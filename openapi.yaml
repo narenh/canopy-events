@@ -657,7 +657,7 @@ paths:
         '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/people/lookup:
-    get:
+    post:
       tags: [People]
       operationId: lookupPerson
       summary: Find someone by phone or Instagram
@@ -665,9 +665,15 @@ paths:
         For inviting someone you know the number or handle of: feed the
         `person.id` you get to `POST /api/v1/events/{id}/invites`.
         Verified people only (403 `email_unverified`, with `verify`).
-        Exactly one of `phone` or `instagram` (400 `one_of`), as typed
-        (`(415) 555-1234`, `@ana.lima`); they're cleaned the way the
-        Canopy profile cleans them, and matched exactly, never by prefix.
+        Exactly one of `phone` or `instagram`, as a string (400 `one_of`),
+        as typed (`(415) 555-1234`, `@ana.lima`); they're cleaned the way
+        the Canopy profile cleans them, and matched exactly, never by
+        prefix.
+
+        A POST, though it changes nothing: what you're looking for goes in
+        the body, never the URL, so it doesn't end up in a log anywhere
+        along the way. (It used to be a GET with a query string; that's
+        gone.) Don't log the body in the app either.
 
         The answer is the public `Person` and nothing else: never the
         number or handle you asked about, nor anything else about them. A
@@ -678,15 +684,20 @@ paths:
         address and overall (429 `rate_limited`): don't look up as
         someone types. 403 `lookup_not_allowed` means it isn't switched on
         for this site.
-      parameters:
-        - name: phone
-          in: query
-          schema: { type: string }
-          example: (415) 555-1234
-        - name: instagram
-          in: query
-          schema: { type: string }
-          example: '@ana.lima'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string, description: 'As typed, e.g. (415) 555-1234.' }
+                instagram: { type: string, description: 'As typed, with or without the @, or a link to the profile.' }
+            examples:
+              phone:
+                value: { phone: (415) 555-1234 }
+              instagram:
+                value: { instagram: '@ana.lima' }
       responses:
         '200':
           description: Who it is, or null.

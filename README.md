@@ -225,7 +225,7 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `POST`, `DELETE /api/v1/me/devices` | register a phone for push, or stop |
 | `PUT`, `DELETE /api/v1/events/{id}/removed/{personId}` | remove a guest, or undo it (hosts) |
 | `POST /api/v1/events/{id}/new-link` | give the event a new link; the old one stops working (the creator) |
-| `GET /api/v1/people/lookup` | find someone to invite by exact phone or Instagram (verified people) |
+| `POST /api/v1/people/lookup` | find someone to invite by exact phone or Instagram, in the body, never the URL (verified people) |
 | `PUT /api/v1/events/{id}/rsvp` | answer: going, maybe, not_going |
 | `DELETE /api/v1/events/{id}/rsvp` | take the answer back |
 | `GET /api/v1/events/{id}/guests` | the guest list, by the visibility rule |

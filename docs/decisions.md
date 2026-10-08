@@ -64,8 +64,10 @@ uses it):
 **Later, not tonight unless there's time:** hosts find people to invite
 by **phone number or Instagram username**, which people already fill in
 on their Canopy profile. The account service gets an exact-match lookup
-for sites (`GET /api/people/lookup?phone=…` / `?instagram=…`, never
-prefix or fuzzy search, so it can't list people), rate-limited. Events
+for sites (`POST /api/people/lookup` with `{phone}` or `{instagram}` in
+the body, so numbers never sit in a URL or a log; it was a GET with a
+query string until feat/data-security), never prefix or fuzzy search, so
+it can't list people, rate-limited. Events
 only lets verified hosts use it. Invites are therefore keyed by **person
 id** from day one.
 

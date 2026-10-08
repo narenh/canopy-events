@@ -12,6 +12,10 @@
 //
 // The answer is the public `Person` and nothing else: not the number or
 // handle that was asked about, and nothing the other way round.
+//
+// A POST, with what was typed in the JSON body, all the way through (the
+// account service's lookup is a POST too): a URL with a phone number in it
+// ends up in logs, and a body doesn't. Nothing here logs it either.
 
 const express = require('express');
 const { handle, fail } = require('../lib/api');
@@ -37,8 +41,9 @@ module.exports = function peopleRoutes(ctx) {
   const { canopy, auth } = ctx;
   const router = express.Router();
 
-  router.get('/people/lookup', auth.requireVerified, handle(async (req, res) => {
-    const { phone, instagram } = req.query;
+  router.post('/people/lookup', auth.requireVerified, handle(async (req, res) => {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const { phone, instagram } = body;
     if ((phone === undefined) === (instagram === undefined) || typeof (phone === undefined ? instagram : phone) !== 'string') {
       return fail(res, 400, 'one_of', SENTENCES.one_of);
     }

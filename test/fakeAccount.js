@@ -122,15 +122,17 @@ async function startFakeAccount() {
   // Like the real one: exact matches only, cleaned the way the profile
   // cleans them, only for a signed-in asker with a proven email, and
   // nobody who turned "find me" off. The answer is the public shape.
-  app.get('/api/people/lookup', (req, res) => {
-    state.lookups.push({ query: { ...req.query }, visitorIp: req.get('x-canopy-visitor-ip') || null });
+  // A POST with { phone } or { instagram } in the body, as the real one.
+  app.post('/api/people/lookup', express.json(), (req, res) => {
+    state.lookups.push({ query: { ...req.body }, url: req.originalUrl, visitorIp: req.get('x-canopy-visitor-ip') || null });
     if (state.lookupAnswer) return res.status(state.lookupAnswer.status).json(state.lookupAnswer.body);
     if (!state.allowsLookup) return res.status(403).json({ error: 'this site may not look people up', reason: 'lookup_not_allowed' });
     const asker = byToken.get(req.get('x-canopy-session'));
     if (!asker || state.deleted.has(asker.id)) return res.status(401).json({ error: 'not signed in', reason: 'signed_out' });
     if (!asker.emailVerified) return res.status(403).json({ error: 'confirm your email first', reason: 'email_unverified' });
-    const { phone, instagram } = req.query;
-    if ((phone === undefined) === (instagram === undefined) || Array.isArray(phone) || Array.isArray(instagram)) {
+    const { phone, instagram } = req.body || {};
+    if ((phone === undefined) === (instagram === undefined) || (phone !== undefined && typeof phone !== 'string')
+      || (instagram !== undefined && typeof instagram !== 'string')) {
       return res.status(400).json({ error: 'give one of phone or instagram', reason: 'one_of' });
     }
     let match;

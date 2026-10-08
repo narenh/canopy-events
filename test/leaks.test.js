@@ -72,8 +72,8 @@ test('every endpoint, every caller: other people are the five public fields and 
     await call(who, 'get', '/api/v1/me/friends');
     await call(who, 'get', `/api/v1/events/${e.id}/wall`);
     await call(who, 'get', '/api/v1/me/notifications');
-    await call(who, 'get', `/api/v1/people/lookup?phone=${encodeURIComponent(P.eve.phone)}`);
-    await call(who, 'get', `/api/v1/people/lookup?instagram=${encodeURIComponent(P.una.instagram)}`);
+    await call(who, 'post', '/api/v1/people/lookup', { phone: P.eve.phone });
+    await call(who, 'post', '/api/v1/people/lookup', { instagram: P.una.instagram });
     for (const list of ['hosting', 'upcoming', 'invitations', 'past']) await call(who, 'get', `/api/v1/me/events/${list}`);
   }
   await call(ana, 'get', `/api/v1/events/${e.id}/guests?status=invited`);
