@@ -101,3 +101,22 @@ Format: decision · why · how to reverse.
 - canopy-account-service: straight to main, pushed after every green
   step. canopy-events: feature branches in worktrees, merged into main
   by the orchestrator and pushed.
+
+## iOS app (canopy-events-ios)
+
+- **(You)** The SwiftUI foundation is built tonight with mock data only,
+  and no backend integration. Small files, organized for you to build
+  on by hand.
+- Work goes on branch `feat/ui-foundation`, merged to main by the
+  orchestrator. · The same pattern as events. · n/a
+- Mock data sits behind one `EventsRepository` protocol in the
+  environment, and model property names match the API's JSON. · The
+  real client becomes a drop-in later. · n/a
+- The project's own settings stay as they are: Swift 5 mode, MainActor
+  default isolation, iOS 27, synchronized folders. · They're your
+  choices. · n/a
+- No test target yet, since adding one means editing the project file.
+  · Left for you. · n/a
+- The look uses the system's Liquid Glass tinted with Canopy green, plus
+  a mesh background, rather than recreating the web's CSS. · It's
+  native on iOS 27. · Design/ tokens.
