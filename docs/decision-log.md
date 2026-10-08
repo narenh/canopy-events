@@ -812,3 +812,63 @@ On `feat/data-security` in both repos, not merged. Newest at the bottom.
   profile form and the verify sheet's "we sent a code to …" will show
   blanks until the app reads its own contact details from the account
   service's `GET /api/native/v1/me` (it already decodes into `Me`).
+
+### 3. Contact details encrypted at rest (account service, schema version 9)
+
+- **Email is encrypted too**, with a keyed-hash column (`email_hash`,
+  unique) that sign-in, "is this address taken" and uniqueness use. ·
+  Names plus emails are the most useful thing in a leaked copy; the hash
+  keeps every exact-match use working, and lets an email come back after
+  a lost encryption key (its owner signs in by code). · Drop the email
+  from `SEALED_COLUMNS`/`sealedContact` and look up by `email` again
+  (a schema step to decrypt it).
+- Venmo and Cash App are encrypted but have no hash. · Nothing looks them
+  up. · n/a
+- Format `v1:<keyId>:<nonce>:<ciphertext+tag>`, AES-256-GCM, random
+  12-byte nonce, the value's **kind** (`email`, `phone`, ...) as GCM's
+  additional data; not bound to the row id. · Stops a value being moved
+  to another column and still opening; row binding would also break when
+  a session's id changes at sign-in, and only matters to someone who can
+  write to the database, which isn't the threat here. · `seal`/`open` in
+  lib/contactCrypto.js.
+- HMAC input is `<kind>:<cleaned value>`. · Phone and Instagram hashes of
+  the same string can't collide. · n/a
+- The session columns that hold an email for a few minutes
+  (`code_email`, `verified_email`) and a waiting sign-up's details
+  (`pending_profile`) are sealed too. · Otherwise a snapshot taken during
+  a sign-up carries the address in plain text. · n/a
+- `secure_delete` is always on, and the upgrade to 9 runs `VACUUM`
+  afterwards (outside its transaction). · Without them the old plain text
+  stays in free pages and is copied into every snapshot; the test that
+  checks the raw file fails without them. · Remove the pragma and the
+  VACUUM.
+- Keys: `CONTACT_ENCRYPTION_KEYS` (`id:base64key`, comma-separated, first
+  is current) and `LOOKUP_HMAC_KEY`. Unset in development: throwaway keys
+  made and printed. Unset in production on an empty database: also
+  throwaway keys, printed with a loud `!!!` warning, so the admin can
+  still set up a fresh install; once anyone exists, production refuses to
+  start without keys. Setting only one of the two always refuses. ·
+  Mirrors `ADMIN_PASSWORD`, and stops a restart from silently losing
+  everything. · `checkKeys` in lib/db.js.
+- A value under a key id that isn't in the list makes production refuse
+  to start, unless `CONTACT_KEYS_LOST=1` (a third env var, added for
+  this). Then those values read as empty; nothing is deleted, so a found
+  key brings them back. · Taking an old key out too soon should be loud,
+  and a truly lost key shouldn't brick the service. · Drop the flag to
+  make it always refuse, or always warn.
+- Rotation runs at every startup when anything isn't under the first key,
+  in one transaction; there's also `store.reseal()`. A changed
+  `LOOKUP_HMAC_KEY` is noticed through a check value in `meta`
+  (`lookup_key_check`) and every hash is rebuilt from decrypted values. ·
+  No manual step to forget. · n/a
+- An email that reads as empty (lost key) is re-sealed when its owner
+  proves it by code (`addPasskeyProvingEmail` now takes the proven
+  address); confirming from the profile answers `409 email_unreadable`
+  and asks them to sign in by code instead. The phone's lookup hash is
+  left as it was when the encryption key is lost, so people stay findable
+  by the number they had even though their profile shows it empty. ·
+  Recovering what can be recovered without destroying anything. · Clear
+  the hashes in `checkKeys` when `CONTACT_KEYS_LOST=1`.
+- Snapshots and Coolify backups from before version 9 are not touched;
+  the startup log and README tell the admin to delete them. · Deleting
+  backups automatically is the owner's call. · n/a
