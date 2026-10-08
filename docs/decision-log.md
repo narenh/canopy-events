@@ -1114,3 +1114,10 @@ Fixes for the security review's events findings (branch `fix/review`).
   +N counts people. The grouped list and the host's tools live behind
   "View all". When the list is hidden, the counts stay and a one-line
   reason replaces the avatars.
+- **(You)** Host controls on the event page: "Share link" and "Invite"
+  on one line, then "Edit" with a ⋯ menu beside it. Co-hosts, new
+  link, cancel and delete all live in that menu.
+- Assumed: you meant the event page's host area, not the editor. Delete
+  is new: `DELETE /api/v1/events/{id}`, creator only, removing everything
+  (the link then 404s). The confirm suggests cancelling instead when
+  people have answered. Co-hosts get "Step down" in the menu.
