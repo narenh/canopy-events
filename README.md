@@ -399,6 +399,68 @@ Someone events has never seen is `{"entries": []}`, never a 404. It isn't
 limited: only the account service can ask, and it keeps each answer for
 five minutes.
 
+## Internal: the Account Manager's test people tools
+
+The account service's admin page has buttons that act on events for its
+**test people** (made-up Canopy Accounts; see "Seeding test guests"
+below): make the admin friends with all of them, make past events with
+them, and clear both away when they're deleted. Events does it at
+`/api/internal` (`routes/internal.js`), outside `/api/v1`. It isn't the
+apps' API and isn't in `openapi.yaml`; only the account service calls it.
+
+| Request | Body | Answer |
+|---|---|---|
+| `POST /api/internal/test-friends` | `{ personId, friendIds: [...] }` (1 to 200 ids) | `{ added, alreadyFriends }` |
+| `POST /api/internal/test-friends/remove` | `{ personIds: [...] }` (1 to 200) | `{ removed }` (edges) |
+| `POST /api/internal/test-events` | `{ personId, testPeopleIds: [...], count }` (count 1 to 20) | `{ created }` |
+| `DELETE /api/internal/test-events` | none | `{ deleted }` |
+
+**Signed, like the calendar's requests, but bound to what each one is
+for.** `Authorization: Canopy-Internal t=<unix seconds>, n=<32 hex>,
+sig=<hex>`, sig being HMAC-SHA256 with the same calendar secret
+(`CANOPY_CALENDAR_SECRET`) of
+`canopy-internal-v1\n<purpose>\n<METHOD>\n<path and query>\n<t>\n<n>\n<SHA-256 of the body>`.
+The purpose is `test-friends` or `test-events`; the body is the JSON as
+`JSON.stringify` writes it (`''` for none). So a signature is good for one
+request, within a minute either way of now, and only once (each `n` is
+remembered for that minute; a double click is two requests with two
+`n`s). A calendar signature can't pass for one of these, nor one of these
+for a calendar request: a different scheme name and a different string
+signed. `lib/canopy-account.js` `verifyInternalRequest(req, purpose)`
+checks it, and `internalAuthorization` (used by the account service, and
+by the tests) makes it. Anything else is a `401`, as is everything while
+`CANOPY_CALENDAR_SECRET` isn't set. Unknown paths under `/api/internal`
+are a JSON `404`, which the account service takes as "this site doesn't
+do that".
+
+**What they do.**
+
+- **test-friends**: `'link'` edges both ways between `personId` and each
+  id, exactly what each test person saying yes to the admin's friend link
+  would make, and any hiding either way undone (the admin asked for all
+  of them). Idempotent: `added` counts the ids where anything changed,
+  `alreadyFriends` the rest. **remove** deletes every edge to or from those
+  ids, any hiding of them or by them, and their friend links.
+- **test-events**: `count` past events (`lib/store/testEvents.js`),
+  spread over the last six months, an evening each, every other one
+  hosted by `personId` and the rest by a test person with `personId`
+  going (now and then maybe). Guests are drawn with a lean, so a few test
+  people are at most events and the rest at fewer, about one in five
+  saying maybe: the inviter's Suggested gets a real order. Written straight
+  into the tables (the API won't make an event in the past), so nothing
+  else happens: no Updates entries, no notifications or pushes, no
+  invitation friend edges, nobody marked as having hosted. Each is marked
+  `events.is_test` (schema version 16), has no cover, no color (gray) and a
+  description saying it's made up, and never goes in a calendar feed. At
+  most 100 at once (`409 too_many_test_events`). **DELETE** deletes every
+  one, with its hosts, answers and anything under it (and a cover, if
+  someone gave one).
+
+Events can't tell a test person from anyone else (the account service
+never says); it takes the account service's word for the ids, which only
+ever sends `is_test` people's, and the signed-in admin's own as
+`personId`.
+
 ## The Origin check
 
 A change made with the cookie (anything but GET, HEAD or OPTIONS) has to
@@ -418,6 +480,11 @@ the server first, and this one never says yes. And native apps don't
 send `Origin` at all. `lib/auth.js`'s `isBearer` uses the same test as
 the client file, so "skips the check" and "signed in by the token" can't
 disagree.
+
+**The account service's signed requests to `/api/internal` skip it too**
+(see above): server to server, no `Origin`, no cookie read, and an
+`Authorization: Canopy-Internal` header that a page elsewhere can't send
+without asking first either.
 
 ## Limits
 
@@ -496,15 +563,29 @@ so everything it makes is what real guests would make, and everything is
 taken off again by `cleanup`. Plain Node 22, nothing to install. It never
 touches your own account: it has only the test people's tokens.
 
+**No script needed for a friends list and history.** The Account
+Manager's **Test people** section does the common part with buttons:
+**Create test people** (each with a photo from pravatar), **Make me
+friends with all test people** (they're all in your friends list and
+invite picker, and you in theirs), and **Make past events with me** (6
+past events with you and them, so the inviter's Suggested has history
+and an order). That last one is something the script can't do: it never
+has your token. See "Internal: the Account Manager's test people tools"
+above for how events does it. The script is for filling real events with
+answers and updates, and for history among the test people themselves.
+
 1. **Create test people.** Account Manager → **People** → **Test
    people**: type how many (1 to 50 at a time; press it again for more)
    and **Create test people**. 30 to 40 makes a realistic friends list
-   and invite picker. Each gets an orange **Test** badge.
+   and invite picker. Each gets an orange **Test** badge, and a photo
+   (**Add photos** fetches any that didn't come).
 2. **Get tokens.** **Get tokens** there shows them once; **Download**
    saves `canopy-test-tokens.json`. Anyone with this file is signed in as
    those test people, so keep it out of the repo. Pressing it again makes
    new tokens and signs the old ones out.
-3. **Make them your friends.** Copy your friend link (Friends → your link,
+3. **Make them your friends.** **Make me friends with all test people**
+   in the Account Manager does it in one go. Or with the script: copy your
+   friend link (Friends → your link,
    `https://events.canopysf.com/f/<code>`), then:
 
    ```bash
@@ -520,9 +601,8 @@ touches your own account: it has only the test people's tokens.
    person with other test people going, so the test people have events in
    common and a "last together" with each other. **Your own** events in
    common with them can't be made this way: that would take your token,
-   which the script never has. They're your friends through the link
-   (`source: "link"`, 0 events in common) until you're at real events
-   together.
+   which the script never has. **Make past events with me** in the
+   Account Manager makes those.
 4. **Optionally, fill events.** For events you made (or any you have the
    link to):
 
@@ -552,8 +632,12 @@ touches your own account: it has only the test people's tokens.
    the script remembers touching), any event they made (the `--history`
    ones) is deleted, and everyone is taken out of their friends list.
 6. **Delete the test people.** Account Manager → **Delete all test
-   people**. That deletes their accounts (photos included), and takes them
-   out of your friends list: a deleted account is left out of it.
+   people**. First events deletes every test event and every friendship
+   with them (both ways), then their accounts go (photos included). If
+   events can't be reached, the page says so and the accounts go anyway;
+   a deleted account is left out of every friends list, so the leftovers
+   don't show, and the next **Delete all test people** clears the test
+   events.
 
 Every command takes `--dry-run` (reads, but changes nothing, and prints
 what it would do), `--base <url>` for another events site (default
@@ -602,7 +686,9 @@ runs as `NODE_ENV=production`, port 3000, `DATA_DIR=/app/data`.
      service's **Sites** tab: put events' address in its **Calendar URL**
      (`https://events.canopysf.com`, or events' address on Coolify's
      internal network) and Save, and it's shown once. Without it, events
-     isn't in anyone's Canopy calendar (see "Calendar").
+     isn't in anyone's Canopy calendar (see "Calendar"), and the Account
+     Manager's test people buttons can't reach events (see "Internal: the
+     Account Manager's test people tools").
    - `TMDB_TOKEN` and `TMDB_LIST_ID` (optional): a TMDB list of films
      and shows whose backdrops join the curated backgrounds. See
      "Backgrounds". `config/backgrounds.json` works without them.

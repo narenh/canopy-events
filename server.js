@@ -35,12 +35,13 @@ const canopy = createCanopyAccount({
   url: process.env.CANOPY_ACCOUNT_URL,
   key: process.env.CANOPY_ACCOUNT_KEY,
   // What the account service signs its calendar requests with
-  // (routes/calendar.js). Optional: without it, events just isn't in
-  // anyone's Canopy calendar, and the log says so.
+  // (routes/calendar.js), and its test people tools' (routes/internal.js).
+  // Optional: without it, events just isn't in anyone's Canopy calendar
+  // and those tools are refused, and the log says so.
   calendarSecret: process.env.CANOPY_CALENDAR_SECRET
 });
 if (!process.env.CANOPY_CALENDAR_SECRET) {
-  console.warn('[canopy-events] CANOPY_CALENDAR_SECRET not set: the account service\'s calendar feed can\'t ask events, so events won\'t be in anyone\'s Canopy calendar. See README.md > Calendar.');
+  console.warn('[canopy-events] CANOPY_CALENDAR_SECRET not set: the account service\'s calendar feed can\'t ask events, so events won\'t be in anyone\'s Canopy calendar (and the Account Manager\'s test people tools can\'t reach events). See README.md > Calendar.');
 }
 const auth = createAuth(canopy);
 
@@ -83,9 +84,20 @@ app.use((req, res, next) => {
 // header to a request to here either: it isn't one browsers let pages
 // send to another origin without asking first, and this server never says
 // yes. And native apps don't send Origin at all.
+//
+// The account service's signed requests to /api/internal skip it too
+// (routes/internal.js), for the same reasons: they're server to server
+// with no Origin, signed in by `Authorization: Canopy-Internal`, which no
+// browser sends by itself or lets a page elsewhere set without asking,
+// and those routes never read the cookie.
+function isInternal(req) {
+  return req.path.startsWith('/api/internal/') && /^Canopy-Internal\s/.test(String(req.get('authorization') || ''));
+}
+
 app.use((req, res, next) => {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   if (auth.isBearer(req)) return next();
+  if (isInternal(req)) return next();
   if (isCanopyOrigin(req.get('origin'))) return next();
   fail(res, 403, 'bad_origin', 'requests that change something must come from a Canopy page');
 });
@@ -130,6 +142,9 @@ app.use(docsRouter);
 // is, it's another server.
 const calendarRouter = require('./routes/calendar')(ctx);
 app.use('/api/calendar', calendarRouter);
+// The account service's test people tools, signed (routes/internal.js).
+// Here for the same reason.
+app.use('/api/internal', require('./routes/internal')(ctx));
 // Cover images are public, for link previews (routes/covers.js).
 app.use(require('./routes/covers').files(ctx));
 

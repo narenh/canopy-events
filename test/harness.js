@@ -20,6 +20,7 @@ const Database = require('better-sqlite3');
 const { startFakeAccount, KEEP_ALIVE_MS } = require('./fakeAccount');
 const { checkResponse } = require('./openapi');
 const { TOKEN: TMDB_TOKEN } = require('./fakeTmdb');
+const { internalAuthorization } = require('../lib/canopy-account');
 
 const CONTACT_FIELDS = ['email', 'phone', 'instagram', 'venmo', 'cashapp'];
 
@@ -34,6 +35,25 @@ function calendarAuth(personId, { secret = CALENDAR_SECRET, at = Date.now() } = 
   const t = Math.floor(at / 1000);
   const sig = require('crypto').createHmac('sha256', secret).update(`canopy-calendar-v1\n${personId}\n${t}`).digest('hex');
   return `Canopy-Calendar t=${t}, sig=${sig}`;
+}
+
+// The account service's signature on one of its other requests, to
+// /api/internal (routes/internal.js): made by the shared client file's own
+// signer (lib/canopy-account.js internalAuthorization), the one the
+// account service signs with. `url` is the path; `at` when it's signed.
+function internalAuth(server, { purpose, method, url, body, secret = CALENDAR_SECRET, at = Date.now() }) {
+  return internalAuthorization(secret, { purpose, method, url: server.base + url, body }, at);
+}
+
+// The account service sending a signed request to /api/internal: no
+// cookie, no Origin. `opts.auth` replaces the signature (a string, or
+// null for none); the rest of `opts` goes to internalAuth.
+async function asAccountService(server, method, url, body, opts = {}) {
+  const auth = opts.auth !== undefined ? opts.auth : internalAuth(server, { purpose: opts.purpose, method, url, body, ...opts });
+  const headers = auth === null ? {} : { Authorization: auth };
+  const c = client(server, null, { origin: '' });
+  if (method === 'DELETE') return c.del(url, { headers, body });
+  return c[method.toLowerCase()](url, body, { headers });
 }
 
 // Every place in `data` that shows anyone's contact details, the caller's
@@ -211,6 +231,11 @@ function client(server, who, { mode = 'cookie', origin } = {}) {
     if ((url.startsWith('/api/v1') || url.startsWith('/api/calendar/')) && data !== null) {
       CHECKS.forEach((check) => check(r, { callerId: person ? person.id : null, people: server.people }));
     }
+    // /api/internal isn't in openapi.yaml (it isn't the apps' API), but
+    // the other checks hold for it all the same.
+    if (url.startsWith('/api/internal/') && data !== null) {
+      CHECKS.filter((check) => check.name !== 'matchesSpec').forEach((check) => check(r, { callerId: null, people: server.people }));
+    }
     return r;
   }
 
@@ -260,4 +285,4 @@ async function makeEvent(host, overrides) {
   return r.data.event;
 }
 
-module.exports = { startServer, client, eventBody, makeEvent, counts, findLeaks, CHECKS, CONTACT_FIELDS, CALENDAR_SECRET, calendarAuth };
+module.exports = { startServer, client, eventBody, makeEvent, counts, findLeaks, CHECKS, CONTACT_FIELDS, CALENDAR_SECRET, calendarAuth, internalAuth, asAccountService };

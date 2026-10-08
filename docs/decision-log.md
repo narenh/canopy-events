@@ -2966,6 +2966,108 @@ a realistic friends list. The account service makes them (its README,
   id and a 43-character token) and never printed. `.gitignore` keeps
   `canopy-test-tokens*.json` out of the repo.
 
+### Buttons in the Account Manager (feat/test-friends)
+
+**(You)** asked for the common part without the script: a button that
+makes you friends with every test person, then photos when they're
+created, and past events with you so the inviter's Suggested has history.
+This walks back "no server change and no admin route in events" above,
+for these three things only: they need either your side of a friendship
+or past dates, which the public API can't give a script.
+
+- **The account service asks events, signed; events has
+  `/api/internal/test-friends`, `/test-friends/remove` and
+  `/test-events` (POST and DELETE).** Outside `/api/v1` and out of
+  `openapi.yaml`: not the apps' API. README, "Internal: the Account
+  Manager's test people tools", is the contract. · Making the friendships
+  from the account service with the test people's tokens through the
+  public API (can't: your side needs your token, and the past events need
+  past dates).
+- **Signed with the calendar secret, but a different scheme bound to the
+  request:** `Canopy-Internal t=, n=, sig=`, HMAC-SHA256 of
+  `canopy-internal-v1`, the purpose, the method, the path and query, t, a
+  random n and the body's SHA-256. A minute either way, and each n only
+  once (kept in memory for that minute). A calendar signature signs a
+  different string under a different name, so neither can stand in for
+  the other. The body is hashed as `JSON.stringify` writes the parsed
+  body, so no raw bytes need keeping and what's checked is exactly what
+  the route reads. · A separate secret: one more env var to set in
+  Coolify and one more thing in the Sites tab, for no real gain: both
+  secrets would sit in the same two places (the account service's
+  database, events' env). The cost of sharing is the blast radius: anyone
+  with the calendar secret could also make friendships and test events.
+  Only the two servers hold it. · No nonce (t and the signature alone): a
+  double click would send two identical requests in the same second, and
+  the second would be refused as a replay.
+- **The signer lives in the shared client file** (`internalAuthorization`,
+  a static export, next to `verifyInternalRequest`), so the account
+  service and the tests sign with the same code the site checks with,
+  and the two copies stay identical.
+- **The Origin check lets `/api/internal/` through with a
+  `Canopy-Internal` header**, as it does bearer requests: server to
+  server, no cookie read, and a header a page elsewhere can't set without
+  a preflight.
+- **Which sites: the calendar feed's** (a calendar URL and secret, not cut
+  off), at the same URL. A site that answers 404 is left out of the
+  result, not counted as failing (tickets, if it ever has a calendar).
+  The admin route answers 502 when no site did it, with each site's
+  reason.
+- **Friendships are `'link'` edges both ways**, exactly what the script's
+  `friends` makes (every test person saying yes to your link), so the
+  pages show them the same way. · A new `'test'` source: the CHECK on
+  `friend_edges.source` doesn't allow it, and SQLite can only change a
+  CHECK by rebuilding the table, for a label nothing would read (the
+  account service already knows who's a test person). **Any hiding is
+  undone both ways**: you asked for all of them. `added` counts ids where
+  anything changed; `alreadyFriends` the rest; again changes nothing.
+- **Deleting test people now clears their friendships first** (every edge
+  to or from them, hiding, their friend links). Checked whether leaving
+  them was fine, since a deleted account is left out of every list: it
+  isn't quite. Suggested scores everyone in your list before leaving out
+  former members, so up to 200 fresh `'link'` edges (0.25 each) could
+  fill the top 10 and leave Suggested nearly empty; and a friends page
+  could come back with no one on it but a next cursor. The account
+  service sends the ids it's about to delete; a failure is reported and
+  the delete goes on.
+- **Test events are written straight into the tables, marked
+  `events.is_test` (schema version 16).** The API won't make an event in
+  the past or take answers on one that's over. Nothing else making or
+  answering does happens: no Updates entries, no notifications or pushes,
+  no invitation edges, and nobody goes into `hosted_people` (kept for
+  good, so a deleted test event would leave a trace). Every other one
+  is hosted by you, the rest by one of the first few test people with you
+  going (every fourth of those maybe); the guests are the test people
+  shuffled, the k-th at each event with chance max(0.06, 0.85 − 0.07k),
+  a fifth of them maybe, at least two, at most 25. Six months, an evening
+  each (7 pm in California), three hours. No cover, gray, and a
+  description saying they're made up. 6 per press, at most 20 per
+  request and 100 at once. · Through the script with a "since" override
+  (nothing in the API should let anyone backdate an event).
+- **Test events never go in a calendar feed.** Your real calendar app
+  would otherwise get months of made-up evenings.
+- **Delete all test people deletes every test event** (with its answers;
+  a cover too, if anyone gave one), whoever made it, before the accounts
+  go.
+
+### Photos at creation (account service)
+
+- **Create test people fetches a face for each from
+  `i.pravatar.cc/512?img=<1-70>`, after they're made, and keeps it as an
+  upload is** (`withoutMetadata`, `photoStore.save`, `photo_at`). 4 at a
+  time, 5 s each, 25 s for the whole batch; anyone it doesn't get to has
+  no photo, and creation still succeeds. The answer says how many got
+  one. · `?u=<id>`: pravatar maps it onto the same 70 faces, so a batch
+  of 40 would have several twins; shuffled `img` numbers have none
+  within a batch of up to 70.
+- **A separate "Add photos" button**, enabled only while some test person
+  has no photo (pravatar was down, or they're from before), rather than
+  folding it into Create: Create would then mean "create, and also fix up
+  others", and with none to create there'd be no way to ask. · Folding it
+  into Create.
+- The tests point it at a local stand-in (`TEST_PHOTOS_URL`, only read
+  under `NODE_ENV=test`; the harness defaults it to a closed port), never
+  the real pravatar.
+
 ## Lists
 
 On `feat/lists-inviter`. **(You)** asked for lists (see "Lists and the
