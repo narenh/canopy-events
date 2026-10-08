@@ -127,6 +127,26 @@ details to anyone else:
    a `going` becomes `waitlisted`, and a freed spot promotes the earliest
    waitlisted RSVP automatically (only if it fits with its guests).
 
+5. **Notifications, server side.** The iOS and Android apps both exist
+   before launch, so push is how people hear about things. There's no
+   email or SMS. Built now, without the apps:
+   - a `notifications` table, which is each person's inbox:
+     `GET /api/v1/me/notifications` (paginated, with unread count) and
+     mark-read. Entries: you were invited, an event you're going to or
+     maybe at changed time or place or was cancelled, you were made a
+     co-host, you got off the waitlist, a host posted on the wall, and
+     someone RSVP'd to your event (for hosts; these may be batched).
+   - device registration: `POST/DELETE /api/v1/me/devices` with
+     `{platform: ios|android, token}`, so the apps can register APNs and
+     FCM tokens on day one.
+   - one `lib/push.js` with a sender interface. Tonight it only logs. The
+     APNs and FCM senders come with the apps (they need keys). Writing
+     an inbox entry and queueing a push are the same call, so nothing
+     can notify without also landing in the inbox.
+6. **Host moderation**: remove a guest (they can't RSVP again), and
+   make a new link (the old id stops working, and current guests keep
+   their place).
+
 Not in v1: email/SMS notifications, .ics files, ticketing/payments,
 public discovery.
 
