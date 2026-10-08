@@ -94,7 +94,7 @@ minute). Apps send the same token as `Authorization: Bearer <token>`.
   emailed code. It's **unverified** until they prove the email. Events is
   a site that allows them (see "Running locally"), so they're signed in
   here with `emailVerified: false`. They can answer, be invited and see
-  guest lists. They can't make events (or, later, co-host). Every page
+  guest lists. They can't make events or co-host. Every page
   shows them a banner to verify that can't be dismissed, and the API
   says `emailVerified: false` so the apps show it too.
 - **Deleted accounts.** When the account service no longer has someone,
@@ -118,7 +118,9 @@ visibility rules, pagination, errors and limits, with curl examples.
 |---|---|
 | `POST /api/v1/events` | make an event (verified people) |
 | `GET /api/v1/events/{id}` | one event (anyone with the link) |
-| `PATCH /api/v1/events/{id}` | edit, cancel or un-cancel it (hosts) |
+| `PATCH /api/v1/events/{id}` | edit it (hosts), cancel or un-cancel it (the creator) |
+| `POST /api/v1/events/{id}/cohosts` | make someone a co-host (the creator; verified people only) |
+| `DELETE /api/v1/events/{id}/cohosts/{personId}` | take a co-host off (the creator), or step down |
 | `PUT /api/v1/events/{id}/rsvp` | answer: going, maybe, not_going |
 | `DELETE /api/v1/events/{id}/rsvp` | take the answer back |
 | `GET /api/v1/events/{id}/guests` | the guest list, by the visibility rule |
@@ -268,9 +270,12 @@ Everything is in `DATA_DIR` (`/app/data` in the container):
   `events.db-shm` sit beside it while it's open);
 - `backups/sqlite/events-YYYY-MM-DD.db` holds the snapshots.
 
-Its tables are `events`, `hosts` (who hosts each event: the creator, and
-co-hosts later) and `rsvps` (one row per person per event: invited, or
-their answer). There are no names, emails or photos: only person ids.
+Its tables are `events`, `hosts` (who hosts each event: the creator and
+any co-hosts), `rsvps` (one row per person per event: invited, or their
+answer) and `verified_people` (who events has seen signed in with a
+proven email, since only they may co-host and the account service doesn't
+say so about anyone but the visitor). There are no names, emails or
+photos: only person ids.
 Friends aren't stored at all; they're worked out from `hosts` and `rsvps`
 each time.
 

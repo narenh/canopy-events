@@ -174,6 +174,15 @@ function eventBody(overrides = {}) {
   };
 }
 
+// The whole `counts` an event answers with, from the people with each
+// status (`people`, leaving out the zeros) and their plus-ones (`guests`,
+// by status).
+function counts(people = {}, guests = {}) {
+  const c = { going: 0, maybe: 0, notGoing: 0, invited: 0, waitlisted: 0, ...people };
+  const g = { going: 0, maybe: 0, waitlisted: 0, ...guests };
+  return { ...c, guests: g, total: { going: c.going + g.going, maybe: c.maybe + g.maybe, waitlisted: c.waitlisted + g.waitlisted } };
+}
+
 // Makes an event as `host` and returns it (throws if that didn't work).
 async function makeEvent(host, overrides) {
   const r = await host.post('/api/v1/events', eventBody(overrides));
@@ -181,4 +190,4 @@ async function makeEvent(host, overrides) {
   return r.data.event;
 }
 
-module.exports = { startServer, client, eventBody, makeEvent, findLeaks, CHECKS, CONTACT_FIELDS };
+module.exports = { startServer, client, eventBody, makeEvent, counts, findLeaks, CHECKS, CONTACT_FIELDS };

@@ -77,8 +77,7 @@ a signed-out caller sees").
 
 A quick sign-up makes an **unverified** account: nobody has proven the
 email yet. Events lets them in. They can answer, be invited and see guest
-lists. They **can't make events** (403 `email_unverified`) or, later, be
-co-hosts.
+lists. They **can't make events** (403 `email_unverified`) or be co-hosts.
 
 `GET /api/v1/me` says which:
 
@@ -130,10 +129,15 @@ Optional: `description`, `endsAt` (after `startsAt`), `locationName`,
 `locationAddress`, `guestListVisibility` (`everyone`, the default, or
 `responded`).
 
-`PATCH /api/v1/events/{id}` edits it (hosts only). Send only what changes;
-`null` or `""` clears an optional field. `{"status": "cancelled"}` cancels
-it, and `{"status": "active"}` takes that back. There's no delete: a
-cancelled event keeps its link and guest list so people can see it's off.
+`PATCH /api/v1/events/{id}` edits it (hosts only: the creator and any
+co-hosts). Send only what changes; `null` or `""` clears an optional
+field. `{"status": "cancelled"}` cancels it, and `{"status": "active"}`
+takes that back; only the creator can do either (403 `creator_only`).
+There's no delete: a cancelled event keeps its link and guest list so
+people can see it's off.
+
+`guestsAllowed` (0 to 10, 0 by default) is how many plus-ones each answer
+may bring. See "Plus-ones" below.
 
 An event with no `endsAt` counts as **over** 6 hours after it starts.
 Over is what moves it from "upcoming" to "past", and an event that's over
@@ -184,15 +188,71 @@ statuses.
 - **Refused with 409**: a cancelled event (`event_cancelled`), one that's
   over (`event_over`), and a host answering their own event
   (`host_cannot_rsvp`; hosting is being there).
-- `guests` (plus-ones) is 0. Hosts will be able to allow more later; then
-  send `{"status": "going", "guests": 2}`. More than allowed is 400
-  `too_many_guests`.
+- `guests` (plus-ones): send `{"status": "going", "guests": 2}`, up to the
+  event's `guestsAllowed`. More is 400 `too_many_guests`. Left out, it's
+  0; with `not_going` it's always 0. See "Plus-ones".
 - **`waitlisted`** is coming with capacity: a `going` past the cap
   becomes `waitlisted`, and a freed spot promotes the earliest. Nothing
   sets it yet, but handle it now: show it as "on the waitlist".
 
 Both calls answer with the whole event, so the screen can redraw from the
 answer.
+
+## Plus-ones
+
+The host sets `guestsAllowed` on the event (0 to 10). Each answer then
+carries `guests`, how many people they're bringing besides themselves.
+`maybe` can bring guests too; `not_going` never does.
+
+**Counts give people and plus-ones apart, and together.** The top-level
+numbers in `counts` are people. `counts.guests` is their plus-ones, and
+`counts.total` is the two added up, for the statuses that bring anyone:
+
+```json
+"counts": {
+  "going": 4, "maybe": 1, "notGoing": 1, "invited": 3, "waitlisted": 0,
+  "guests": { "going": 2, "maybe": 0, "waitlisted": 0 },
+  "total":  { "going": 6, "maybe": 1, "waitlisted": 0 }
+}
+```
+
+"6 going" on a screen is `total.going`; "4 people (+2)" is `going` and
+`guests.going`.
+
+**When the host lowers `guestsAllowed`**, answers that already bring more
+are kept as they are: nobody's plus-one disappears without them knowing.
+They're flagged `guestsOverLimit: true`, on your own `viewer.rsvp` and on
+each guest-list entry, so the app can ask the guest to update, and a host
+can see who's over. The next change to that answer has to fit the new
+number, even if it's the same answer sent again.
+
+## Co-hosts
+
+An event has one **creator** and up to 10 **co-hosts** (`hosts`, each with
+a `role`). Co-hosts can do what hosts do: edit the event, invite people,
+see the whole guest list. Three things are the creator's alone: managing
+co-hosts, cancelling (and un-cancelling), and making a new link.
+`viewer.role` says which you are.
+
+- `POST /api/v1/events/{id}/cohosts` with `{"personId": "…"}` (the
+  creator) makes someone a co-host. Doing it twice is fine.
+- `DELETE /api/v1/events/{id}/cohosts/{personId}` takes them off. The
+  creator can take off anyone; a co-host can take themselves off (step
+  down).
+
+**Co-hosts have to be verified.** The account service doesn't tell sites
+whether someone else's email is proven, so events goes by what it saw the
+last time that person used it, signed in. Someone who has never opened
+Canopy Events with a verified email gets **403 `email_unverified` with no
+`verify` link**. (When the 403 has a `verify` link, it's about your own
+email; without one, it's about the person you picked.) Tell the host to
+have them open the event link once, then try again.
+
+**A co-host doesn't answer.** Hosting is being there, like the creator.
+Becoming a co-host replaces any answer or invitation they had (plus-ones
+included), so they drop out of the counts. Taking them off, or stepping
+down, leaves them **invited**: the event is in their invitations and they
+can answer like anyone else.
 
 ## The guest list, and who sees it
 
@@ -278,13 +338,14 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_person_ids`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
-| 403 | `email_unverified` | send them to `verify` |
+| 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |
+| 403 | `creator_only` | hide the control: `viewer.role` is `creator` for the one person who can |
 | 403 | `bad_origin` | a web page's problem; apps never see it |
-| 404 | `event_not_found`, `not_invited`, `not_found` | the link is wrong, or it's gone |
-| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded` | redraw from the event |
+| 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `not_found` | the link is wrong, or it's gone |
+| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts` | redraw from the event |
 | 413 | `too_large` | the body is over 100 KB |
 | 429 | `rate_limited` | try again later |
 | 503 | `accounts_unreachable` | Canopy accounts is down; retry in a minute |

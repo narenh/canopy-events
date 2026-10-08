@@ -33,6 +33,8 @@ tags:
     description: Making, reading and editing events.
   - name: Guests
     description: Answers (RSVPs), the guest list and invitations.
+  - name: Hosts
+    description: Co-hosts.
   - name: Me
     description: You, your friends and your events.
   - name: Docs
@@ -127,11 +129,16 @@ paths:
       operationId: updateEvent
       summary: Edit, cancel or un-cancel an event
       description: |
-        Hosts only (403 `hosts_only`). Send only the fields to change; null
-        or "" clears an optional one. `status: cancelled` cancels it (it
-        then takes no answers or invitations), `status: active` takes that
-        back. There's no deleting: a cancelled event keeps its link and
-        its guest list.
+        Hosts only (403 `hosts_only`): the creator and co-hosts. Send only
+        the fields to change; null or "" clears an optional one. `status:
+        cancelled` cancels it (it then takes no answers or invitations),
+        `status: active` takes that back; only the creator may (403
+        `creator_only`). There's no deleting: a cancelled event keeps its
+        link and its guest list.
+
+        Lowering `guestsAllowed` leaves answers that already bring more as
+        they are, flagged with `guestsOverLimit`; their next change has to
+        fit.
       requestBody:
         required: true
         content:
@@ -142,6 +149,8 @@ paths:
                 value: { status: cancelled }
               move:
                 value: { startsAt: '2026-11-01T19:30:00-07:00', endsAt: null }
+              plusOnes:
+                value: { guestsAllowed: 2 }
       responses:
         '200':
           description: The event after the change.
@@ -166,7 +175,8 @@ paths:
         answer, invited or not, unverified accounts included. Refused with
         409 for a cancelled event (`event_cancelled`), one that's over
         (`event_over`), or by a host (`host_cannot_rsvp`). `guests` (plus-
-        ones) is 0 unless the host allows more (400 `too_many_guests`).
+        ones) is up to the event's `guestsAllowed` (400 `too_many_guests`),
+        0 if left out, and always 0 for `not_going`.
       requestBody:
         required: true
         content:
@@ -175,6 +185,8 @@ paths:
             examples:
               going:
                 value: { status: going }
+              withTwo:
+                value: { status: going, guests: 2 }
       responses:
         '200':
           description: The event after your answer; `viewer.rsvp` is it.
@@ -306,6 +318,82 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/cohosts:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    post:
+      tags: [Hosts]
+      operationId: addCohost
+      summary: Make someone a co-host
+      description: |
+        The event's creator only (403 `creator_only`), and they have to be
+        verified themselves. Co-hosts can edit the event and invite
+        people; only the creator manages co-hosts, cancels, and makes a
+        new link. At most 10 co-hosts (409 `too_many_cohosts`).
+
+        **The co-host has to be verified too.** Canopy accounts doesn't
+        tell sites whether someone else is, so it goes by what events saw
+        the last time they used it: someone who hasn't opened Canopy
+        Events signed in with a verified email gets a 403
+        `email_unverified` with **no** `verify` link (that link is only
+        ever for the caller's own email). They can open any event link,
+        then try again.
+
+        Becoming a co-host replaces any answer or invitation they had
+        (hosts don't answer their own events), plus-ones included. Adding
+        someone who's already a co-host changes nothing and answers 200.
+        409 for a cancelled event or one that's over, and `is_creator`
+        for yourself. 404 `person_not_found` for an id with no account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [personId]
+              properties:
+                personId: { type: string, description: A Canopy person id. }
+            examples:
+              ben:
+                value: { personId: 0b7e5a1f-9c2d-4e8b-8f3a-1d2c3b4a5e6f }
+      responses:
+        '200':
+          description: The event, with them in `hosts` as `cohost`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/cohosts/{personId}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PersonId'
+    delete:
+      tags: [Hosts]
+      operationId: removeCohost
+      summary: Take a co-host off, or step down
+      description: |
+        The creator takes off any co-host; a co-host can take themselves
+        off (anyone else: 403 `creator_only`). They're left **invited**,
+        so the event stays in their invitations and they can answer like
+        any guest. 404 `not_cohost` if they aren't one.
+      responses:
+        '200':
+          description: The event after.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/me:
@@ -449,6 +537,12 @@ components:
       in: query
       description: How many to a page, 1 to 100.
       schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    PersonId:
+      name: personId
+      in: path
+      required: true
+      description: A Canopy person id (a UUID).
+      schema: { type: string }
 
   responses:
     BadRequest:
@@ -457,8 +551,8 @@ components:
         `bad_starts_at`, `bad_ends_at`, `ends_before_start`,
         `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`,
         `bad_location_name`, `bad_location_address`, `bad_status`,
-        `bad_guests`, `too_many_guests`, `bad_person_ids`, `bad_cursor`,
-        `bad_limit`.
+        `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
+        `bad_person_ids`, `bad_person_id`, `bad_cursor`, `bad_limit`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -475,9 +569,11 @@ components:
             quickSignUp: https://account.canopysf.com/?quick=1&return=https%3A%2F%2Fevents.canopysf.com%2Fe%2F4fQ9xKpL2mZa
     Forbidden:
       description: |
-        Not allowed: `hosts_only`, `email_unverified` (with a `verify`
-        link), or `bad_origin` (a change made with the cookie from a page
-        that isn't Canopy's).
+        Not allowed: `hosts_only`, `creator_only` (co-hosts can't do this),
+        `email_unverified` (with a `verify` link when it's about your own
+        email; without one when it's about someone you tried to make a
+        co-host), or `bad_origin` (a change made with the cookie from a
+        page that isn't Canopy's).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -492,14 +588,15 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: "there's no event at that link", reason: event_not_found }
     NotFound:
-      description: '`event_not_found`, or `not_invited`.'
+      description: '`event_not_found`, `not_invited`, `person_not_found` or `not_cohost`.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     Conflict:
       description: |
         Not in this event's state: `event_cancelled`, `event_over`,
-        `host_cannot_rsvp`, `already_responded`.
+        `host_cannot_rsvp`, `already_responded`, `is_creator`,
+        `too_many_cohosts`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -623,15 +720,38 @@ components:
         apps should expect it.
 
     Counts:
-      description: How many of each status. Always shown, to everyone. Hosts aren't counted.
+      description: |
+        How many of each status. Always shown, to everyone. Hosts aren't
+        counted. The top-level numbers are **people**; `guests` is the
+        plus-ones those people bring, and `total` is the two together
+        (people + plus-ones), for the answers that bring anyone.
       type: object
       additionalProperties: false
-      required: [going, maybe, notGoing, invited, waitlisted]
+      required: [going, maybe, notGoing, invited, waitlisted, guests, total]
       properties:
         going: { type: integer, minimum: 0 }
         maybe: { type: integer, minimum: 0 }
         notGoing: { type: integer, minimum: 0 }
         invited: { type: integer, minimum: 0 }
+        waitlisted: { type: integer, minimum: 0 }
+        guests: { $ref: '#/components/schemas/GuestCounts' }
+        total: { $ref: '#/components/schemas/GuestCounts' }
+      example:
+        going: 4
+        maybe: 1
+        notGoing: 1
+        invited: 3
+        waitlisted: 0
+        guests: { going: 2, maybe: 0, waitlisted: 0 }
+        total: { going: 6, maybe: 1, waitlisted: 0 }
+
+    GuestCounts:
+      type: object
+      additionalProperties: false
+      required: [going, maybe, waitlisted]
+      properties:
+        going: { type: integer, minimum: 0 }
+        maybe: { type: integer, minimum: 0 }
         waitlisted: { type: integer, minimum: 0 }
 
     Host:
@@ -643,16 +763,24 @@ components:
         role:
           type: string
           enum: [creator, cohost]
-          description: The creator first. Co-hosts are coming.
+          description: |
+            The creator first, then co-hosts in the order they were added.
+            Co-hosts can edit and invite; only the creator manages
+            co-hosts, cancels and makes a new link.
 
     Rsvp:
       description: Your own place on an event.
       type: object
       additionalProperties: false
-      required: [status, guests, invited, respondedAt]
+      required: [status, guests, guestsOverLimit, invited, respondedAt]
       properties:
         status: { $ref: '#/components/schemas/RsvpStatus' }
         guests: { type: integer, minimum: 0, description: Plus-ones you're bringing. }
+        guestsOverLimit:
+          type: boolean
+          description: |
+            True when the host has since lowered `guestsAllowed` below your
+            `guests`. Your answer stands as it is; changing it has to fit.
         invited: { type: boolean, description: Whether a host invited you. }
         respondedAt: { type: [string, 'null'], format: date-time, description: When you last answered; null while only invited. }
 
@@ -691,7 +819,7 @@ components:
       type: object
       additionalProperties: false
       required: [id, url, title, description, startsAt, endsAt, timeZone, locationName, locationAddress,
-                 locationAddressHidden, guestListVisibility, status, cancelledAt, createdAt, updatedAt,
+                 locationAddressHidden, guestListVisibility, guestsAllowed, status, cancelledAt, createdAt, updatedAt,
                  hosts, counts, viewer]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
@@ -705,6 +833,7 @@ components:
         locationAddress: { type: [string, 'null'], description: Null when signed out (see locationAddressHidden). }
         locationAddressHidden: { type: boolean, description: True when there's an address you'll see once signed in. }
         guestListVisibility: { type: string, enum: [everyone, responded] }
+        guestsAllowed: { type: integer, minimum: 0, maximum: 10, description: Plus-ones each answer may bring. }
         status: { type: string, enum: [active, cancelled] }
         cancelledAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
@@ -732,6 +861,7 @@ components:
         locationAddress: 1 Market St, San Francisco
         locationAddressHidden: false
         guestListVisibility: responded
+        guestsAllowed: 1
         status: active
         cancelledAt: null
         createdAt: '2026-10-07T20:00:00.000Z'
@@ -739,10 +869,17 @@ components:
         hosts:
           - person: { id: 6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44, firstName: Ana, lastName: Lima, shortName: Ana L, photoUrl: null }
             role: creator
-        counts: { going: 4, maybe: 1, notGoing: 1, invited: 3, waitlisted: 0 }
+        counts:
+          going: 4
+          maybe: 1
+          notGoing: 1
+          invited: 3
+          waitlisted: 0
+          guests: { going: 2, maybe: 0, waitlisted: 0 }
+          total: { going: 6, maybe: 1, waitlisted: 0 }
         viewer:
           role: null
-          rsvp: { status: going, guests: 0, invited: true, respondedAt: '2026-10-08T17:12:00.000Z' }
+          rsvp: { status: going, guests: 1, guestsOverLimit: false, invited: true, respondedAt: '2026-10-08T17:12:00.000Z' }
           canEdit: false
           canSeeGuestList: true
         friendsGoing:
@@ -774,11 +911,12 @@ components:
     Guest:
       type: object
       additionalProperties: false
-      required: [person, status, guests, respondedAt]
+      required: [person, status, guests, guestsOverLimit, respondedAt]
       properties:
         person: { $ref: '#/components/schemas/Person' }
         status: { $ref: '#/components/schemas/RsvpStatus' }
-        guests: { type: integer, minimum: 0 }
+        guests: { type: integer, minimum: 0, description: Plus-ones they're bringing. }
+        guestsOverLimit: { type: boolean, description: 'More than the event now allows (the host lowered `guestsAllowed` after they answered).' }
         respondedAt: { type: [string, 'null'], format: date-time }
 
     GuestList:
@@ -799,9 +937,17 @@ components:
         guests:
           - person: { id: 0b7e5a1f-9c2d-4e8b-8f3a-1d2c3b4a5e6f, firstName: Ben, lastName: Okafor, shortName: Ben O, photoUrl: null }
             status: going
-            guests: 0
+            guests: 1
+            guestsOverLimit: false
             respondedAt: '2026-10-08T17:12:00.000Z'
-        counts: { going: 1, maybe: 0, notGoing: 0, invited: 0, waitlisted: 0 }
+        counts:
+          going: 1
+          maybe: 0
+          notGoing: 0
+          invited: 0
+          waitlisted: 0
+          guests: { going: 1, maybe: 0, waitlisted: 0 }
+          total: { going: 2, maybe: 0, waitlisted: 0 }
         nextCursor: null
 
     Friend:
@@ -836,6 +982,7 @@ components:
         locationName: { type: [string, 'null'], maxLength: 200 }
         locationAddress: { type: [string, 'null'], maxLength: 500 }
         guestListVisibility: { type: string, enum: [everyone, responded], default: everyone }
+        guestsAllowed: { type: integer, minimum: 0, maximum: 10, default: 0, description: Plus-ones each answer may bring. }
 
     EventPatch:
       description: Any of the fields of EventInput, plus status. Only what's sent changes.
@@ -849,14 +996,15 @@ components:
         locationName: { type: [string, 'null'], maxLength: 200 }
         locationAddress: { type: [string, 'null'], maxLength: 500 }
         guestListVisibility: { type: string, enum: [everyone, responded] }
-        status: { type: string, enum: [active, cancelled], description: cancelled cancels it; active takes that back. }
+        guestsAllowed: { type: integer, minimum: 0, maximum: 10, description: Lowering it keeps answers that bring more (see guestsOverLimit). }
+        status: { type: string, enum: [active, cancelled], description: 'cancelled cancels it; active takes that back. The creator only.' }
 
     RsvpInput:
       type: object
       required: [status]
       properties:
         status: { type: string, enum: [going, maybe, not_going] }
-        guests: { type: integer, minimum: 0, default: 0, description: 'Plus-ones, up to what the host allows (0 for now). Ignored for not_going.' }
+        guests: { type: integer, minimum: 0, maximum: 10, default: 0, description: "Plus-ones, up to the event's guestsAllowed. Ignored for not_going." }
 
     InviteInput:
       type: object

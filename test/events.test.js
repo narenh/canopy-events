@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { startServer, client, eventBody, makeEvent } = require('./harness');
+const { startServer, client, eventBody, makeEvent, counts } = require('./harness');
 
 test('events', async (t) => {
   const server = await startServer();
@@ -30,7 +30,8 @@ test('events', async (t) => {
     assert.match(event.startsAt, /Z$/);
     assert.deepEqual(event.hosts.map((h) => [h.person.id, h.role]), [[server.people.ana.id, 'creator']]);
     assert.deepEqual(event.viewer, { role: 'creator', rsvp: null, canEdit: true, canSeeGuestList: true });
-    assert.deepEqual(event.counts, { going: 0, maybe: 0, notGoing: 0, invited: 0, waitlisted: 0 });
+    assert.deepEqual(event.counts, counts());
+    assert.equal(event.guestsAllowed, 0);
   });
 
   await t.test('an unverified person can not make one, and is told where to verify', async () => {

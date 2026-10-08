@@ -131,3 +131,50 @@ Format: decision · why · how to reverse.
   every so often, just not every few minutes. So the iOS agent merges
   compiling work into main and pushes about once or twice an hour, or
   after major milestones.
+
+## Events features
+
+Co-hosts, plus-ones, the activity wall, cover images, capacity and the
+waitlist, notifications, host moderation and lookup, built on branch
+`feat/features`.
+
+### Co-hosts and plus-ones (schema version 2)
+
+- **Who's verified is learned from their own sessions.** Every API
+  request records whether the caller's email is proven, in a
+  `verified_people` table; only someone seen there may be made a
+  co-host. · The account service's `/api/people` doesn't say who's
+  verified, and the contract for it isn't ours to change tonight. ·
+  Cost: a verified person who has never opened events (signed in) is
+  refused until they have. The fix is a `verified` field on
+  `/api/people`; then drop the table and ask that instead.
+- Refusing an unverified target is 403 `email_unverified` **without** a
+  `verify` link (the error says it's about them). · The link is only
+  ever for the caller's own email. · routes/hosts.js.
+- Only the creator adds and removes co-hosts, cancels and un-cancels,
+  and (later) makes a new link. Co-hosts edit everything else, invite,
+  see the whole guest list and (later) moderate. A co-host can step
+  down by themselves. · Cancelling and the link are the whole event;
+  everything else is running it. · `creator_only` checks in
+  routes/events.js and routes/hosts.js.
+- At most 10 co-hosts. · Plenty for a party; a ceiling on nonsense. ·
+  `MAX_COHOSTS` in lib/store/hosts.js.
+- **Becoming a co-host deletes the person's RSVP** (and its plus-ones).
+  Stepping down, or being taken off, leaves them `invited` by whoever
+  added them. · Hosts don't answer their own events, and keeping a
+  hidden answer would mean every count had to skip it. Invited keeps
+  the event in their lists, ready to answer. · lib/store/hosts.js.
+- Co-hosts can't be added to a cancelled event or one that's over (the
+  same 409s as inviting). Taking one off always works. · n/a
+- **Plus-ones: lowering `guestsAllowed` keeps existing answers** and
+  flags them (`guestsOverLimit` on the viewer's RSVP and on guest-list
+  entries). The next change to that answer has to fit, even re-sending
+  the same one. · Clamping would drop someone's plus-one without
+  telling them. · lib/views.js; to clamp instead, update rsvps in the
+  PATCH route.
+- `guestsAllowed` is 0 to 10. A `maybe` may bring guests; `not_going`
+  never does; leaving `guests` out of an answer means 0. · n/a
+- Counts keep the people per status at the top level (so nothing that
+  read them changes meaning), and add `guests` (plus-ones) and `total`
+  (people + plus-ones) for going, maybe and waitlisted. · Additive. ·
+  lib/store/rsvps.js countsFor.

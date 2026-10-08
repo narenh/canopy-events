@@ -61,7 +61,15 @@ async function startFakeAccount() {
     // Tokens whose next session answer carries a renewed cookie.
     renew: new Set(),
     sessionCalls: 0,
-    peopleCalls: 0
+    peopleCalls: 0,
+    // One more person, made like the fixtures (n unique, from 100 up),
+    // for a test that needs a crowd.
+    addPerson(n, name, first, last, extra) {
+      const p = fixture(n, name, first, last, extra);
+      people[name] = p;
+      byToken.set(p.token, p);
+      return p;
+    }
   };
   const app = express();
   let base = '';

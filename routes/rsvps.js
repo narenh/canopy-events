@@ -91,7 +91,7 @@ module.exports = function rsvpsRoutes(ctx) {
     const rows = store.listGuests(event.id, statuses, { after: page.after, limit: page.limit + 1 });
     const { items, nextCursor } = paginate(rows, page.limit, (r) => [r.statusAt, r.personId]);
     const people = await loadPeople(ctx.canopy, items.map((r) => r.personId));
-    res.json({ guestsVisible: true, guests: items.map((r) => guestView(r, people)), counts, nextCursor });
+    res.json({ guestsVisible: true, guests: items.map((r) => guestView(r, people, event)), counts, nextCursor });
   }));
 
   // A host invites people by id: { personIds: [...] }. The web page offers

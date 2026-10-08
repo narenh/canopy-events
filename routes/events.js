@@ -50,12 +50,17 @@ module.exports = function eventsRoutes(ctx) {
     res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }) });
   }));
 
-  // Hosts only. Any of the fields from making it, plus status: 'cancelled'
-  // to cancel it, 'active' to take that back.
+  // Hosts (the creator and co-hosts). Any of the fields from making it,
+  // plus status: 'cancelled' to cancel it, 'active' to take that back,
+  // which only the creator may send.
   router.patch('/events/:id', auth.requirePerson, withEvent, handle(async (req, res) => {
     if (!isHost(req.role)) return fail(res, 403, 'hosts_only', 'only a host can change this event');
     const { fields, error } = cleanEventInput(req.body, req.event);
     if (error) return refuse(res, error);
+    // Cancelling, and taking it back, is the creator's call alone.
+    if (fields.status !== undefined && req.role !== 'creator') {
+      return fail(res, 403, 'creator_only', 'only the person who made this event can cancel it');
+    }
     const event = store.updateEvent(req.event.id, fields);
     res.json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });
   }));

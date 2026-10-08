@@ -8,7 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const Database = require('better-sqlite3');
-const { init, open, prepareSchema, snapshot, SCHEMA_VERSION, SNAPSHOTS_KEPT } = require('../lib/db');
+const { init, open, prepareSchema, snapshot, UPGRADES, SCHEMA_VERSION, SNAPSHOTS_KEPT } = require('../lib/db');
 const { newEventId, EVENT_ID_RE } = require('../lib/ids');
 
 function scratch() {
@@ -19,8 +19,9 @@ test('a new database is made at the current version, in WAL mode', (t) => {
   const dir = scratch();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const store = init({ file: path.join(dir, 'events.db'), snapshots: false });
-  assert.equal(SCHEMA_VERSION, 1);
-  assert.equal(store.db.pragma('user_version', { simple: true }), 1);
+  assert.equal(store.db.pragma('user_version', { simple: true }), SCHEMA_VERSION);
+  // Every version from 1 has its step.
+  for (let v = 1; v < SCHEMA_VERSION; v++) assert.equal(typeof UPGRADES[v], 'function', `the step from ${v}`);
   assert.equal(store.db.pragma('journal_mode', { simple: true }), 'wal');
   // Room for what comes next, without reshaping anything.
   const cols = (table) => store.db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all().map((c) => c.name);
@@ -38,9 +39,9 @@ test('a database from an unknown schema version is refused, not opened', (t) => 
   const file = path.join(dir, 'events.db');
   init({ file, snapshots: false }).db.close();
   const db = new Database(file);
-  db.pragma('user_version = 2');
+  db.pragma(`user_version = ${SCHEMA_VERSION + 1}`);
   db.close();
-  assert.throws(() => init({ file, snapshots: false }), /schema version 2/);
+  assert.throws(() => init({ file, snapshots: false }), new RegExp(`schema version ${SCHEMA_VERSION + 1}`));
 
   // A file with tables but no version at all is someone else's database.
   const other = path.join(dir, 'other.db');
@@ -78,6 +79,9 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   assert.equal(upgraded.db.pragma('user_version', { simple: true }), SCHEMA_VERSION);
   assert.deepEqual(shape(upgraded.db), shape(fresh.db));
   assert.equal(upgraded.getEvent('AAAAAAAAAAAA').title, 'Kept');
+  // Version 2: who's been seen verified.
+  upgraded.noteVerification('00000000-0000-4000-8000-000000000001', true);
+  assert.equal(upgraded.isKnownVerified('00000000-0000-4000-8000-000000000001'), true);
   upgraded.db.close();
   fresh.db.close();
 });
@@ -85,8 +89,13 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
 test('upgrades run one step at a time, and a failed step changes nothing', (t) => {
   const dir = scratch();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  // A file at version 1, and two made-up steps (not the real ones: this is
+  // about how steps are run).
   const file = path.join(dir, 'events.db');
-  init({ file, snapshots: false }).db.close();
+  const v1 = new Database(file);
+  v1.exec(fs.readFileSync(path.join(__dirname, 'fixtures', 'schema-v1.sql'), 'utf8'));
+  v1.pragma('user_version = 1');
+  v1.close();
   const upgrades = {
     1(db) { db.exec('ALTER TABLE events ADD COLUMN two TEXT'); },
     2(db) { db.exec('ALTER TABLE events ADD COLUMN three TEXT'); }
@@ -106,9 +115,9 @@ test('upgrades run one step at a time, and a failed step changes nothing', (t) =
   assert.equal(db.pragma('user_version', { simple: true }), 3);
   assert.ok(cols(db).includes('two') && cols(db).includes('three'));
   db.close();
-  // And the code at version 1 won't open it now.
+  // And code that only knows version 2 won't open it now.
   db = open(file);
-  assert.throws(() => prepareSchema(db, file), /schema version 3/);
+  assert.throws(() => prepareSchema(db, file, { version: 2, upgrades }), /schema version 3/);
   db.close();
 });
 

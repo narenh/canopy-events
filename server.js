@@ -6,6 +6,7 @@ const createCanopyAccount = require('./lib/canopy-account');
 const createAuth = require('./lib/auth');
 const { fail } = require('./lib/api');
 const { isCanopyOrigin } = require('./lib/domain');
+const { isVerified } = require('./lib/people');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -87,6 +88,7 @@ const docsRouter = require('./routes/docs')();
 const apiRouters = [
   require('./routes/events'),
   require('./routes/rsvps'),
+  require('./routes/hosts'),
   require('./routes/me')
 ].map((make) => make(ctx));
 
@@ -100,6 +102,12 @@ app.use('/api/v1', (req, res, next) => {
   next();
 });
 app.use('/api/v1', auth.attach);
+// Whether each caller's email is proven, from their own session: the only
+// way events learns who may co-host (lib/store/people.js).
+app.use('/api/v1', (req, res, next) => {
+  if (req.person) store.noteVerification(String(req.person.id), isVerified(req.person));
+  next();
+});
 apiRouters.forEach((router) => app.use('/api/v1', router));
 app.use('/api/v1', (req, res) => fail(res, 404, 'not_found', 'there is no such API endpoint'));
 
