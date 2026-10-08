@@ -2024,3 +2024,12 @@ change.
   Remaining for you: in the Sites tab, untick events' contact fields, set
   its Calendar URL, and put the secret it shows in events'
   `CANOPY_CALENDAR_SECRET`.
+- **Fix:** the editor couldn't set a start time in desktop Safari. The
+  date and time fields were see-through pickers under the big words,
+  opened with showPicker(), but desktop Safari's time and date-time
+  fields have no pop-up (you type into them), so nothing opened and
+  nothing could be typed. With a mouse or trackpad, the real fields now
+  show in place of the words, at the page's size with the dashed
+  underline, and showPicker() is gone (in Chrome its pop-up also
+  swallowed typing). Phones keep the words over the system wheel. ·
+  Desktop shows the browser's date format (10/20/2026) while editing.

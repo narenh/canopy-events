@@ -688,6 +688,23 @@ textarea.title-input:focus{outline:none;box-shadow:inset 0 -2px 0 var(--accent);
 .pick:hover .pick-text{border-bottom-color:rgba(255,255,255,.7);}
 .pick.empty .pick-text{color:var(--placeholder);}
 .when-edit .pick input{position:absolute;inset:0;width:100%;height:100%;min-height:0;margin:0;padding:0;border:none;opacity:0;cursor:pointer;font-size:16px;display:block;}
+/* With a mouse or trackpad, the fields themselves, in place of the words.
+   The see-through picker only works where a tap or showPicker() opens
+   one: desktop Safari's time and date-and-time fields have no pop-up at
+   all (you type into them), so invisible they couldn't be set. Here they
+   show as the browser draws them, at the page's size, with the same
+   dashed underline. Phones keep the words over the system's own wheel. */
+@media (hover: hover) and (pointer: fine) {
+  .when-edit .pick .pick-text{display:none;}
+  .when-edit .pick input{
+    position:static;opacity:1;width:auto;height:auto;min-height:0;
+    font:inherit;color:inherit;background:transparent;color-scheme:dark;
+    border:none;border-bottom:2px dashed rgba(255,255,255,.32);border-radius:0;padding:0 2px;
+  }
+  .when-edit .pick input:hover{border-bottom-color:rgba(255,255,255,.7);}
+  .when-edit .pick input:focus{outline:none;border-bottom-color:var(--accent);}
+  .pick:focus-within{outline:none;}
+}
 .pick:focus-within{outline:2px solid var(--accent);outline-offset:4px;}
 .end-part{display:inline-flex;align-items:center;gap:10px;}
 .end-part[hidden], .chip-btn[hidden]{display:none;}

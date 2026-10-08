@@ -31,7 +31,6 @@ const data = pageData();
 const editing = !!data.event;
 const form = document.getElementById('eventForm');
 const $ = (id) => document.getElementById(id);
-const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
 // The API's refusal, under the field it's about (and focus on it). The
 // words are copy.js's for the reasons it knows, otherwise the API's own.
@@ -127,14 +126,10 @@ startTime.addEventListener('change', startMoved);
 endsAt.addEventListener('input', drawWhen);
 endsAt.addEventListener('change', drawWhen);
 
-// A click (not a tap: a phone opens the picker by itself) opens the
-// picker, where the browser offers one.
-function openPicker(input){
-  try{ if (input.showPicker) input.showPicker(); }catch(e){}
-}
-[startDate, startTime, endsAt].forEach((input) => {
-  input.addEventListener('click', () => { if (!touch) openPicker(input); });
-});
+// No showPicker() on click: with a mouse or trackpad the fields
+// themselves show (events.css), and a forced pop-up swallowed typing in
+// Chrome and opened nothing for times in desktop Safari. A phone opens
+// its own wheel when the see-through field is tapped.
 
 onActions({
   // A new end: three hours after the start (or none yet, with no start),
