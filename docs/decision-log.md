@@ -2612,3 +2612,13 @@ details)" above for the assumptions it started from). The rest:
   opening over the answer buttons, Mute, Opt out of Ana (the item turned
   into "Allow invites from Ana"), Remove me (the confirm, then the page as
   a fresh visitor), and Undo on the friends page.
+- **(You) Red was unreachable on the color slider.** Two causes: accents
+  were Canopy green turned to the event's hue, which carried green's 16°
+  offset (a red page got a pink accent), and green's fixed lightness, at
+  which red can only be coral. Now `accentTrio(h)` puts the accent at the
+  event's own hue, at that hue's most vivid lightness (clamped between
+  the 5:1 dark-text minimum and 0.80), with chroma capped at 0.21 (near
+  Canopy green's) so nothing goes neon. Hue 30 → `#f14634` (red). Canopy
+  green itself is unchanged. The worst dark-text contrast is now 5.0:1
+  (was 6.8:1), still above AA. The iOS port must follow (docs/api.md
+  has the exact rule and sample values).

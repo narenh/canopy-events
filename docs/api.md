@@ -459,10 +459,23 @@ on a card over the brightest glow stays at least 9.3:1). The web's code
 for all of this is `public/ui.js` (`themeColors`, `themeStyle`).
 
 **The accent** (the main buttons, the "how soon" pill, the photo ring,
-icons, links) is Canopy green's three, `#2ec44f` (the accent), `#03190a`
-(text and icons on it) and `#b6f5c3` (links), turned exactly like the
-background: each to OKLCH, keep L and C, hue *H + (its hue − 161)*,
-chroma lowered to fit (`turnHex` in `public/ui.js`). So:
+icons, links) is a trio for a hue *H* (`accentTrio` in `public/ui.js`):
+
+- **the accent:** OKLCH at hue *H*, chroma 0.21 (lowered to fit sRGB), at
+  the lightness *L* where hue *H* is most vivid (the L, in steps of 0.01
+  from 0.50 to 0.90, with the largest in-gamut chroma), clamped to at
+  least the lightness that keeps the dark text below at 5:1 on it (steps
+  of 0.005 from 0.55) and at most 0.80. Red's vivid lightness is low and
+  yellow's and cyan's high, so every hue gets its truest accent: red is
+  red, not coral or pink;
+- **text and icons on it:** `#03190a`'s L and C at hue *H*;
+- **links:** `#b6f5c3`'s L and C at hue *H*.
+
+Worst over the wheel: dark text on the accent 5.0:1, links on the base
+14.5:1. Canopy green itself (no `themeHue`) keeps `#2ec44f` / `#03190a` /
+`#b6f5c3` exactly. Port it line for line and test against the web's own
+output (e.g. hue 0 → `#ed458a`, 30 → `#f14634`, 250 → `#0095fe`, 300 →
+`#a264f6`).
 
 - **A coloured event** (`themeGrayscale` false): the accent is the trio
   turned to `themeHue` (or the trio as it is, for Canopy green).
@@ -473,9 +486,9 @@ chroma lowered to fit (`turnHex` in `public/ui.js`). So:
     icons on it are the grey page's base (`#0e0e0e`, 19.3:1), and links
     are white too, so set them apart from body text by weight (bold) and
     a thicker underline (the web: 700 and 2px).
-  - a hue *A* (0–359): the trio turned to *A*, the same colours a page in
-    hue *A* has, on the grey background. Worst over the wheel: dark text
-    on the accent 6.8:1, links on the grey base 14.5:1.
+  - a hue *A* (0–359): the trio for *A* (above), the same colours a page
+    in hue *A* has, on the grey background. Worst over the wheel: dark
+    text on the accent 5.0:1, links on the grey base 14.5:1.
 
   The background, the cards and the status bar stay grey either way.
 

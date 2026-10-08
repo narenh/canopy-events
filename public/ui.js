@@ -760,12 +760,63 @@
   //     which is white too: --link-weight and --link-underline).
   //     Dark base on white 19.3:1; white links on the base 19.3:1, on a
   //     card 17.6:1.
-  //   - a hue: Canopy green's three turned to it, exactly as a page in
-  //     that hue has them (turnHex), on the grey background. Worst over
-  //     the whole wheel: dark text on the accent 6.8:1, links on the grey
-  //     base 14.5:1 (13.2:1 on a card), the accent against the base 7.0:1.
+  //   - a hue: accentTrio (above), exactly as a page in that hue has it,
+  //     on the grey background. Worst over the whole wheel: dark text on
+  //     the accent 5.0:1, links on the grey base 14.5:1.
+  // An event's accent trio for a hue H: [accent, text on it, links].
+  // Not Canopy green turned (that carried green's 16° offset into every
+  // hue, so a red page got a pink accent, and kept green's lightness, at
+  // which red can only be coral). Instead each hue's accent sits at the
+  // hue itself, at the lightness where that hue is most vivid (red's is
+  // low, yellow's and cyan's high), held between the lightness that keeps
+  // dark text on it at 5:1 and 0.80, with chroma capped near Canopy
+  // green's own (0.21) so no hue goes neon. The text on it and the links
+  // are Canopy green's (#03190a, #b6f5c3) at hue H. Canopy green itself
+  // (no hue) is untouched. Worst over the wheel: dark text on the accent
+  // 5.0:1; links on the base 14.5:1.
+  const ACCENT_MAX_C = 0.21;
+  const accentCache = {};
+  function luminanceOf(rgb) {
+    const c = rgb.map((x) => x / 255).map((v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  function contrastOf(a, b) {
+    const x = luminanceOf(a);
+    const y = luminanceOf(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  }
+  function maxChroma(L, h) {
+    let lo = 0;
+    let hi = 0.4;
+    for (let i = 0; i < 22; i++) {
+      const mid = (lo + hi) / 2;
+      if (oklchToLinear(L, mid, h).every((x) => x >= -0.0001 && x <= 1.0001)) lo = mid; else hi = mid;
+    }
+    return lo;
+  }
+  function accentTrio(h) {
+    if (accentCache[h]) return accentCache[h];
+    const [onL, onC] = rgbToOklch('#03190a');
+    const [linkL, linkC] = rgbToOklch('#b6f5c3');
+    const on = oklchToRgb(onL, onC, h);
+    let cusp = 0.6;
+    let best = 0;
+    for (let L = 0.5; L <= 0.9; L += 0.01) {
+      const c = maxChroma(L, h);
+      if (c > best) { best = c; cusp = L; }
+    }
+    let low = 0.9;
+    for (let L = 0.55; L <= 0.9; L += 0.005) {
+      if (contrastOf(oklchToRgb(L, ACCENT_MAX_C, h), on) >= 5) { low = L; break; }
+    }
+    const L = Math.min(0.8, Math.max(cusp, low));
+    const trio = [hexOf(oklchToRgb(L, ACCENT_MAX_C, h)), hexOf(on), hexOf(oklchToRgb(linkL, linkC, h))];
+    accentCache[h] = trio;
+    return trio;
+  }
+
   function accentColors(accent) {
-    if (isHue(accent)) return [turnHex('#2ec44f', accent), turnHex('#03190a', accent), turnHex('#b6f5c3', accent)];
+    if (isHue(accent)) return accentTrio(accent);
     return ['#ffffff', hexOf(themeColors(GREY).base), '#ffffff'];
   }
 
@@ -777,7 +828,7 @@
   function themeStyle(key, accent) {
     const c = themeColors(key);
     if (!c) return '';
-    let accents = [turnHex('#2ec44f', key), turnHex('#03190a', key), turnHex('#b6f5c3', key)];
+    let accents = key === GREY ? null : accentTrio(key);
     let links = '';
     if (key === GREY) {
       accents = accentColors(isHue(accent) ? accent : WHITE);
@@ -789,10 +840,9 @@
       + ';--theme-card:rgba(' + c.card.join(',') + ',0.30);--theme-card-solid:' + hexOf(c.card)
       // The accent follows the event too (the photo ring, the "how soon"
       // pill, icons, links, the main button), so the whole page is one
-      // colour: Canopy green's accents turned like everything else,
-      // lightness kept. Checked at every hue: dark text on the accent at
-      // least 6.8:1, links on the base at least 14.5:1, the accent against
-      // the base at least 7:1. A grey page's accent is its own choice
+      // colour: accentTrio, each hue's truest accent (red is red). Checked
+      // at every hue: dark text on the accent at least 5.0:1, links on the
+      // base at least 14.5:1. A grey page's accent is its own choice
       // (accentColors above).
       + ';--accent:' + accents[0] + ';--on-accent:' + accents[1] + ';--accent-text:' + accents[2] + links;
   }

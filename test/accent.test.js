@@ -69,7 +69,6 @@ test('accentHue: grey events only, cleared on leaving grey, seen by everyone', a
   const greyBase = vars(UI.themeStyle('grey'))['--theme-base'];
   assert.equal(v['--theme-base'], greyBase);
   assert.deepEqual([v['--accent'], v['--on-accent'], v['--accent-text']], UI.accentColors(90));
-  assert.equal(v['--accent'], UI.turnHex('#2ec44f', 90));
   assert.ok(!('--link-weight' in v));
   assert.match(page.text, new RegExp(`<meta name="theme-color" content="${greyBase}">`));
   // White: the accent white, dark on it, links white and bolder.
@@ -122,7 +121,7 @@ test('the accent: white or a hue, never grey, and readable on the grey page', ()
       assert.ok(Math.max(r, g, b) - Math.min(r, g, b) > 20, `${a}: ${accent}`);
     }
   }
-  assert.ok(worst.onAccent >= 6.7, JSON.stringify(worst));
+  assert.ok(worst.onAccent >= 5.0, JSON.stringify(worst));
   assert.ok(worst.links >= 14.5, JSON.stringify(worst));
   assert.ok(worst.linksOnCard >= 13.2, JSON.stringify(worst));
 });
