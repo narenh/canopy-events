@@ -2888,3 +2888,143 @@ settings), this is what was built. The rest:
   Suggested first (frequent, recent co-attendees); lists with "Invite
   all"; "Invite everyone from…" a past event; a selection tray with
   "Invite N"; people already on the event greyed with their status.
+
+## Lists
+
+On `feat/lists-inviter`. **(You)** asked for lists (see "Lists and the
+inviter (in progress)" above): owned by one person, private, joined by a
+link or QR code, attached to events so everyone on them is invited, and
+anyone joining later invited to what's still to come. The rest:
+
+- **Schema version 15: `lists` (id, owner_id, name, code, created_at,
+  updated_at; code unique), `list_members` (list_id → lists ON DELETE
+  CASCADE, person_id, joined_at) and `event_lists` (event_id → events,
+  list_id → lists, both cascading; attached_by, attached_at).** · As
+  designed. · A step that drops the three tables.
+- **A list has an id and a separate join code**, both 12 random base62
+  characters. The id is for the API (the owner's calls, an event's
+  `hostLists`, leaving); the code is the link `/l/<code>` and its QR code.
+  A reset changes only the code, so an app holding the id, and the
+  list's place on events, survive it. Stored as they are, not hashed,
+  like the friend link (shown again every time the friends page opens). ·
+  One code that's also the id (a reset would break every reference).
+- **Members never see the member count.** The brief left it open. A
+  member sees the list's name, its owner and that they're on it. A count
+  isn't needed to decide to join, and watching it change would tell a
+  member when others join or leave, which is the owner's business. The
+  owner sees it (`memberCount` on their lists, and on their own lists in
+  `hostLists`). · Add `memberCount` to `ListMembership`.
+- **Joining makes no friends by itself.** The owner's invitation does,
+  both ways, as every invitation does (the auto-invite on joining is an
+  invitation, so joining a list with an upcoming event on it does end in
+  friendship). · As the brief says.
+- **Your own list: 409 `own_list`** (as the friend link's `own_link`), and
+  the owner is never a member. Already a member: 200, nothing new.
+- **Someone else's list is a 404 `list_not_found`** on every owner call
+  (members, rename, delete, reset, remove a member, attach): whether a
+  list exists is its owner's business, the same as a 404 for none.
+- **Attaching: any host, each only their own lists**, invited in the
+  owner's name (`invited_by`). **Taking one off: its owner, or the
+  event's creator** (who answers for the event; another co-host gets 403
+  `not_your_list`). Taking your own off twice is fine. Nobody's invitation
+  changes either way. · The brief: "creator and co-hosts may attach only
+  lists they own; decide". · Creator-only, or owner-only, detaching.
+- **A co-host's lists come off an event when they stop hosting it**
+  (removed or stepping down, in lib/store/hosts.js's transaction), and
+  don't come back if they're made a co-host again. A list invites in its
+  owner's name, and someone who isn't hosting shouldn't keep inviting
+  people to it. The queries also only count lists whose owner hosts the
+  event, as a second lock. · Leave them on.
+- **"Upcoming" for joining later is "not over and not cancelled"**, so an
+  event happening now counts (someone joining at the door is invited to
+  tonight's too, and can say they're going). The same test as inviting
+  (`inviteRefusal`). · `starts_at > now`.
+- **Attaching to an event that's over or cancelled is 409** (`event_over`,
+  `event_cancelled`), like inviting. Attaching again invites anyone on the
+  list not invited yet (`invitedCount` says how many), so a host can catch
+  up after someone undoes an opt-out.
+- **Opt-outs:** attaching skips anyone who opted out of the owner's
+  invitations, silently; someone opted out who joins the list is on it,
+  and nothing else happens (no invitation, no notification, no hint). Hosts
+  and removed guests are skipped by the invitation code itself.
+- **List invitations don't count against the 300-a-day invitation
+  limit.** That limit is about spam to people who didn't ask; everyone on
+  a list joined it themselves, and a Drag Race list of 300 would otherwise
+  be un-attachable. The joining has its own limit. · Count them with
+  `inviteLimits` in routes/lists.js.
+- **Members whose accounts are gone are skipped when attaching** (not
+  invited as a "Former member").
+- **`joinableList`: for guests and signed-out visitors, never hosts (they
+  get `hostLists`) or someone a host removed.** With several lists, the
+  creator's first, then the one attached first. Offered whatever the
+  event's phase (over or cancelled too: "get invited next time" is still
+  true). **Putting a list on an event shares its join link with everyone
+  who has the event's link**, signed out included; that's the point (the
+  same as the QR code at the door), and it's said in docs/api.md. · Signed
+  in only.
+- **`hostLists`: every list on the event to every host, with its code and
+  link (for "Show list QR"), owner and `isYours`; `memberCount` only on
+  your own.** A co-host doesn't see who's on the creator's list. ·
+  Own lists only.
+- **`hostLists` and `joinableList` are only on answers about one event**,
+  like `friendsGoing`: lists of events don't carry them (one query per
+  event).
+- **`GET /list-links/{code}` gives `viewer: {isOwner, isMember}`** (null
+  signed out), like the friend link's, so a page or app can say "that's
+  yours" or "you're on it" without another call. The join answers with the
+  membership and `invitedTo` (how many events it just invited you to).
+- **Memberships carry the list's id** (to leave by); it grants nothing.
+  Members are listed newest first for the owner (who just joined is what
+  they look for); memberships newest first too.
+- **Deleting a list, taking someone off, and leaving keep every
+  invitation already made.** Nobody is told of any of them.
+- **Limits:** 50 lists a person (409 `too_many_lists`), 20 made a day
+  (60 an address, 1,000 overall); 1,000 people on a list (409
+  `list_full`); 10 lists on an event (409 `too_many_lists`); joining
+  like adding friends (200 a person, 500 an address, 5,000 overall a day,
+  every try counting); list links that find nothing, 60 an hour an
+  address. · The brief: "limits like friend links".
+- **Names:** 1 to 60 characters, runs of spaces made one, trimmed, no
+  control characters (400 `bad_name`).
+- **`auth.returnTo` knows list links**: a signed-out join's 401 comes back
+  to `/l/<code>`.
+- **Tests** (test/lists.test.js): verified-only making and the name rules;
+  the link signed out and in, opening joins nobody; joining (own list 409,
+  twice fine, quick accounts, no friendship); privacy (a member gets 404 on
+  every owner call, the membership has exactly id, name, owner and
+  joinedAt, the owner sees members as the five public fields, newest
+  first, paginated); rename, remove, leave, reset (old link 404, members
+  stay); attaching (guests 403, someone else's list 404, Ben and Una
+  invited, an opted-out member, a co-host and a removed guest skipped, the
+  notification, friendship both ways, hostLists with the count only for
+  the owner, again invites nobody new, over and cancelled 409); joining
+  later (invited to the upcoming one only, the notification, an opted-out
+  joiner gets nothing); joinableList (the creator's list first, a co-host's
+  next, signed out too, null for hosts, members of all, the removed, and
+  absent from lists of events); who may take lists off, and a co-host's
+  lists leaving with them; deleting (gone for members and events,
+  invitations stay); limits (a full list, 10 on an event, 20 made a day,
+  60 link misses an hour); test/db.test.js (version 15, cascades);
+  test/leaks.test.js walks every list answer for every caller; the spec
+  check covers every new route and answer.
+
+## The inviter
+
+On `feat/lists-inviter`. **(You)** approved the redesign (see "Lists and
+the inviter (in progress)" above). The rest:
+
+- **The suggested order is a new endpoint, `GET
+  /api/v1/me/friends/suggested`**, not a `score` on every friend or an
+  `?order=` on the friends list: it's a short list put above the whole
+  one, not paginated (`limit` 1 to 50). **The formula:** each event you
+  were both at (the friends rule) adds `2^(-days since it started / 90)`,
+  doubled for an event you hosted; a way in other than events adds a
+  little, fading the same way from when it was made (an invitation either
+  way 0.5, a friend link or adding by id 0.25); the sum is the `score`,
+  rounded to 3 places. Ties go to whoever you were with last, then by id.
+  Worked out in JavaScript from one query of events together (SQLite here
+  has no `pow`), for a list of a few hundred friends. · A 90-day half-life
+  makes last month count most without forgetting last year; doubling
+  your own events is the brief's "weighted to guests of your own hosted
+  events". · `HALF_LIFE_DAYS`, `HOSTED_WEIGHT`, `EDGE_WEIGHT` in
+  lib/store/friends.js.

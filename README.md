@@ -16,6 +16,12 @@ the link, sign in (or quick-sign-up), and say **going**, **maybe** or
   either way. There are no friend requests, nobody is told they were
   added, and only you see your list. Friends are who a host picks from to
   invite, and who's called out as "friends going".
+- **Lists** are a person's own, private list of people who joined it
+  themselves, by its link or QR code (`/l/<code>`). A host puts one on an
+  event and everyone on it is invited; anyone who joins later is invited
+  to its events still to come. For a weekly night: the QR code at the
+  door, and newcomers get invited to the next one. Only the owner sees
+  who's on a list.
 - **The guest list is the host's choice**, per event: everyone with the
   link sees the names, or only people who've answered do (everyone else
   sees counts). Hosts always see everything.
@@ -63,7 +69,8 @@ cover all of it except notifications, which belong to the apps.
   and serving them at `/covers/`), `backgrounds.js` (the curated
   backgrounds from TMDB), `notifications.js` (your inbox and
   your phones), `friends.js` (your friends, adding and taking people
-  out, friend links), `me.js` (you, your events) and `docs.js`
+  out, friend links), `lists.js` (your lists, joining by link, and lists
+  on events), `me.js` (you, your events) and `docs.js`
   (the spec and `/docs`). A new
   subject is a new file here, so work on different subjects doesn't
   collide. `pages.js` is the web pages (see "The pages").
@@ -72,7 +79,7 @@ cover all of it except notifications, which belong to the apps.
     the schema, its version and upgrades, and the daily snapshots. The
     queries are in `lib/store/`, one file per subject (`events.js`,
     `rsvps.js`, `hosts.js`, `waitlist.js`, `wall.js`, `notifications.js`,
-    `friends.js`, `people.js`, `calendar.js`), and `init()` hands them back
+    `friends.js`, `lists.js`, `people.js`, `calendar.js`), and `init()` hands them back
     as one store.
   - `notify.js` is the one way anyone hears about anything: it writes
     the inbox entry and queues the push in one call, and never tells the
@@ -280,6 +287,13 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `PUT`, `DELETE /api/v1/events/{id}/mute` | mute an event's chatter, or unmute it (guests) |
 | `POST /api/v1/events/{id}/leave` | take yourself off an event entirely (guests; not hosts) |
 | `GET /api/v1/me/invite-optouts`, `PUT`, `DELETE .../{personId}` | the hosts whose invitations you've opted out of; opt out, or back in |
+| `GET /api/v1/me/friends/suggested` | friends to suggest first when inviting, best first, with a `score` (docs/api.md says how) |
+| `GET`, `POST /api/v1/me/lists` | your lists (with how many are on each), or a new one (verified people) |
+| `PATCH`, `DELETE /api/v1/me/lists/{listId}`, `POST .../reset-link` | rename, delete, or a new join link |
+| `GET /api/v1/me/lists/{listId}/members`, `DELETE .../{personId}` | who's on a list of yours (only ever to you), or take someone off |
+| `GET /api/v1/me/list-memberships`, `DELETE .../{listId}` | the lists you're on (name and owner only), or leave one |
+| `GET /api/v1/list-links/{code}`, `POST .../join` | a list's name and owner (anyone with the link), or join it: invited to its events still to come |
+| `PUT`, `DELETE /api/v1/events/{id}/lists/{listId}` | put one of your lists on an event (hosts): everyone on it is invited; or take it off |
 | `GET /api/v1/friend-links/{code}` | whose link it is: a name and a photo (anyone with it) |
 | `POST /api/v1/friend-links/{code}/accept` | say yes: you're friends both ways |
 | `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/declined`, `/past` | your events |
@@ -416,6 +430,9 @@ restart forgives everyone. The address is Cloudflare's
 | Cover uploads (and backgrounds chosen, counted together) | 30 a day | 100 a day | 2,000 a day |
 | Adding friends (by id, or a friend link; every try counts) | 200 a day | 500 a day | 5,000 a day |
 | Friend links that find nobody | | 60 an hour | |
+| Making lists | 20 a day (50 in all) | 60 a day | 1,000 a day |
+| Joining lists (every try counts) | 200 a day | 500 a day | 5,000 a day |
+| List links that find nothing | | 60 an hour | |
 
 On top of that, one invite request takes at most 100 people, and a
 request body at most 100 KB. The numbers live next to the routes they
