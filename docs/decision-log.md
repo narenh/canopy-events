@@ -1544,3 +1544,21 @@ Fixes for the security review's events findings (branch `fix/review`).
   colours are derived exactly as docs/api.md describes (OKLCH). The app
   stays fully mocked. The iOS agent's own judgment calls go in the iOS
   repo's ARCHITECTURE.md ("Decisions").
+
+## Calendar feed: ready for review (feat/calendar)
+
+- Built on branches: account 75c2d4a (on feat/data-security, schema
+  v11) and events bf65597. The account service proves itself to sites
+  with an HMAC-signed request: `Authorization: Canopy-Calendar t=,sig=`
+  using a per-site secret shown once in the Sites tab, set on the site
+  as `CANOPY_CALENDAR_SECRET`, ±5 minutes. Feed links are stored hashed
+  and also sealed, so "Copy link" can show them again. A person no site
+  has ever answered for gets a 503, not an empty calendar, so calendar
+  apps don't wipe their events. Last-good copies are kept in memory
+  only, since they contain addresses. Cancelled entries get "Cancelled:"
+  in the title, for Google. Tickets' contract is in the account README.
+  One test (ETag/304) was flaky under the full suite; a fix is in
+  progress.
+- **Merge order:** data-security, then calendar (account), then events
+  calendar. Then copy the full `client/canopy-account.js` into events
+  again.
