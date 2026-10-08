@@ -19,7 +19,8 @@ info:
 
     **Other people** are only ever `Person`: id, first and last name, short
     name and photo. Nobody's email, phone, Instagram, Venmo or Cash App is
-    ever in an answer, except your own, from `GET /api/v1/me`.
+    ever in an answer, not even your own: those come from Canopy accounts
+    (`GET /api/native/v1/me`).
   license:
     name: Private
     identifier: LicenseRef-Proprietary
@@ -724,8 +725,11 @@ paths:
       operationId: getMe
       summary: You
       description: |
-        Your own details: the only answer anywhere with an email, phone,
-        Instagram, Venmo or Cash App in it, and they're yours. When
+        You: your id, name, photo, whether your email is proven and whether
+        people can find you. No answer here has an email, phone,
+        Instagram, Venmo or Cash App in it, yours included; the app gets
+        and changes your own at Canopy accounts (`GET /api/native/v1/me`).
+        When
         `person.emailVerified` is false (a quick account), show the
         verify-your-email banner, which can't be dismissed, linking to
         `verifyUrl`. `hasHosted` says whether to show a Hosting tab.
@@ -1153,21 +1157,20 @@ components:
         photoUrl: https://account.canopysf.com/photo/6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44?v=1759870000000
 
     Me:
-      description: You, with your own details. Only ever from `GET /api/v1/me`.
+      description: |
+        You. Only ever from `GET /api/v1/me`. No email, phone, Instagram,
+        Venmo or Cash App, not even your own: events never shows them, so
+        it doesn't have them. Your own contact details come from Canopy
+        accounts, `GET /api/native/v1/me` (and are changed there).
       type: object
       additionalProperties: false
-      required: [id, email, firstName, lastName, shortName, photoUrl, phone, instagram, venmo, cashapp, emailVerified, findable]
+      required: [id, firstName, lastName, shortName, photoUrl, emailVerified, findable]
       properties:
         id: { type: string }
-        email: { type: [string, 'null'] }
         firstName: { type: string }
         lastName: { type: string }
         shortName: { type: string }
         photoUrl: { type: [string, 'null'], format: uri }
-        phone: { type: [string, 'null'], description: 'E.164, e.g. +14155551234.' }
-        instagram: { type: [string, 'null'] }
-        venmo: { type: [string, 'null'] }
-        cashapp: { type: [string, 'null'] }
         emailVerified:
           type: boolean
           description: False for a quick account whose email isn't proven yet. Show the verify banner.
@@ -1194,15 +1197,10 @@ components:
       example:
         person:
           id: 6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44
-          email: ana@example.com
           firstName: Ana
           lastName: Lima
           shortName: Ana L
           photoUrl: null
-          phone: '+14155551234'
-          instagram: ana.lima
-          venmo: ana-l
-          cashapp: AnaL
           emailVerified: false
           findable: true
         verifyUrl: https://account.canopysf.com/profile?verify=1&return=https%3A%2F%2Fevents.canopysf.com%2F

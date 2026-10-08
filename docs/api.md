@@ -83,7 +83,7 @@ lists. They **can't make events** (403 `email_unverified`) or be co-hosts.
 
 ```json
 {
-  "person": { "id": "…", "email": "ana@example.com", "firstName": "Ana", "emailVerified": false, "…": "…" },
+  "person": { "id": "…", "firstName": "Ana", "emailVerified": false, "…": "…" },
   "verifyUrl": "https://account.canopysf.com/profile?verify=1&return=https%3A%2F%2Fevents.canopysf.com%2F",
   "hasHosted": false
 }
@@ -114,8 +114,10 @@ A 403 `email_unverified` always comes with a `verify` link too, so a
 ```
 
 No email, phone, Instagram, Venmo or Cash App, for anyone, ever, not even
-for a host looking at their own guests. Only `GET /api/v1/me` has those,
-and they're yours. Don't build features that need someone else's.
+for a host looking at their own guests, and not even your own: events
+doesn't have them. The app reads and changes your own at Canopy accounts,
+`GET`/`PATCH /api/native/v1/me`. Don't build features that need someone
+else's.
 
 - `photoUrl` is null for no photo. It's on `account.canopysf.com` and
   served only to a Canopy session (anyone else gets a 404). Today that

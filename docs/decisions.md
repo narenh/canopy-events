@@ -80,7 +80,10 @@ details to anyone else:
   one person another person's email, phone, Instagram, Venmo or Cash
   App. Other people are only ever `{id, firstName, lastName, shortName,
   photoUrl}` (what `/api/people` gives). Hosts get no more about their
-  guests than that. Only your own details come back, from `/api/v1/me`.
+  guests than that. Since feat/data-security, events doesn't hold even
+  the visitor's own: the account service tells it none of them (per-site
+  grants), and `/api/v1/me` is you without them. The apps read and
+  change their own at the account service's `/api/native/v1/me`.
 - A lookup answers with that same public shape and nothing else. A
   phone lookup doesn't return their Instagram, and the reverse holds
   too. A miss says "no one found", with no hints.

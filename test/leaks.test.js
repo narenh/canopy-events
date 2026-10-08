@@ -12,7 +12,7 @@ const { makePeople } = require('./fakeAccount');
 
 const PUBLIC_FIELDS = ['firstName', 'id', 'lastName', 'photoUrl', 'shortName'];
 
-test('the leak walker finds contact details, and only other people\'s', () => {
+test('the leak walker finds contact details, anyone\'s, the caller\'s own included', () => {
   const people = makePeople();
   const { ana, ben } = people;
   // A contact field on someone else, by name.
@@ -23,8 +23,8 @@ test('the leak walker finds contact details, and only other people\'s', () => {
   assert.equal(findLeaks({ handle: ben.cashapp }, ana.id, people).length, 1);
   // Signed out, everyone is someone else.
   assert.equal(findLeaks({ id: ana.id, venmo: ana.venmo }, null, people).length, 2);
-  // Your own are fine, on your own object.
-  assert.deepEqual(findLeaks({ person: { id: ana.id, email: ana.email, phone: ana.phone } }, ana.id, people), []);
+  // Your own aren't fine either: events never answers with any.
+  assert.equal(findLeaks({ person: { id: ana.id, email: ana.email, phone: ana.phone } }, ana.id, people).length, 4);
   // A null field isn't a leak; the public shape isn't either.
   assert.deepEqual(findLeaks({ id: ben.id, phone: null, firstName: 'Ben', shortName: 'Ben O' }, ana.id, people), []);
 });

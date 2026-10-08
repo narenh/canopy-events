@@ -59,6 +59,12 @@ async function startFakeAccount() {
     deleted: new Set(),
     // A site the admin hasn't marked as allowing quick accounts.
     allowsUnverified: true,
+    // The visitor's own contact details /api/session tells this site. The
+    // real events is granted none of them; the fake sends all five by
+    // default, so the leak walker (harness.js) shows events passes on none
+    // of them even if the admin ticks them by mistake. A test sets it to []
+    // for the real setup.
+    contactFields: ['email', 'phone', 'instagram', 'venmo', 'cashapp'],
     // Tokens whose next session answer carries a renewed cookie.
     renew: new Set(),
     sessionCalls: 0,
@@ -95,9 +101,10 @@ async function startFakeAccount() {
     if (!p || state.deleted.has(p.id)) return res.json({ person: null });
     if (!p.emailVerified && !state.allowsUnverified) return res.json({ person: null, unverified: true });
     const person = {
-      id: p.id, email: p.email, firstName: p.firstName, lastName: p.lastName, shortName: `${p.firstName} ${p.lastName[0]}`,
-      photoUrl: photoUrl(p), venmo: p.venmo, phone: p.phone, instagram: p.instagram, cashapp: p.cashapp
+      id: p.id, firstName: p.firstName, lastName: p.lastName, shortName: `${p.firstName} ${p.lastName[0]}`, photoUrl: photoUrl(p)
     };
+    // Like the real one: only what this site was granted, the rest left out.
+    state.contactFields.forEach((f) => { person[f] = p[f]; });
     // Like the real one: only a site that allows unverified accounts is
     // told whether the email is proven (and whether they're findable).
     if (state.allowsUnverified) Object.assign(person, { emailVerified: p.emailVerified, findable: p.findable });

@@ -782,3 +782,33 @@ On `feat/data-security` in both repos, not merged. Newest at the bottom.
   in production (no SMTP there means the request fails instead), and the
   tests read codes from them. · Mask the address there if that's ever
   wanted; the test harness matches on it.
+
+### 2. Per-site scopes on `/api/session`
+
+- Each site in the account service is granted a subset of the visitor's
+  `email`, `phone`, `instagram`, `venmo`, `cashapp`
+  (`apps.contact_fields`, schema version 8). A new site gets none. ·
+  A site can only leak what it's sent. · Tick the boxes in the Sites tab.
+- Upgrading to version 8 grants every existing site all five. · That's
+  what `/api/session` gave before, so tickets keeps working. · Untick
+  per site afterwards.
+- Fields not granted are **left out** of `person`, not sent as `null`. ·
+  `null` already means "not filled in"; a site shouldn't be able to read
+  "not told" as "blank". · `siteView` in the account service's server.js.
+- `id`, names, photo, `emailVerified` and `findable` are always sent. ·
+  Every site needs them to show who's signed in; `findable` is a
+  setting, not a contact detail. · Add `findable` to the scopes.
+- Events is granted nothing, and `GET /api/v1/me` no longer has `email`,
+  `phone`, `instagram`, `venmo` or `cashapp` (removed from the `Me`
+  schema, not kept as nulls). The leak walker now flags anyone's contact
+  details, the caller's own included, and the fake account service sends
+  all five by default so the tests prove events drops them even if it's
+  granted them by mistake. · Events never showed them; the apps read and
+  edit the profile through the account service's `/api/native/v1/me`.
+  · Put the fields back in `ownPerson` and the schema.
+- **Follow-up for the iOS app (not done here):** `Me.swift` documents
+  `/api/v1/me` as its source for `email`, `phone` and so on. They're
+  optional there, so decoding still works, but the profile header, the
+  profile form and the verify sheet's "we sent a code to …" will show
+  blanks until the app reads its own contact details from the account
+  service's `GET /api/native/v1/me` (it already decodes into `Me`).
