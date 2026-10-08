@@ -848,3 +848,10 @@ Fixes for the security review's events findings (branch `fix/review`).
   only showed it to hosts, so nothing visible changes (that's true of
   `feat/web-features`' `public/ui.js` too, checked at the time). ·
   lib/views.js `countsView`.
+- **(You) Partly undone:** unverified accounts are findable by
+  **Instagram** again, because on a new network most people never
+  confirm their email. Phone lookups still need a verified account,
+  since numbers can be enumerated. · The impostor case is back for
+  Instagram, but only while the real owner hasn't claimed their own
+  handle. · Account service `findPerson` (6a… on main). The real fix is
+  proving the handle (see "Instagram ownership" below).
