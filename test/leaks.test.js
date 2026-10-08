@@ -1,0 +1,97 @@
+// Contact details never leak. The leak walker in harness.js already runs
+// on every JSON answer in every test; this file checks the walker itself
+// catches what it should, then calls every endpoint as a host, a guest,
+// an unverified guest and someone signed out, with every kind of person
+// on the event, and holds each person in each answer to exactly the five
+// public fields.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { startServer, client, makeEvent, findLeaks } = require('./harness');
+const { makePeople } = require('./fakeAccount');
+
+const PUBLIC_FIELDS = ['firstName', 'id', 'lastName', 'photoUrl', 'shortName'];
+
+test('the leak walker finds contact details, and only other people\'s', () => {
+  const people = makePeople();
+  const { ana, ben } = people;
+  // A contact field on someone else, by name.
+  assert.deepEqual(findLeaks({ guests: [{ person: { id: ben.id, email: 'x' } }] }, ana.id, people), ['$.guests[0].person.email']);
+  // Someone's actual details anywhere, under any name, in any case.
+  assert.equal(findLeaks({ note: `call ${ben.phone}` }, ana.id, people).length, 1);
+  assert.equal(findLeaks({ a: { b: [ben.instagram.toUpperCase()] } }, ana.id, people).length, 1);
+  assert.equal(findLeaks({ handle: ben.cashapp }, ana.id, people).length, 1);
+  // Signed out, everyone is someone else.
+  assert.equal(findLeaks({ id: ana.id, venmo: ana.venmo }, null, people).length, 2);
+  // Your own are fine, on your own object.
+  assert.deepEqual(findLeaks({ person: { id: ana.id, email: ana.email, phone: ana.phone } }, ana.id, people), []);
+  // A null field isn't a leak; the public shape isn't either.
+  assert.deepEqual(findLeaks({ id: ben.id, phone: null, firstName: 'Ben', shortName: 'Ben O' }, ana.id, people), []);
+});
+
+test('every endpoint, every caller: other people are the five public fields and nothing else', async (t) => {
+  const server = await startServer();
+  t.after(() => server.stop());
+  const P = server.people;
+  const [ana, ben, cy, una, gus] = ['ana', 'ben', 'cy', 'una', 'gus'].map((n) => client(server, n));
+  const benApp = client(server, 'ben', { mode: 'bearer' });
+  const anon = client(server, null);
+
+  // An event with everyone on it: going, maybe, can't go, invited,
+  // unverified, and a former member; and an earlier one, so there are
+  // friends.
+  const before = await makeEvent(ana, { title: 'Before' });
+  await ben.put(`/api/v1/events/${before.id}/rsvp`, { status: 'going' });
+  await una.put(`/api/v1/events/${before.id}/rsvp`, { status: 'going' });
+  server.setTimes(before.id, { startedAgoMs: 9 * 86400e3, overInMs: -8 * 86400e3 });
+  const e = await makeEvent(ana, { guestListVisibility: 'responded' });
+  await ben.put(`/api/v1/events/${e.id}/rsvp`, { status: 'going' });
+  await cy.put(`/api/v1/events/${e.id}/rsvp`, { status: 'maybe' });
+  await una.put(`/api/v1/events/${e.id}/rsvp`, { status: 'not_going' });
+  await gus.put(`/api/v1/events/${e.id}/rsvp`, { status: 'going' });
+  await ana.post(`/api/v1/events/${e.id}/invites`, { personIds: [P.dee.id, P.eve.id] });
+  server.fake.deleted.add(P.gus.id);
+
+  const answers = [];
+  const call = async (who, method, url, body) => {
+    const r = await who[method](url, body);
+    answers.push({ who: who.person ? who.person.name : 'nobody', url, r });
+    return r;
+  };
+  for (const who of [ana, ben, benApp, una, cy, anon]) {
+    await call(who, 'get', `/api/v1/events/${e.id}`);
+    await call(who, 'get', `/api/v1/events/${e.id}/guests`);
+    await call(who, 'get', '/api/v1/me');
+    await call(who, 'get', '/api/v1/me/friends');
+    for (const list of ['hosting', 'upcoming', 'invitations', 'past']) await call(who, 'get', `/api/v1/me/events/${list}`);
+  }
+  await call(ana, 'get', `/api/v1/events/${e.id}/guests?status=invited`);
+  await call(ana, 'patch', `/api/v1/events/${e.id}`, { description: 'Updated' });
+  await call(ana, 'post', `/api/v1/events/${e.id}/invites`, { personIds: [P.fay.id, P.ben.id] });
+  await call(ana, 'del', `/api/v1/events/${e.id}/invites/${P.fay.id}`);
+  await call(ben, 'put', `/api/v1/events/${e.id}/rsvp`, { status: 'maybe' });
+  await call(benApp, 'del', `/api/v1/events/${e.id}/rsvp`);
+  await call(ana, 'post', '/api/v1/events', { title: 'New', startsAt: '2030-01-01T20:00:00Z', timeZone: 'UTC' });
+
+  // Every person-shaped object in every answer: anything with a firstName.
+  let checked = 0;
+  for (const { who, url, r } of answers) {
+    const self = P[who];
+    const walk = (v, isMe) => {
+      if (Array.isArray(v)) return v.forEach((x) => walk(x));
+      if (!v || typeof v !== 'object') return;
+      if ('firstName' in v) {
+        checked++;
+        if (isMe && self && v.id === self.id) return;
+        assert.deepEqual(Object.keys(v).sort(), PUBLIC_FIELDS, `${who} ${url}: ${JSON.stringify(v)}`);
+      }
+      for (const [k, x] of Object.entries(v)) walk(x, url === '/api/v1/me' && k === 'person');
+    };
+    walk(r.data);
+  }
+  assert.ok(checked > 50, `checked ${checked} people`);
+  // And the former member really was in there, as one.
+  const hostView = answers.find((a) => a.who === 'ana' && a.url === `/api/v1/events/${e.id}/guests`).r.data;
+  assert.equal(hostView.guests.find((g) => g.person.id === P.gus.id).person.shortName, 'Former member');
+  assert.equal(hostView.guests.length, 6);
+});
