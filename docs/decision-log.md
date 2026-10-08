@@ -2712,3 +2712,15 @@ with hosting blue. The rest:
   Going button to change your mind (an answer can change, never be
   withdrawn). Declined events aren't on All. · routes/pages.js loads
   `/me/events/declined` with the other lists (UI.HOME_LOADS).
+
+## Backgrounds from TMDB (in progress, feat/backgrounds)
+
+- **(You)** Hosts can pick a cover from a curated set of TMDB backdrops.
+  **Only the picker fetches from TMDB.** Choosing one saves it as an
+  ordinary uploaded cover (our copy, through the normal cover pipeline),
+  so event pages, link previews, apps and the calendar never depend on
+  TMDB. No images are in the repo.
+- Assumed: curation is a TMDB list you maintain (`TMDB_LIST_ID`), with
+  the token in `TMDB_TOKEN` on the server only. The feature is off until
+  both are set. Textless backdrops are preferred. TMDB's attribution goes
+  in the picker and on a small credits line. Search is left for later.
