@@ -853,5 +853,5 @@ Fixes for the security review's events findings (branch `fix/review`).
   confirm their email. Phone lookups still need a verified account,
   since numbers can be enumerated. · The impostor case is back for
   Instagram, but only while the real owner hasn't claimed their own
-  handle. · Account service `findPerson` (6a… on main). The real fix is
+  handle. · Account service `findPerson` (2866489 on main). The real fix is
   proving the handle (see "Instagram ownership" below).
