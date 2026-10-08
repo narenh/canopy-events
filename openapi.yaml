@@ -575,7 +575,7 @@ paths:
         copies (`coverImages`: 400, 800 and 1200 px wide, those narrower
         than the photo). The event's `coverImageUrl` and `coverImages`
         change with every upload, and `coverHue` /
-        `coverGrayscale` say the colour that matches the photo. 30 uploads
+        `coverGrayscale` say the color that matches the photo. 30 uploads
         a day per person.
 
         **An upload never changes `themeHue` or `themeGrayscale`**: offer
@@ -2442,14 +2442,14 @@ components:
           minimum: 0
           maximum: 359
           description: |
-            The event's colour: the page's dark mesh background rotated to
+            The event's color: the page's dark mesh background rotated to
             this hue, in degrees (OKLCH), or null for Canopy's own green
             (which is hue 161). Ignored while `themeGrayscale` is true.
-            Draw the background as docs/api.md ("Event colours") says, so
+            Draw the background as docs/api.md ("Event colors") says, so
             an app matches the web.
         themeGrayscale:
           type: boolean
-          description: True when the host chose no colour at all; the page is neutral grey, whatever `themeHue` says.
+          description: True when the host chose no color at all; the page is neutral grey, whatever `themeHue` says.
         accentHue:
           type: [integer, 'null']
           minimum: 0
@@ -2459,7 +2459,7 @@ components:
             ring, icons, links): a hue in degrees, or null for **white**.
             Always null while `themeGrayscale` is false, when the accent
             follows `themeHue` as it always has. docs/api.md ("Event
-            colours") says how to draw it.
+            colors") says how to draw it.
         coverHue:
           type: [integer, 'null']
           minimum: 0
@@ -2471,7 +2471,7 @@ components:
             `coverGrayscale`), or for a cover uploaded before this existed.
         coverGrayscale:
           type: boolean
-          description: True when the cover is essentially grey, so the colour that matches it is `themeGrayscale`.
+          description: True when the cover is essentially grey, so the color that matches it is `themeGrayscale`.
         status: { type: string, enum: [active, cancelled] }
         cancelledAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
@@ -2767,8 +2767,8 @@ components:
         guestListVisibility: { type: string, enum: [everyone, responded], default: everyone }
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, default: 0, description: Plus-ones each answer may bring. }
         capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, default: null, description: 'The most people going, plus-ones included. null: no cap.' }
-        themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, default: null, description: "The page's colour as a hue in degrees; null is Canopy green (see Event)." }
-        themeGrayscale: { type: boolean, default: false, description: "True for no colour at all: a neutral grey page (themeHue is ignored)." }
+        themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, default: null, description: "The page's color as a hue in degrees; null is Canopy green (see Event)." }
+        themeGrayscale: { type: boolean, default: false, description: "True for no color at all: a neutral grey page (themeHue is ignored)." }
         accentHue: { type: [integer, 'null'], minimum: 0, maximum: 359, default: null, description: "A grey event's accent hue; null is white. A hue with themeGrayscale false is 400 accent_needs_grayscale." }
         details:
           type: [array, 'null']
@@ -2985,8 +2985,8 @@ components:
           type: array
           items: { $ref: '#/components/schemas/CoverImage' }
           description: Every size of the cover (see Event).
-        themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: The event's colour (see Event). }
-        themeGrayscale: { type: boolean, description: No colour at all (see Event). }
+        themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: The event's color (see Event). }
+        themeGrayscale: { type: boolean, description: No color at all (see Event). }
         accentHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: "A grey event's accent hue; null is white (see Event)." }
 
     NotificationList:

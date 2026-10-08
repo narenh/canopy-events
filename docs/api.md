@@ -380,7 +380,7 @@ has `coverImages` too.
 the photo filling it `object-fit: cover` style (centred, cropped). The
 frame's top **2:1** (height = width × 1/2) is where the photo shows
 clearly; the band below it (the last width × 1/6) is where it has faded
-into the page's base colour. The fade eases in from 45% of the frame's
+into the page's base color. The fade eases in from 45% of the frame's
 height (6% at 52%, 18% at 58%, 34% at 63%, 52% at 68%, 70% at the
 band's top, 84% at 82%, 94% at 90%, solid at the bottom), and the
 **title starts at the top of that band**, running on below the frame.
@@ -388,15 +388,15 @@ The "how soon" pill sits low on the left inside the 2:1. Phones: edge to edge, n
 rounded corners; wider: in the column, top corners rounded only. The
 crop is display-only: the stored image is the whole photo. An event with
 no cover gets a generated picture in the same frame (soft glows in its
-colours); draw your own, or use the event's colours below.
+colors); draw your own, or use the event's colors below.
 
-**The colour that matches the photo.** Every upload works out
+**The color that matches the photo.** Every upload works out
 `coverHue` (0–359), the hue that suits the photo, or says
 `coverGrayscale: true` for an essentially grey one (then `coverHue` is
 null). Both are null/false with no cover, and for covers uploaded before
-this existed. **An upload never changes the event's colour**
+this existed. **An upload never changes the event's color**
 (`themeHue`, `themeGrayscale`): it's a suggestion. The web editor jumps
-its colour slider to it when a photo is picked and has a "Match photo"
+its color slider to it when a photo is picked and has a "Match photo"
 button; nothing is saved until the host saves. Do the same in the app:
 offer it, and PATCH `themeHue` (or `themeGrayscale: true`) only if the
 host takes it.
@@ -481,13 +481,13 @@ minute. For a new event, make the event first, then choose (the web
 remembers the choice and sends it right after the event is made, as it
 does a picked photo).
 
-## Event colours
+## Event colors
 
-Every event has two fields for its colour:
+Every event has two fields for its color:
 
 - `themeHue`: the hue, in degrees (0–359), its page's background is
   turned to, or `null` for Canopy's own green, which is the default.
-- `themeGrayscale`: `true` for **no colour at all**, a neutral grey page.
+- `themeGrayscale`: `true` for **no color at all**, a neutral grey page.
   While it's true, `themeHue` is ignored (and kept, so turning grey off
   goes back to it).
 
@@ -496,14 +496,14 @@ Any host sets them, co-hosts included, on `POST /events` or `PATCH
 whole number, `bad_theme_grayscale` for anything but true or false).
 They're on every event, signed out too, since the page a guest opens from
 a text is drawn in them. The web's slider is grey at its left end, then
-the wheel; an event nobody has coloured sits on Canopy green's hue.
+the wheel; an event nobody has colored sits on Canopy green's hue.
 
-The background is the dark Canopy mesh: a base colour with five soft
-glows, and cards of 30% tinted glass over it. Each colour is defined in
+The background is the dark Canopy mesh: a base color with five soft
+glows, and cards of 30% tinted glass over it. Each color is defined in
 **OKLCH** (lightness, chroma, hue). For a `themeHue` of *H*, each
-colour keeps its lightness and chroma and takes the hue *H + offset*:
+color keeps its lightness and chroma and takes the hue *H + offset*:
 
-| Colour | Role | L | C | hue offset | Today's green |
+| Color | Role | L | C | hue offset | Today's green |
 |---|---|---|---|---|---|
 | base | the page behind everything | 0.1652 | 0.0266 | +6.4 | `#03120c` |
 | glow 1 | top left (12% 18%, to 50%) | 0.3655 | 0.0715 | +1.4 | `#0f4a33` |
@@ -514,12 +514,12 @@ colour keeps its lightness and chroma and takes the hue *H + offset*:
 | card | glass tint, at 30% opacity | 0.2150 | 0.0537 | −11.2 | `#03200b` |
 
 **Grey** (`themeGrayscale: true`): the same lightness L, chroma 0. Every
-colour becomes a neutral grey exactly as light as its green, so contrast
+color becomes a neutral grey exactly as light as its green, so contrast
 is the same as for any hue.
 
 Hues wrap at 360. Convert with the standard OKLCH → OKLab → linear sRGB
 → sRGB maths (Björn Ottosson's matrices, as in CSS Color 4). If a
-colour falls outside sRGB, **lower its chroma** (keep L and hue) until
+color falls outside sRGB, **lower its chroma** (keep L and hue) until
 it fits; at these lightnesses that only happens to the card tint near
 yellow. Canopy green is hue **161**: `null` means "use the hex column
 exactly", and 161 comes out within 2/255 of it.
@@ -548,7 +548,7 @@ Worst over the wheel: dark text on the accent 5.0:1, links on the base
 output (e.g. hue 0 → `#ed458a`, 30 → `#f14634`, 250 → `#0095fe`, 300 →
 `#a264f6`).
 
-- **A coloured event** (`themeGrayscale` false): the accent is the trio
+- **A colored event** (`themeGrayscale` false): the accent is the trio
   turned to `themeHue` (or the trio as it is, for Canopy green).
   `accentHue` is always null on these.
 - **A grey event** (`themeGrayscale` true): the accent is never grey
@@ -557,7 +557,7 @@ output (e.g. hue 0 → `#ed458a`, 30 → `#f14634`, 250 → `#0095fe`, 300 →
     icons on it are the grey page's base (`#0e0e0e`, 19.3:1), and links
     are white too, so set them apart from body text by weight (bold) and
     a thicker underline (the web: 700 and 2px).
-  - a hue *A* (0–359): the trio for *A* (above), the same colours a page
+  - a hue *A* (0–359): the trio for *A* (above), the same colors a page
     in hue *A* has, on the grey background. Worst over the wheel: dark
     text on the accent 5.0:1, links on the grey base 14.5:1.
 
@@ -569,7 +569,7 @@ Any host sets `accentHue` on `POST /events` or `PATCH /events/{id}`:
 being made) grey. Setting `themeGrayscale` to false clears `accentHue` in
 the same change; turning grey on again starts from white. The web's
 editor shows a second slider, **Accent** (white at its left end, then the
-wheel), only while the colour slider is in its grey stretch.
+wheel), only while the color slider is in its grey stretch.
 
 ## Plus-ones
 
