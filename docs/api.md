@@ -600,13 +600,72 @@ the unread count.
 
 ## Friends and invitations
 
-There are no friend requests. **Two people are friends once they've both
-been at the same event**: hosting it, or answering `going`, on an event
-that has started and wasn't cancelled. `maybe` doesn't count, and an
-event still to come doesn't either.
+**Your friends are the people in your list.** It's one way, like
+following: having someone in your list doesn't put you in theirs, adding
+someone needs no OK from them, and nobody is told they were added. Only
+you ever see your list. Someone is in it when:
 
-`GET /api/v1/me/friends` lists yours, most events in common first, with
-`eventsInCommon` and `lastTogetherAt`.
+- **you were both at an event** (`source: "shared_events"`): hosting it,
+  or answering `going`, on an event that has started and wasn't
+  cancelled. `maybe` doesn't count, and an event still to come doesn't
+  either. Nothing to do; it's worked out.
+- **you added them** (`"added"`), by id, usually after finding them by
+  phone or Instagram (below). Verified people only.
+- **a friend link** (`"link"`): you said yes to theirs, or they said yes
+  to yours. That one is **both ways**: sharing your link is saying yes in
+  advance.
+- **an invitation** (`"invite"`): a host invites you, or you invite
+  someone. Both ways too, and hosts and co-hosts count alike. Taking the
+  invitation back leaves the friendship.
+
+`GET /api/v1/me/friends` lists yours: most events in common first, then
+the people you only added. Each is `{person, source, eventsInCommon,
+lastTogetherAt}`. When someone is in your list both ways (a link, and
+events together), `source` is the way in, and `eventsInCommon` still
+counts the events. **`eventsInCommon` can be 0 and `lastTogetherAt` can be
+null** (someone you added and haven't been to anything with): decode it as
+optional. "Friends going" on an event and the invite picker use the same
+list.
+
+**Taking someone out**: `DELETE /api/v1/me/friends/{personId}`, whatever
+way they're in it. They stay out (another event together, or them
+inviting you, doesn't bring them back) until you add them again yourself:
+by id, by their link, or by inviting them. They aren't told, and their
+own list is untouched. 404 `not_a_friend` if they weren't in it. Ask
+first; it's quiet but it sticks.
+
+**Adding by id**: `POST /api/v1/me/friends` with `{"personId": "…"}`
+answers `{"friend": {...}}`. Already in your list changes nothing.
+Verified only (403 `email_unverified`, with `verify`), 404
+`person_not_found`, 409 `is_you`, and limited (429 `rate_limited`).
+
+**Your friend link** is `GET /api/v1/me/friend-link`:
+
+```json
+{ "url": "https://events.canopysf.com/f/7Hq2mXc9LpRt", "code": "7Hq2mXc9LpRt" }
+```
+
+Made the first time you ask; the same after that. Share `url`, and show
+it as a **QR code whose text is exactly `url`** (on iOS,
+`CIFilter.qrCodeGenerator()` with the URL's UTF-8 bytes, correction level
+`M`; scale it up with nearest-neighbour, no smoothing, and keep a white
+margin of four modules round it). Quick (unverified) accounts have a link
+too. `POST /api/v1/me/friend-link/reset` makes a new one; the old one
+stops working at once, and friends made with it stay friends.
+
+**Opening someone's link** (the app should claim `/f/<code>` as a
+universal link, and the camera opens the QR code's URL in it):
+
+1. `GET /api/v1/friend-links/{code}` is the owner, `{person, viewer}`,
+   for anyone, signed in or not. `viewer` is null signed out, or
+   `{isYou, isFriend}`. 404 `friend_link_not_found` for a wrong or reset
+   code. **Opening adds nobody.**
+2. Show who it is and ask: "Add Ana Lima as a friend?" Your own link
+   (`isYou`): say so. `isFriend`: say you're already friends.
+3. On yes, `POST /api/v1/friend-links/{code}/accept` answers
+   `{"friend": {...}}` (the owner, as your friend). 409 `own_link` for your
+   own. Anyone signed in can, quick accounts included. Signed out, the 401
+   has `signIn` and `quickSignUp` coming back to `/f/<code>`.
 
 A host invites with `POST /api/v1/events/{id}/invites` and
 `{"personIds": [...]}` (1 to 100). Offer friends in the app; the API takes
@@ -692,7 +751,9 @@ expect:
 | 403 | `lookup_not_allowed` | finding people isn't switched on for this site: hide the search |
 | 403 | `bad_origin` | a web page's problem; apps never see it |
 | 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_found` | the link is wrong, or it's gone (or the host made a new one) |
+| 404 | `friend_link_not_found`, `not_a_friend` | the friend link is wrong or was reset; they weren't in your list |
 | 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room`, `removed`, `is_host` | redraw from the event |
+| 409 | `is_you`, `own_link` | adding yourself, or saying yes to your own friend link |
 | 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |
 | 503 | `accounts_unreachable` | Canopy accounts is down; retry in a minute |
@@ -707,6 +768,8 @@ expect:
 | Invitations in one request | 100 | | |
 | Wall posts | 5 a minute, 100 a day | 20 a minute, 300 a day | 300 a minute, 5,000 a day |
 | Cover uploads | 30 a day | 100 a day | 2,000 a day |
+| Adding friends (by id, or saying yes to a link; every try counts) | 200 a day | 500 a day | 5,000 a day |
+| Friend links that find nobody | | 60 an hour | |
 
 Text fields are capped: title 120 characters (longer is cut), description
 5,000, place name 200, address 500. A request body is at most 100 KB.

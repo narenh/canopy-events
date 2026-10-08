@@ -132,6 +132,18 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   assert.deepEqual(upgraded.coversWithoutSizes(), []);
   const cleared = upgraded.setCover('AAAAAAAAAAAA', null);
   assert.deepEqual([cleared.coverHue, cleared.coverGrayscale, cleared.coverSizes], [null, false, null]);
+  // Version 10: explicit friends, hidden friends and friend links.
+  const A = '00000000-0000-4000-8000-000000000001';
+  const C = '00000000-0000-4000-8000-000000000003';
+  const F = '00000000-0000-4000-8000-000000000006';
+  upgraded.addFriend(A, F);
+  assert.deepEqual(upgraded.friendsOf(A, { limit: 10 }).map((f) => [f.personId, f.edge]), [[F, 'lookup']]);
+  assert.equal(upgraded.removeFriend(A, F), true);
+  assert.deepEqual(upgraded.friendsOf(A, { limit: 10 }), []);
+  const code = upgraded.friendLinkOf(A);
+  assert.equal(upgraded.friendLinkOwner(code), A);
+  assert.throws(() => upgraded.db.prepare("INSERT INTO friend_edges (person_id, friend_id, source, created_at) VALUES (?, ?, 'nope', 1)").run(C, F), /CHECK/);
+  assert.throws(() => upgraded.db.prepare("INSERT INTO friend_edges (person_id, friend_id, source, created_at) VALUES (?, ?, 'link', 1)").run(C, C), /CHECK/);
   // And whoever was hosting at the upgrade has hosted, from when
   // they started; nobody else has, until they host.
   assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000001'), true);

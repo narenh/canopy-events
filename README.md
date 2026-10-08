@@ -8,10 +8,14 @@ the link, sign in (or quick-sign-up), and say **going**, **maybe** or
 - **Anyone with the link** can see an event. The id is the link
   (`events.canopysf.com/e/<id>`): 12 random characters, so it can't be
   guessed, and there's no listing or search.
-- **Friends are implicit.** Two people are friends once they've both been
-  at the same event: hosting it, or "going", once it has started and if
-  it wasn't cancelled. There are no friend requests. Friends are who a
-  host picks from to invite, and who's called out as "friends going".
+- **Your friends are a list, one way, like following.** Everyone you've
+  been at an event with (hosting it, or "going", once it has started and
+  if it wasn't cancelled), plus anyone you've added: through your or their
+  **friend link** (or its QR code; both ways, since sharing it is saying
+  yes), by **phone or Instagram** (one way), or by an **invitation**
+  either way. There are no friend requests, nobody is told they were
+  added, and only you see your list. Friends are who a host picks from to
+  invite, and who's called out as "friends going".
 - **The guest list is the host's choice**, per event: everyone with the
   link sees the names, or only people who've answered do (everyone else
   sees counts). Hosts always see everything.
@@ -57,7 +61,8 @@ cover all of it except notifications, which belong to the apps.
   guests, new links), `people.js` (finding someone by phone or
   Instagram), `covers.js` (cover images,
   and serving them at `/covers/`), `notifications.js` (your inbox and
-  your phones), `me.js` (you, your friends, your events) and `docs.js`
+  your phones), `friends.js` (your friends, adding and taking people
+  out, friend links), `me.js` (you, your events) and `docs.js`
   (the spec and `/docs`). A new
   subject is a new file here, so work on different subjects doesn't
   collide. `pages.js` is the web pages (see "The pages").
@@ -262,7 +267,12 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `POST /api/v1/events/{id}/invites` | invite people by id (hosts) |
 | `DELETE /api/v1/events/{id}/invites/{personId}` | take back an unanswered invitation (hosts) |
 | `GET /api/v1/me` | you (name, photo, `emailVerified`; no contact details) |
-| `GET /api/v1/me/friends` | your friends, with events in common |
+| `GET /api/v1/me/friends` | your friends, how each is in your list, and events in common |
+| `POST /api/v1/me/friends` | add someone by id, one way (verified people) |
+| `DELETE /api/v1/me/friends/{personId}` | take someone out of your list, whatever way they're in it |
+| `GET /api/v1/me/friend-link`, `POST .../reset` | your friend link (made on first use), or a new one |
+| `GET /api/v1/friend-links/{code}` | whose link it is: a name and a photo (anyone with it) |
+| `POST /api/v1/friend-links/{code}/accept` | say yes: you're friends both ways |
 | `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/declined`, `/past` | your events |
 | `GET /api/calendar/{personId}` | someone's events for their Canopy calendar: **site to site**, signed by the account service, not for apps (see "Calendar") |
 
@@ -377,6 +387,8 @@ restart forgives everyone. The address is Cloudflare's
 | Invitations (one per person invited) | 300 a day | 600 a day | 5,000 a day |
 | Wall posts | 5 a minute, 100 a day | 20 a minute, 300 a day | 300 a minute, 5,000 a day |
 | Cover uploads | 30 a day | 100 a day | 2,000 a day |
+| Adding friends (by id, or a friend link; every try counts) | 200 a day | 500 a day | 5,000 a day |
+| Friend links that find nobody | | 60 an hour | |
 
 On top of that, one invite request takes at most 100 people, and a
 request body at most 100 KB. The numbers live next to the routes they
@@ -502,10 +514,13 @@ entries), `notifications` (each person's inbox), `devices` (push tokens,
 one phone each), `verified_people` (who events has seen signed in with a
 proven email, since only they may co-host and the account service doesn't
 say so about anyone but the visitor) and `hosted_people` (who has ever
-hosted, for `/api/v1/me`'s `hasHosted`: once a host, always a host). There are no names, emails or
-photos: only person ids.
-Friends aren't stored at all; they're worked out from `hosts` and `rsvps`
-each time.
+hosted, for `/api/v1/me`'s `hasHosted`: once a host, always a host),
+`friend_edges` (who has added whom, one way, and how), `hidden_friends`
+(who each person took out of their list) and `friend_links` (each
+person's friend link code). There are no names, emails or photos: only
+person ids. Friends from events together aren't stored; they're worked
+out from `hosts` and `rsvps` each time, and the two friend tables are
+added and taken away from that (`lib/store/friends.js`).
 
 **Schema version.** It's in SQLite's `user_version`. A new `events.db` is
 made with the whole current schema. One at an older version is brought up

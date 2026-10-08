@@ -50,6 +50,7 @@ test('friends', async (t) => {
     ].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));
     assert.equal(f.nextCursor, null);
     assert.ok(f.friends.every((x) => x.lastTogetherAt));
+    assert.ok(f.friends.every((x) => x.source === 'shared_events'));
     const ids = f.friends.map((x) => x.person.id);
     for (const not of [P.cy.id, P.dee.id, P.fay.id]) assert.ok(!ids.includes(not), not);
   });

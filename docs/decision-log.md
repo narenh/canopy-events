@@ -2033,3 +2033,98 @@ change.
   underline, and showPicker() is gone (in Chrome its pop-up also
   swallowed typing). Phones keep the words over the system wheel. ·
   Desktop shows the browser's date format (10/20/2026) while editing.
+
+## Explicit friends
+
+On `feat/friends`. **(You)** decided the ways in (a friend link / QR
+code, finding by phone or Instagram, inviting or being invited, plus
+events together) and that it's one way, like following. The rest:
+
+- **Schema version 10: `friend_edges` (person_id, friend_id, source:
+  `link` | `lookup` | `invite` | `invited_by`, created_at; the pair is the
+  key, no self-edges), `hidden_friends` (person_id, friend_id, hidden_at)
+  and `friend_links` (person_id, code, created_at; code unique).** Your
+  list = (events together ∪ your edges) − your hidden. · As designed. ·
+  A new step that drops the three tables.
+- **Taking anyone out deletes your edge *and* hides them (refined from
+  the brief's "removing an explicit edge deletes it").** · With a delete
+  alone, someone you took out would come back the next time you were at
+  an event together, or the next time they invited you, which is the
+  opposite of what taking them out meant. Only your own adding brings
+  them back: by id, saying yes to their link, or inviting them. Someone
+  else's doing (they invite you, they say yes to your link) adds their
+  edge but doesn't undo your hiding. · `removeFriend` in
+  lib/store/friends.js without the `hide`, for explicit-only friends.
+- **The friend link's code is 12 random base62 characters (71 bits, like
+  an event id), stored as it is, not hashed.** · It has to be shown again
+  every time the friends page opens, and events has no sealing key like
+  the account service's calendar secret. What the code grants is small:
+  saying yes puts the owner in your list and you in theirs, nothing
+  about them beyond the name and photo a guest list already shows.
+  Anyone with a copy of the database has far more than this anyway. ·
+  Store `sha256(code)` and show the link once (Reset to see a new one).
+- **`GET /api/v1/me/friend-link` makes the link on first use**, as the
+  calendar link does. · The friends page asks on load. · Split into a POST.
+- **Saying yes to a link is both ways; the owner's hiding the opener
+  stays.** · The brief: sharing your link is consent. But the owner may
+  have taken that person out since, and an old link in their hands
+  shouldn't undo it. · `addLinkFriends`'s second `addEdge` with `true`.
+- **Your own link: 409 `own_link`** (not a no-op). · An app can say "this
+  is your link" rather than show a success that did nothing. · Return
+  the owner instead.
+- **`GET /api/v1/friend-links/{code}` is open to anyone with the link,
+  signed in or not, and gives the owner's `Person` plus `viewer: {isYou,
+  isFriend}` (null signed out).** · The signed-out page shows who you'd
+  be adding; `viewer` lets a page or app say "that's you" or "already
+  friends" without a second call. It only ever says something about the
+  caller's own list. · Drop `viewer`.
+- **Adding by id: 200 `{friend}` whether new or not; 404
+  `person_not_found` for an id the account service doesn't know; 409
+  `is_you`; verified only, checked before asking the account service.** ·
+  The same verified-only line as the lookup. Any id works, not only one a
+  lookup returned: ids are already on every guest list, and adding one
+  grants nothing new (no notification, nothing they see). · n/a
+- **`DELETE /api/v1/me/friends/{id}` for someone not in your list is 404
+  `not_a_friend`**, not a silent hide. · Otherwise it'd be a way to
+  pre-emptively block someone, which isn't a feature anyone asked for. ·
+  Insert the hide anyway.
+- **Limits: adding friends (by id, or saying yes to a link) is 200 a
+  person, 500 an address, 5,000 overall a day; every try counts, found
+  or not. Friend links that find nobody: 60 an hour an address.** · The
+  brief's "per day and per address". Counting misses too keeps adding by
+  id from being a way to test ids in bulk. The account service's own
+  lookup limits still apply before anyone gets an id. · `addLimits` and
+  `linkMisses` in routes/friends.js.
+- **Invitations add both edges for `invited` and `already_on_list`
+  outcomes, not `is_host` or `removed`.** · Someone already on the list
+  (they answered from the link) was still picked by the host. A host or a
+  removed guest wasn't invited. The host's own hiding is undone (they
+  chose the person); the guest's isn't. · `invite` in lib/store/rsvps.js.
+- **`source` per friend: an edge's way in wins over `shared_events`**
+  (`lookup` → `added`, `link` → `link`, `invite`/`invited_by` → `invite`).
+  The first way in is kept; adding again changes nothing. ·
+  `eventsInCommon` still says the events, so nothing is lost; the way in
+  is the more deliberate fact. `invite` either way, so the list never
+  says who invited whom. · `SOURCES` in routes/friends.js.
+- **Order: most events in common first, then the people you only added
+  (0 in common), by id; cursor unchanged.** · The list's shape and cursor
+  stay as they were. Newest-added first would need a three-part cursor.
+  · Change the ORDER BY and the cursor key.
+- **`eventsInCommon` can be 0 and `lastTogetherAt` null now.** · There's
+  no honest date for "last together" with someone you only added; a
+  made-up one (when they were added) would be a lie the API keeps
+  forever. **The iOS app's `Friend.lastTogetherAt` is a non-optional
+  `Date`: it needs to become `Date?`, or decoding a list with an added
+  friend fails.** · Send `addedAt` as `lastTogetherAt` instead.
+- **"Friends going" and the invite picker use the whole list** (added,
+  link and invite friends included; hidden ones not). · One meaning of
+  "your friends" everywhere. · `friendsGoing` in lib/store/friends.js
+  back to `together`.
+- **No notifications.** Nobody hears they were added; the inbox types
+  are unchanged. · The brief; and one-way adding is meant to be quiet. ·
+  A `friend_added` type in lib/notify.js.
+- **The friends routes moved from routes/me.js to a new
+  routes/friends.js, and the spec has a Friends tag.** · One subject, one
+  file, as the README says. · n/a
+- **`auth.returnTo` knows `:code`**: a signed-out accept's 401 sends
+  people back to `/f/<code>`, not the home page. · lib/auth.js.

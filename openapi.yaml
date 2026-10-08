@@ -45,7 +45,9 @@ tags:
   - name: People
     description: Finding someone to invite by their phone or Instagram.
   - name: Me
-    description: You, your friends and your events.
+    description: You and your events.
+  - name: Friends
+    description: Your friends, adding and taking people out, and your friend link.
   - name: Docs
     description: This document.
   - name: Site to site
@@ -787,15 +789,26 @@ paths:
 
   /api/v1/me/friends:
     get:
-      tags: [Me]
+      tags: [Friends]
       operationId: listFriends
       summary: Your friends
       description: |
-        Two people are friends once they've both been at an event: hosting
-        it, or answering `going`, on an event that has started and wasn't
-        cancelled. `maybe` doesn't count, nor does an event still to come.
-        Most events in common first. Deleted accounts are left out, so a
-        page can be short of `limit` with more to come.
+        Your list: everyone you've been at an event with (both there,
+        hosting or `going`, on an event that has started and wasn't
+        cancelled; `maybe` and events still to come don't count), plus
+        everyone you've added, came to you through a friend link, or an
+        invitation either way, minus anyone you took out. One way, like
+        following: being in someone's list doesn't put them in yours.
+        Only you ever see your list.
+
+        Most events in common first, then the people you only added (by
+        id). `source` is how they're in your list: `shared_events`,
+        `added` (by id), `link` (a friend link, yours or theirs) or
+        `invite` (you invited them, or they invited you). When there's
+        both a way in and events in common, it's the way in;
+        `eventsInCommon` still counts the events, and is 0 (with
+        `lastTogetherAt` null) when there are none. Deleted accounts are
+        left out, so a page can be short of `limit` with more to come.
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -808,6 +821,176 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      tags: [Friends]
+      operationId: addFriend
+      summary: Add a friend by id
+      description: |
+        Puts someone in your list, one way: they aren't asked, aren't
+        told, and you aren't put in theirs. Usually after finding them by
+        phone or Instagram (`POST /api/v1/people/lookup`). Verified people
+        only, the same as the lookup (403 `email_unverified`, with
+        `verify`). Adding someone already in your list changes nothing;
+        adding someone you took out brings them back. 400
+        `bad_person_id`, 404 `person_not_found` (no such account), 409
+        `is_you`. Limited per person, per address and overall (429
+        `rate_limited`); every try counts, found or not.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [personId]
+              properties:
+                personId: { type: string, description: A Canopy person id (a UUID). }
+      responses:
+        '200':
+          description: They're in your list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FriendEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/friends/{personId}:
+    delete:
+      tags: [Friends]
+      operationId: removeFriend
+      summary: Take someone out of your friends
+      description: |
+        Whatever way they're in your list (added, a link, an invitation,
+        or events together), they're out, and they stay out (another
+        event together, or them inviting you, doesn't bring them back)
+        until you add them again yourself: by id, by their friend link, or
+        by inviting them. They aren't told, and their own list is
+        untouched. 404 `not_a_friend` if they aren't in your list.
+      parameters:
+        - $ref: '#/components/parameters/PersonId'
+      responses:
+        '200':
+          description: Out of your list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/friend-link:
+    get:
+      tags: [Friends]
+      operationId: getFriendLink
+      summary: Your friend link
+      description: |
+        Your friend link, made the first time you ask. Share `url`, or
+        show it as a QR code (its text is exactly `url`). Whoever opens it
+        and says yes (`POST /api/v1/friend-links/{code}/accept`) is in
+        your list and you're in theirs. Quick (unverified) accounts have
+        one too.
+      responses:
+        '200':
+          description: Your link.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FriendLink' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/me/friend-link/reset:
+    post:
+      tags: [Friends]
+      operationId: resetFriendLink
+      summary: Make a new friend link
+      description: |
+        A new link and code; the old one stops working at once (404
+        `friend_link_not_found`). Friends made with it stay friends.
+      responses:
+        '200':
+          description: Your new link.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FriendLink' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/friend-links/{code}:
+    get:
+      tags: [Friends]
+      operationId: getFriendLinkOwner
+      summary: Whose friend link this is
+      description: |
+        The link's owner as a `Person` (name and photo, nothing else), for
+        anyone with the link, signed in or not. Signed in, `viewer` says
+        whether it's your own and whether they're already in your list;
+        signed out it's null. Opening it adds nobody: show who it is and
+        ask first. 404 `friend_link_not_found` for a code that's unknown
+        or was reset; misses are limited per address (429
+        `rate_limited`).
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/FriendCode'
+      responses:
+        '200':
+          description: The owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [person, viewer]
+                properties:
+                  person: { $ref: '#/components/schemas/Person' }
+                  viewer:
+                    oneOf:
+                      - type: object
+                        additionalProperties: false
+                        required: [isYou, isFriend]
+                        properties:
+                          isYou: { type: boolean }
+                          isFriend: { type: boolean, description: Already in your list. }
+                      - type: 'null'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/friend-links/{code}/accept:
+    post:
+      tags: [Friends]
+      operationId: acceptFriendLink
+      summary: Say yes to a friend link
+      description: |
+        Both ways: the link's owner is in your list, and you're in
+        theirs (sharing the link is their yes). Anyone signed in, quick
+        accounts included. Already friends changes nothing. 404
+        `friend_link_not_found`, 409 `own_link`, 429 `rate_limited`.
+        Answers with the owner as your friend.
+      parameters:
+        - $ref: '#/components/parameters/FriendCode'
+      responses:
+        '200':
+          description: You're friends.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FriendEnvelope' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/me/events/hosting:
@@ -1130,6 +1313,13 @@ components:
       required: true
       description: A Canopy person id (a UUID).
       schema: { type: string }
+    FriendCode:
+      name: code
+      in: path
+      required: true
+      description: A friend link's code, 12 characters of base62 (the last part of `/f/<code>`).
+      schema: { type: string }
+      example: 7Hq2mXc9LpRt
 
   responses:
     BadRequest:
@@ -1181,7 +1371,7 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: "there's no event at that link", reason: event_not_found }
     NotFound:
-      description: '`event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found` or `not_removed`.'
+      description: '`event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_a_friend` or `friend_link_not_found`.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1190,7 +1380,8 @@ components:
         Not in this event's state: `event_cancelled`, `event_over`,
         `host_cannot_rsvp`, `already_responded`, `is_creator`,
         `too_many_cohosts`, `no_room`, `removed` (a host removed you),
-        `is_host` (removing a host).
+        `is_host` (removing a host); and for friends, `is_you` (adding
+        yourself) and `own_link` (accepting your own friend link).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1684,11 +1875,37 @@ components:
     Friend:
       type: object
       additionalProperties: false
-      required: [person, eventsInCommon, lastTogetherAt]
+      required: [person, source, eventsInCommon, lastTogetherAt]
       properties:
         person: { $ref: '#/components/schemas/Person' }
-        eventsInCommon: { type: integer, minimum: 1 }
-        lastTogetherAt: { type: string, format: date-time, description: When the latest of those events started. }
+        source:
+          type: string
+          enum: [shared_events, added, link, invite]
+          description: |
+            How they're in your list: events you were both at, added by
+            id, a friend link (yours or theirs), or an invitation (either
+            way). A way in wins over events in common.
+        eventsInCommon: { type: integer, minimum: 0, description: 0 for someone you only added. }
+        lastTogetherAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the latest of those events started; null with none in common.
+
+    FriendEnvelope:
+      type: object
+      additionalProperties: false
+      required: [friend]
+      properties:
+        friend: { $ref: '#/components/schemas/Friend' }
+
+    FriendLink:
+      type: object
+      additionalProperties: false
+      required: [url, code]
+      properties:
+        url: { type: string, description: 'What to share, and the text of the QR code: https://events.canopysf.com/f/<code>.' }
+        code: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
+      example: { url: 'https://events.canopysf.com/f/7Hq2mXc9LpRt', code: 7Hq2mXc9LpRt }
 
     FriendList:
       type: object

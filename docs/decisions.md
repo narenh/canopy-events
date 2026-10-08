@@ -101,7 +101,13 @@ details to anyone else:
 - **Friends are implicit**: two people are friends when they've both been
   at the same event, meaning a host, or an RSVP of *going*, on an event
   that has started and wasn't cancelled. There are no friend requests.
-  Friends are used for:
+  **Since (the owner, 2026-10-08): explicit friends too.** Your friends
+  are the people in your list, one way, like following: adding someone
+  needs no OK from them and doesn't add you to theirs. Ways in, besides
+  events together: a personal **friend link / QR code** (saying yes to
+  it is both ways), **finding by phone or Instagram**, and **inviting or
+  being invited**. Anyone can be taken out of your list. See the decision
+  log's "Explicit friends". Friends are used for:
   - inviting: the host picks friends, and the event shows up under that
     friend's invitations, with no response yet;
   - "friends going" called out on an event page;

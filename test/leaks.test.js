@@ -65,7 +65,14 @@ test('every endpoint, every caller: other people are the five public fields and 
     answers.push({ who: who.person ? who.person.name : 'nobody', url, r });
     return r;
   };
+  // Friends of every kind: added by id, through a friend link, and an
+  // invitation (above), so the friends answers have each kind in them.
+  await ben.post('/api/v1/me/friends', { personId: P.eve.id });
+  const anaLink = (await ana.get('/api/v1/me/friend-link')).data;
+  await una.post(`/api/v1/friend-links/${anaLink.code}/accept`);
   for (const who of [ana, ben, benApp, una, cy, anon]) {
+    await call(who, 'get', `/api/v1/friend-links/${anaLink.code}`);
+    await call(who, 'get', '/api/v1/me/friend-link');
     await call(who, 'get', `/api/v1/events/${e.id}`);
     await call(who, 'get', `/api/v1/events/${e.id}/guests`);
     await call(who, 'get', '/api/v1/me');
@@ -87,6 +94,10 @@ test('every endpoint, every caller: other people are the five public fields and 
   await call(ana, 'del', `/api/v1/events/${e.id}/cohosts/${P.cy.id}`);
   await call(ana, 'post', `/api/v1/events/${e.id}/cohosts`, { personId: P.cy.id });
   await call(ana, 'post', `/api/v1/events/${e.id}/new-link`);
+  await call(cy, 'post', '/api/v1/me/friends', { personId: P.fay.id });
+  await call(cy, 'post', `/api/v1/friend-links/${anaLink.code}/accept`);
+  await call(cy, 'del', `/api/v1/me/friends/${P.fay.id}`);
+  await call(cy, 'post', '/api/v1/me/friend-link/reset');
   // The account service asking for each person's calendar (site to site):
   // no caller, so nobody's contact details at all, and no people in it.
   for (const p of Object.values(P)) {

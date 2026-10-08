@@ -427,12 +427,14 @@ test('pages', async (t) => {
     assert.equal(r.status, 200);
     const list = section(r.body, 'invite');
     assert.ok(list.includes('id="search"'));
-    // Ben (going) and Cy (maybe) are friends from the picnic.
+    // Ben (going) and Cy (maybe) are friends from the picnic; Dee, from
+    // being invited.
     assert.match(list, /Ben Okafor[\s\S]*?class="tag">Going</);
     assert.match(list, /Cy Park[\s\S]*?class="tag off">Maybe</);
+    assert.match(list, /Dee Ruiz[\s\S]*?class="tag off">Invited</);
     const d = pageData(r.text);
     assert.equal(d.onList[P.dee.id], 'invited');
-    assert.deepEqual(d.friends.map((f) => f.person.id).sort(), [P.ben.id, P.cy.id].sort());
+    assert.deepEqual(d.friends.map((f) => f.person.id).sort(), [P.ben.id, P.cy.id, P.dee.id].sort());
     assert.equal((await page(server, ben, `/e/${party.id}/invite`)).status, 403);
     // Over or cancelled: nothing to invite to.
     const past = await page(server, ana, `/e/${before.id}/invite`);
@@ -445,7 +447,7 @@ test('pages', async (t) => {
     assert.ok(r.body.includes('Ana Lima') && r.body.includes('Cy Park'));
     assert.ok(r.body.includes('1 event together'));
     assert.ok(r.body.includes('aria-current="page">Friends<'));
-    const none = await page(server, dee, '/friends');
+    const none = await page(server, una, '/friends');
     assert.ok(none.body.includes('No friends yet.'));
     assert.equal((await page(server, anon, '/friends')).status, 302);
   });

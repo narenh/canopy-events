@@ -1,10 +1,10 @@
-// You: yourself (no contact details), your friends, and your events. Mounted at
-// /api/v1. Everything here needs you signed in.
+// You: yourself (no contact details) and your events. Mounted at /api/v1.
+// Everything here needs you signed in. Your friends are routes/friends.js.
 
 const express = require('express');
 const { handle, pageParams, paginate } = require('../lib/api');
-const { ownPerson, loadPeople, publicPerson } = require('../lib/people');
-const { eventViews, iso } = require('../lib/views');
+const { ownPerson } = require('../lib/people');
+const { eventViews } = require('../lib/views');
 const { MY_EVENT_LISTS } = require('../lib/store/events');
 
 module.exports = function meRoutes(ctx) {
@@ -26,20 +26,6 @@ module.exports = function meRoutes(ctx) {
       hasHosted: store.hasHosted(person.id)
     });
   });
-
-  // Your friends (lib/store/friends.js says who counts), most events in
-  // common first. Former members are left out: there's nobody to invite.
-  router.get('/me/friends', auth.requirePerson, handle(async (req, res) => {
-    const page = pageParams(req, res);
-    if (!page) return;
-    const rows = store.friendsOf(req.person.id, { after: page.after, limit: page.limit + 1 });
-    const { items, nextCursor } = paginate(rows, page.limit, (r) => [r.eventsInCommon, r.personId]);
-    const people = await loadPeople(canopy, items.map((r) => r.personId));
-    const friends = items
-      .filter((r) => people.has(r.personId))
-      .map((r) => ({ person: publicPerson(people.get(r.personId)), eventsInCommon: r.eventsInCommon, lastTogetherAt: iso(r.lastTogetherAt) }));
-    res.json({ friends, nextCursor });
-  }));
 
   // Your events, in five lists (lib/store/events.js says what's in each):
   // /me/events/hosting, /upcoming, /invitations, /declined and /past.
