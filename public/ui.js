@@ -1305,6 +1305,24 @@
     return '<div class="card"><p class="empty">' + tx(d.me && d.me.emailVerified ? 'home.emptyHost' : 'home.empty') + '</p></div>';
   }
 
+  // ---------------- Your Canopy calendar ----------------
+
+  // The Calendar card on your events page: one line, a button to the
+  // Canopy profile's calendar section (where the feed's link lives), and
+  // the switch for invitations in it. `d` is { settings: {
+  // calendarInvites }, calendarUrl }.
+  function calendarCard(d) {
+    const on = !!(d.settings && d.settings.calendarInvites);
+    let h = '<section class="card calendar-card" id="calendar" data-section="calendar"><h2 class="card-heading">' + tx('home.calendarHeading') + '</h2>';
+    h += '<p>' + tx('home.calendarHint') + '</p>';
+    const url = safeUrl(d.calendarUrl);
+    if (url) h += '<a class="button secondary" href="' + esc(url) + '">' + tx('home.calendarAdd') + '</a>';
+    h += '<label class="switch-row"><span>' + tx('home.calendarInvites') + '</span>'
+      + '<input type="checkbox" role="switch" class="switch" id="calendarInvites"' + (on ? ' checked' : '') + '></label>';
+    h += '<div class="error" id="calendarError" role="alert"></div>';
+    return h + '</section>';
+  }
+
   // ---------------- Friends ----------------
 
   // "2 events together", or nothing with none in common (someone you
@@ -1753,7 +1771,7 @@
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
-    eventRow, homeLists, homeList, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
+    eventRow, homeLists, homeList, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED
   };
 });

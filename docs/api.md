@@ -707,10 +707,28 @@ Not from here. Each person's **Canopy calendar** is one link from the
 account service (`GET /api/native/v1/me/calendar`, see its
 `docs/native-api.md`), which a calendar app subscribes to, with events
 they host, co-host or answered `going` (confirmed), `maybe` or are
-waitlisted for (tentative), and cancelled ones they were on. The account
+waitlisted for (tentative), invitations they haven't answered
+(tentative, titled `[INVITED] <title>`), and cancelled ones they were on.
+Answering an invitation updates that same entry. The account
 service gets events' part of it from `GET /api/calendar/{personId}`,
 which is in `openapi.yaml` under **Site to site**: it's signed by the
 account service, and an app can't call it.
+
+### Settings
+
+`GET /api/v1/me/settings` is `{"calendarInvites": true}`: your settings,
+each at its default until changed. `PATCH /api/v1/me/settings` with only
+the ones to change (`{"calendarInvites": false}`) answers the settings
+after. A setting it doesn't know is 400 `unknown_setting`, a value of
+the wrong type 400 `bad_calendar_invites`, and nothing changes on a 400.
+
+- **`calendarInvites`** (default `true`): events you're invited to and
+  haven't answered are in your Canopy calendar, tentative, titled
+  `[INVITED] <title>`, the description starting "You're invited. Answer
+  here: <link>". The Profile's toggle, "Show events I'm invited to". Off,
+  they're left out (cancelled ones too). Calendar apps pick a change up
+  when they next refresh the feed, which can take hours; say nothing
+  about timing in the app.
 
 ## Pagination
 

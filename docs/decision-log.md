@@ -2201,3 +2201,54 @@ events together) and that it's one way, like following. The rest:
   every hue and grey: dark text on the accent ≥ 6.8:1, links on the base
   ≥ 14.5:1, accent vs base ≥ 7:1. Other pages stay green. · public/ui.js
   themeStyle. The iOS app should match (accent from the same turn).
+
+## Calendar: invitations
+
+On `feat/calendar-invites`. **(You)** decided invitations go in the feed
+as `[INVITED] <title>`, tentative, behind a setting that's on by default,
+and that answering updates the same entry. The rest:
+
+- **Schema version 11: `person_settings` (person_id, calendar_invites 0/1
+  default 1, updated_at), one row only once someone changes a setting.**
+  No row is every default, so everyone already here has invitations on
+  without a backfill. · The brief's "a `person_settings` table"; nothing
+  existing was per person and right for it (`verified_people` and
+  `hosted_people` are facts, not choices). · A step that drops the table.
+- **`GET /api/v1/me/settings` answers `{calendarInvites}` flat, and
+  `PATCH` takes only the settings to change**: an unknown name is 400
+  `unknown_setting`, a non-boolean 400 `bad_calendar_invites`, a body
+  that isn't an object 400 `bad_settings`; nothing changes on a 400. `{}`
+  changes nothing. Quick (unverified) accounts have settings too. · The
+  brief's shape; strict so a typo in an app doesn't silently do nothing.
+  · routes/me.js.
+- **An invitation's entry: title `[INVITED] <title>`; status `tentative`;
+  description "You're invited. Answer here: <link>", then the host's
+  description, without the link again at the end** (every other entry
+  ends with it; here it's already in the first line). Hosts are never
+  "only invited" (hosting wins). · As asked. · `INVITED_PREFIX`,
+  `partLine` in routes/calendar.js.
+- **`updatedAt` now includes `invited_at`**, on top of the event's
+  `updated_at`, being made a host, and `status_at`/`responded_at`. Every
+  transition the brief lists moves it: invited → going or maybe changes
+  the status (so `status_at`); taking an answer back to invited sets
+  `status_at` too; can't go, uninvited and removed take the entry out.
+  The test checks it grows at each step. · So the account service's
+  SEQUENCE and LAST-MODIFIED move and calendar apps redraw it. · n/a
+- **A cancelled invitation keeps its `[INVITED]` title** (the account
+  service adds "Cancelled: " in front) and, like the others, stays as
+  cancelled for 30 days, only while the setting is on. · It was never
+  answered; the title says what it was. · `title` in `entryFor`.
+- **Turning the setting off takes invitations out at once, cancelled ones
+  included; turning it on puts them back** (with their old `updatedAt`,
+  which is fine: to a calendar app they're new again). Answered events
+  are untouched by it. · n/a
+- **Home page Calendar card: one line, "Add to your calendar" (a link to
+  `<CANOPY_ACCOUNT_URL>/profile#calendarCard`, the account profile's
+  calendar card's id, checked read-only in canopy-account-service's
+  views/profile.html), and an iOS-style switch "Show events I'm invited
+  to"** that PATCHes the setting and flips back if it doesn't save. Below
+  the lists, signed in only. · As asked; the feed's link itself lives on
+  the account service, so the card sends people there rather than
+  copying it. · `UI.calendarCard`, views/home.html.
+- **Visual check** at 375 px against the fake account service: the card,
+  and the switch turning the setting off (the API agreed).

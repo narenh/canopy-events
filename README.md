@@ -275,6 +275,7 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `GET /api/v1/friend-links/{code}` | whose link it is: a name and a photo (anyone with it) |
 | `POST /api/v1/friend-links/{code}/accept` | say yes: you're friends both ways |
 | `GET /api/v1/me/events/hosting`, `/upcoming`, `/invitations`, `/declined`, `/past` | your events |
+| `GET`, `PATCH /api/v1/me/settings` | your settings: `calendarInvites` (invitations in your Canopy calendar; on by default) |
 | `GET /api/calendar/{personId}` | someone's events for their Canopy calendar: **site to site**, signed by the account service, not for apps (see "Calendar") |
 
 Errors are `{"error": "<a sentence>", "reason": "<snake_case_code>"}` with
@@ -325,12 +326,18 @@ shown or logged; a new one is made in the Sites tab.
 | going | confirmed ("You're going.", with how many guests they're bringing) |
 | maybe | tentative ("You said maybe.") |
 | waitlisted | tentative ("On the waitlist.") |
+| invited, not answered yet | tentative, titled "[INVITED] <title>" ("You're invited. Answer here: <link>"), unless they've turned **Show events I'm invited to** off |
 | any of those, on a cancelled event | cancelled, until 30 days after it was to start |
-| can't go, removed, only invited, invitation taken back | not in it |
+| can't go, removed, invitation taken back | not in it |
 
-From 90 days ago on (by start) and everything coming up. An invitation on
-its own isn't in it: it isn't a plan, and the invitations list is where
-it's answered. A deleted event is simply gone.
+From 90 days ago on (by start) and everything coming up. A deleted event
+is simply gone. Answering an invitation changes the same entry (same UID,
+newer `updatedAt`): going makes it confirmed with the plain title, maybe
+tentative with the plain title, can't go takes it out. The setting is
+each person's (`person_settings`, `GET`/`PATCH /api/v1/me/settings`,
+`calendarInvites`, on by default), switched on the events home page's
+**Calendar** card (with "Add to your calendar", which opens the Canopy
+profile's calendar section) and in the app's Profile.
 
 **What an entry says**: the title, when (UTC, plus the event's time zone;
 no end time is `null`, which the feed shows as an hour), the place's name
@@ -518,7 +525,8 @@ say so about anyone but the visitor) and `hosted_people` (who has ever
 hosted, for `/api/v1/me`'s `hasHosted`: once a host, always a host),
 `friend_edges` (who has added whom, one way, and how), `hidden_friends`
 (who each person took out of their list) and `friend_links` (each
-person's friend link code). There are no names, emails or photos: only
+person's friend link code) and `person_settings` (each person's
+settings, a row only once they change one). There are no names, emails or photos: only
 person ids. Friends from events together aren't stored; they're worked
 out from `hosts` and `rsvps` each time, and the two friend tables are
 added and taken away from that (`lib/store/friends.js`).

@@ -16,9 +16,15 @@
 //
 //   - events they host or co-host, or said going to: confirmed;
 //   - maybe, or on the waitlist: tentative, and the description says so;
+//   - invited and not answered yet: tentative, titled "[INVITED] <title>",
+//     the description starting "You're invited. Answer here: <link>",
+//     unless they've turned that off (`calendarInvites`, GET/PATCH
+//     /api/v1/me/settings, on by default). Answering changes the same
+//     entry (the same UID): going makes it confirmed with the plain title,
+//     maybe tentative with the plain title, and can't go takes it out;
 //   - any of those that's been cancelled: cancelled, until 30 days after
 //     it was to start;
-//   - can't go, removed, only invited: not in it;
+//   - can't go, removed, uninvited: not in it;
 //   - from 90 days ago on (by start), and everything coming up.
 //
 // Each entry is what that person sees on the event's page, and less: the
@@ -41,9 +47,18 @@ const { calendarStatus, CALENDAR_PAST_MS } = require('../lib/rules');
 
 const iso = (ms) => new Date(ms).toISOString();
 
+// What an invitation's title starts with, exactly.
+const INVITED_PREFIX = '[INVITED] ';
+
+// Only invited: not hosting, and no answer yet.
+function onlyInvited({ role, rsvp }) {
+  return !role && rsvp === 'invited';
+}
+
 // The line at the top of the description: their part in it.
-function partLine(status, { role, rsvp, guests }) {
+function partLine(status, { role, rsvp, guests }, url) {
   if (status === 'cancelled') return 'This event was cancelled.';
+  if (onlyInvited({ role, rsvp })) return `You're invited. Answer here: ${url}`;
   const plus = guests > 0 ? ` (plus ${guests} guest${guests === 1 ? '' : 's'})` : '';
   if (role === 'creator') return "You're hosting.";
   if (role === 'cohost') return "You're co-hosting.";
@@ -52,18 +67,24 @@ function partLine(status, { role, rsvp, guests }) {
   return `You're going${plus}.`;
 }
 
-function entryFor(req, row, now) {
+function entryFor(req, row, now, settings) {
   const { event } = row;
-  const status = calendarStatus(event, row, now);
+  const status = calendarStatus(event, row, now, { invites: settings.calendarInvites });
   if (!status) return null;
   const url = `${publicBase(req)}/e/${event.publicId}`;
-  const description = [partLine(status, row), event.description, url].filter(Boolean).join('\n\n');
+  const invited = onlyInvited(row);
+  // An open invitation's first line already has the link.
+  const description = [partLine(status, row, url), event.description, invited && status !== 'cancelled' ? null : url]
+    .filter(Boolean).join('\n\n');
   // When anything in the entry last changed: the event, or their part in
-  // it (an answer, a plus-one, being made a co-host).
-  const updatedAt = Math.max(event.updatedAt, row.hostAt || 0, row.rsvpAt || 0, row.respondedAt || 0);
+  // it (an answer, a plus-one, being made a co-host, being invited). An
+  // answer that changes the status moves rsvpAt (rsvps.status_at), so
+  // invited -> going or maybe moves this, and the account service's
+  // SEQUENCE and LAST-MODIFIED with it.
+  const updatedAt = Math.max(event.updatedAt, row.hostAt || 0, row.rsvpAt || 0, row.respondedAt || 0, row.invitedAt || 0);
   return {
     uid: `${event.id}@events.${BASE}`,
-    title: event.title,
+    title: invited ? INVITED_PREFIX + event.title : event.title,
     start: iso(event.startsAt),
     end: event.endsAt != null ? iso(event.endsAt) : null,
     allDay: false,
@@ -85,8 +106,9 @@ module.exports = function calendarRoutes({ store, canopy }) {
     if (!personId) return fail(res, 401, 'unauthorized', 'only the account service asks this, signed');
     if (!PERSON_ID_RE.test(personId)) return fail(res, 400, 'bad_person_id', "that isn't a person id");
     const now = Date.now();
+    const settings = store.settingsOf(personId);
     const entries = store.calendarEventsFor(personId, now - CALENDAR_PAST_MS)
-      .map((row) => entryFor(req, row, now))
+      .map((row) => entryFor(req, row, now, settings))
       .filter(Boolean);
     res.json({ entries });
   });

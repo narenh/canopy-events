@@ -183,10 +183,11 @@ test('what goes in someone\'s calendar, for every part they can have in an event
   assert.equal(eveE['Small dinner'].status, 'tentative');
   assert.match(eveE['Small dinner'].description, /^On the waitlist\./);
 
-  // Una (unverified) is going: she's in. Fay only invited, and uninvited:
-  // nothing. Gus was removed: nothing.
+  // Una (unverified) is going: she's in. Fay is invited to the party (an
+  // invitation, tentative) and was uninvited from the small dinner
+  // (nothing). Gus was removed: nothing.
   assert.deepEqual(Object.keys(byTitle(await entriesOf('una'))), ['Party']);
-  assert.deepEqual(await entriesOf('fay'), []);
+  assert.deepEqual((await entriesOf('fay')).map((e) => [e.title, e.status]), [['[INVITED] Party', 'tentative']]);
   assert.deepEqual(await entriesOf('gus'), []);
 
   // Nobody's name, id or contact details, anywhere in anyone's answer
@@ -238,4 +239,115 @@ test('a new link keeps the UID and moves the URL; a change moves updatedAt', asy
   // Taking the answer back takes it out.
   await ben.del(`/api/v1/events/${newId}/rsvp`);
   assert.deepEqual((await ask(P.ben)).data.entries, []);
+});
+
+test('invitations: in the calendar until answered, the same entry after; a setting turns them off', async (t) => {
+  const server = await startServer();
+  t.after(() => server.stop());
+  const P = server.people;
+  const ask = asAccountService(server);
+  const [ana, ben, cy, una] = ['ana', 'ben', 'cy', 'una'].map((n) => client(server, n));
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+  const only = async (who) => {
+    const { entries } = (await ask(P[who])).data;
+    assert.ok(entries.length <= 1, JSON.stringify(entries));
+    return entries[0] || null;
+  };
+
+  const party = await makeEvent(ana, { title: 'Party', description: 'Bring snacks.' });
+  await ana.post(`/api/v1/events/${party.id}/invites`, { personIds: [P.ben.id, P.cy.id, P.una.id] });
+  const url = `${server.base}/e/${party.id}`;
+
+  // Invited: tentative, the prefix, and where to answer.
+  const invited = await only('ben');
+  assert.equal(invited.title, '[INVITED] Party');
+  assert.equal(invited.status, 'tentative');
+  assert.equal(invited.uid, `${party.id}@events.canopysf.com`);
+  assert.equal(invited.description, `You're invited. Answer here: ${url}\n\nBring snacks.`);
+  // Unverified people are invited too.
+  assert.equal((await only('una')).title, '[INVITED] Party');
+
+  // Going: confirmed, the plain title, the same UID, a newer updatedAt.
+  await tick();
+  await ben.put(`/api/v1/events/${party.id}/rsvp`, { status: 'going' });
+  const going = await only('ben');
+  assert.deepEqual([going.title, going.status, going.uid], ['Party', 'confirmed', invited.uid]);
+  assert.ok(going.updatedAt > invited.updatedAt, `${going.updatedAt} > ${invited.updatedAt}`);
+  assert.match(going.description, /^You're going\./);
+  // Maybe: tentative without the prefix, newer again.
+  await tick();
+  await ben.put(`/api/v1/events/${party.id}/rsvp`, { status: 'maybe' });
+  const maybe = await only('ben');
+  assert.deepEqual([maybe.title, maybe.status], ['Party', 'tentative']);
+  assert.ok(maybe.updatedAt > going.updatedAt);
+  // Taking the answer back: invited again, the prefix back, newer again.
+  await tick();
+  await ben.del(`/api/v1/events/${party.id}/rsvp`);
+  const again = await only('ben');
+  assert.deepEqual([again.title, again.status], ['[INVITED] Party', 'tentative']);
+  assert.ok(again.updatedAt > maybe.updatedAt);
+  // Can't go: out.
+  await ben.put(`/api/v1/events/${party.id}/rsvp`, { status: 'not_going' });
+  assert.equal(await only('ben'), null);
+
+  // Uninvited: out. Removed: out.
+  await ana.del(`/api/v1/events/${party.id}/invites/${P.una.id}`);
+  assert.equal(await only('una'), null);
+  await ana.put(`/api/v1/events/${party.id}/removed/${P.cy.id}`);
+  assert.equal(await only('cy'), null);
+
+  // The setting: on by default; off takes invitations out (and only
+  // invitations); on puts them back.
+  const dee = client(server, 'dee');
+  const dinner = await makeEvent(ana, { title: 'Dinner' });
+  const lunch = await makeEvent(ana, { title: 'Lunch' });
+  await ana.post(`/api/v1/events/${dinner.id}/invites`, { personIds: [P.dee.id] });
+  await dee.put(`/api/v1/events/${lunch.id}/rsvp`, { status: 'going' });
+  assert.deepEqual((await dee.get('/api/v1/me/settings')).data, { calendarInvites: true });
+  const titles = async () => (await ask(P.dee)).data.entries.map((e) => e.title).sort();
+  assert.deepEqual(await titles(), ['Lunch', '[INVITED] Dinner']);
+  const off = await dee.patch('/api/v1/me/settings', { calendarInvites: false });
+  assert.deepEqual([off.status, off.data], [200, { calendarInvites: false }]);
+  assert.deepEqual((await dee.get('/api/v1/me/settings')).data, { calendarInvites: false });
+  assert.deepEqual(await titles(), ['Lunch']);
+  // A cancelled invitation follows the setting too.
+  await ana.patch(`/api/v1/events/${dinner.id}`, { status: 'cancelled' });
+  assert.deepEqual(await titles(), ['Lunch']);
+  await dee.patch('/api/v1/me/settings', { calendarInvites: true });
+  const back = (await ask(P.dee)).data.entries.find((e) => e.uid.startsWith(dinner.id));
+  assert.deepEqual([back.title, back.status], ['[INVITED] Dinner', 'cancelled']);
+  assert.match(back.description, /^This event was cancelled\./);
+  // Someone else's setting is theirs: Ana's own calendar didn't change.
+  assert.deepEqual((await ask(P.ana)).data.entries.map((e) => e.status).sort(), ['cancelled', 'confirmed', 'confirmed']);
+});
+
+test('settings: the API', async (t) => {
+  const server = await startServer();
+  t.after(() => server.stop());
+  const ana = client(server, 'ana');
+  const anaApp = client(server, 'ana', { mode: 'bearer' });
+  const una = client(server, 'una');
+  assert.deepEqual((await una.get('/api/v1/me/settings')).data, { calendarInvites: true }, 'quick accounts have settings too');
+  assert.equal((await client(server, null).get('/api/v1/me/settings')).status, 401);
+  for (const [body, reason] of [
+    [{ calendarInvites: 'no' }, 'bad_calendar_invites'],
+    [{ calendarInvites: null }, 'bad_calendar_invites'],
+    [{ somethingElse: true }, 'unknown_setting'],
+    [{ toString: true }, 'unknown_setting'],
+    [[true], 'bad_settings']
+  ]) {
+    const r = await ana.patch('/api/v1/me/settings', body);
+    assert.deepEqual([r.status, r.data.reason], [400, reason], JSON.stringify(body));
+  }
+  assert.deepEqual((await ana.get('/api/v1/me/settings')).data, { calendarInvites: true }, 'nothing changed');
+  // An empty change changes nothing; the app's token works the same.
+  assert.deepEqual((await anaApp.patch('/api/v1/me/settings', {})).data, { calendarInvites: true });
+  assert.deepEqual((await anaApp.patch('/api/v1/me/settings', { calendarInvites: false })).data, { calendarInvites: false });
+  assert.deepEqual((await ana.get('/api/v1/me/settings')).data, { calendarInvites: false });
+  // From another site with the cookie: refused.
+  const forged = await client(server, 'ana', { origin: 'https://evil.example' }).patch('/api/v1/me/settings', { calendarInvites: true });
+  assert.deepEqual([forged.status, forged.data.reason], [403, 'bad_origin']);
+  // It lasts across a restart (it's in the database).
+  await server.restart();
+  assert.deepEqual((await ana.get('/api/v1/me/settings')).data, { calendarInvites: false });
 });

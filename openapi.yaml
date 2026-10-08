@@ -993,6 +993,57 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
+  /api/v1/me/settings:
+    get:
+      tags: [Me]
+      operationId: getSettings
+      summary: Your settings
+      description: |
+        Your settings, each with its default until you change it. Today
+        one: `calendarInvites`, whether events you're invited to and
+        haven't answered go in your Canopy calendar (as tentative,
+        titled `[INVITED] <title>`). On by default.
+      responses:
+        '200':
+          description: Your settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    patch:
+      tags: [Me]
+      operationId: updateSettings
+      summary: Change your settings
+      description: |
+        Only the settings you send change. A setting this doesn't know is
+        400 `unknown_setting`; a value of the wrong type is 400
+        `bad_calendar_invites`; a body that isn't an object is 400
+        `bad_settings`. Nothing changes on a 400. The calendar picks the
+        change up the next time the account service asks (calendar apps
+        refresh on their own schedule).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                calendarInvites: { type: boolean }
+            example: { calendarInvites: false }
+      responses:
+        '200':
+          description: Your settings, after.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
   /api/v1/me/events/hosting:
     get:
       tags: [Me]
@@ -1236,7 +1287,11 @@ paths:
         The entries: events the person hosts, co-hosts or said going to
         (`confirmed`); maybe or waitlisted (`tentative`); any of those that
         was cancelled (`cancelled`, until 30 days after it was to start).
-        Not can't go, removed or only invited. From 90 days ago on, by
+        Invited and not answered yet (`tentative`, titled `[INVITED]
+        <title>`, the description starting `You're invited. Answer here:
+        <link>`), unless the person turned `calendarInvites` off
+        (`/api/v1/me/settings`); answering changes that same entry (same
+        `uid`, newer `updatedAt`). Not can't go, removed or uninvited. From 90 days ago on, by
         start. Never anyone's name or contact details. Someone with nothing
         here (or nobody at all) is `{"entries": []}`.
       security:
@@ -1331,7 +1386,8 @@ components:
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
         `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`,
         `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
-        `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`; and
+        `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_settings`,
+        `unknown_setting`, `bad_calendar_invites`; and
         `bad_request` on any route for a request that can't be read at
         all (a URL whose `%` escapes don't decode, say).
       content:
@@ -1444,7 +1500,7 @@ components:
         uid:
           type: string
           description: '`<the event''s own id>@events.canopysf.com`. The event''s internal id, which never changes, not its link, which "new link" replaces.'
-        title: { type: string }
+        title: { type: string, description: 'The event''s title; `[INVITED] <title>` for an invitation not answered yet.' }
         start: { type: string, format: date-time }
         end: { type: [string, 'null'], format: date-time, description: null when the host gave no end time. }
         allDay: { type: boolean, const: false, description: Events always have a time. }
@@ -1456,7 +1512,7 @@ components:
         status: { type: string, enum: [confirmed, tentative, cancelled] }
         description:
           type: string
-          description: 'Their part in it ("You''re going.", "On the waitlist."), the host''s description, and the link, separated by blank lines.'
+          description: 'Their part in it ("You''re going.", "On the waitlist."), the host''s description, and the link, separated by blank lines. An invitation starts "You''re invited. Answer here: <link>" and doesn''t repeat the link at the end.'
         updatedAt:
           type: string
           format: date-time
@@ -1890,6 +1946,16 @@ components:
           type: [string, 'null']
           format: date-time
           description: When the latest of those events started; null with none in common.
+
+    Settings:
+      type: object
+      additionalProperties: false
+      required: [calendarInvites]
+      properties:
+        calendarInvites:
+          type: boolean
+          description: Events you're invited to and haven't answered are in your Canopy calendar. On by default.
+      example: { calendarInvites: true }
 
     FriendEnvelope:
       type: object

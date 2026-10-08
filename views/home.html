@@ -41,6 +41,26 @@ async function reload(name){
   if (res.ok) data.lists[name] = d;
 }
 
+// The Calendar card's switch: invitations in your Canopy calendar or not
+// (PATCH /api/v1/me/settings). If it doesn't save, it flips back.
+const invitesSwitch = document.getElementById('calendarInvites');
+if (invitesSwitch){
+  invitesSwitch.addEventListener('change', () => {
+    const want = invitesSwitch.checked;
+    let saved = false;
+    let failed = '';
+    busy(invitesSwitch, document.getElementById('calendarError'), async () => {
+      const { res, data: d } = await api('PATCH', '/me/settings', { calendarInvites: want });
+      if (!res.ok){ failed = sentence(d.error); return; }
+      saved = true;
+      invitesSwitch.checked = d.calendarInvites;
+    }).then(() => {
+      if (!saved) invitesSwitch.checked = !want;
+      if (failed) document.getElementById('calendarError').textContent = failed;
+    });
+  });
+}
+
 onActions({
   // Going or can't go, straight from the invitation. It then moves to
   // "coming up", or off the page.

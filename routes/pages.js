@@ -38,6 +38,8 @@ const FRIENDS_SHOWN = 50;
 const LIST_SHOWN = 20;
 const PAST_SHOWN = 10;
 const MAX_PAGES = 20;
+// The account service, for links to the Canopy profile.
+const ACCOUNT_BASE = String(process.env.CANOPY_ACCOUNT_URL || '').replace(/\/+$/, '');
 
 module.exports = function pagesRoutes(ctx) {
   const { canopy } = ctx;
@@ -170,11 +172,14 @@ module.exports = function pagesRoutes(ctx) {
       return render.page(req, res, 'home.html', { current: 'home', main, data: { me: null } });
     }
     const sizes = { invitations: LIST_SHOWN, hosting: LIST_SHOWN, upcoming: LIST_SHOWN, past: PAST_SHOWN };
-    const answers = await Promise.all(UI.HOME_LISTS.map((name) => apiGet(req, `/me/events/${name}?limit=${sizes[name]}`)));
+    const [settings, ...answers] = await Promise.all([apiGet(req, '/me/settings')]
+      .concat(UI.HOME_LISTS.map((name) => apiGet(req, `/me/events/${name}?limit=${sizes[name]}`))));
     const lists = {};
     UI.HOME_LISTS.forEach((name, i) => { lists[name] = want(answers[i]); });
     const me = meView(req.person);
     const data = { me, lists, sizes };
+    // The Calendar card: the feed's link lives on the Canopy profile.
+    const calendar = { settings: want(settings), calendarUrl: ACCOUNT_BASE ? `${ACCOUNT_BASE}/profile#calendarCard` : null };
     const make = me.emailVerified
       ? '<a class="nav-btn" href="/new" id="newEvent">+ New event</a>'
       : '';
@@ -184,6 +189,7 @@ module.exports = function pagesRoutes(ctx) {
         + UI.esc(canopy.verifyUrl(req, render.hereUrl(req))) + '">' + UI.tx('home.verifyToHost') + '</a></p>';
     }
     main += '<div id="lists" class="stack">' + UI.homeLists(data, { viewerZone: render.viewerZone(req) }) + '</div>';
+    main += UI.calendarCard(calendar);
     render.page(req, res, 'home.html', { current: 'home', main, data });
   }));
 

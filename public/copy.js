@@ -234,6 +234,11 @@ const COPY = {
     empty: "Nothing here yet. When someone sends you an event link, open it and answer, and it'll show up here.",
     emptyHost: 'Make an event, share its link, and see who answers.',
     answered: 'Answered.',
+    // The Calendar card: your Canopy calendar feed, and invitations in it.
+    calendarHeading: 'Calendar',
+    calendarHint: "Everything you're hosting or going to, in your phone's calendar, through your Canopy calendar link.",
+    calendarAdd: 'Add to your calendar',
+    calendarInvites: "Show events I'm invited to",
     // Signed out.
     signedOutHeading: 'Canopy Events',
     signedOutHint: "Make an event, share its link, and see who's going. Your friends are the people you've been to things with.",

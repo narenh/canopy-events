@@ -1005,3 +1005,20 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.ok(section((await page(server, fay, '/')).body, 'list-hosting').includes('Garden party'));
   });
 });
+
+test('the Calendar card on your events page', async (t) => {
+  const server = await startServer();
+  t.after(() => server.stop());
+  const ana = client(server, 'ana');
+  let r = await page(server, ana, '/');
+  const card = section(r.body, 'calendar');
+  assert.ok(card, 'the card');
+  assert.ok(card.includes(`href="${server.fake.base}/profile#calendarCard"`), card);
+  assert.ok(card.includes('Add to your calendar'));
+  assert.match(card, /Show events I&#39;m invited to<\/span><input type="checkbox" role="switch" class="switch" id="calendarInvites" checked>/);
+  await ana.patch('/api/v1/me/settings', { calendarInvites: false });
+  r = await page(server, ana, '/');
+  assert.match(section(r.body, 'calendar'), /id="calendarInvites">/);
+  // Signed out: no card.
+  assert.equal(section((await page(server, null, '/')).body, 'calendar'), null);
+});
