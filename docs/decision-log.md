@@ -666,3 +666,32 @@ waitlist, notifications, host moderation and lookup, built on branch
   exact matching on the fixtures' phones and handles, honouring
   "findable", and switches to make it refuse in each way the real one
   can. · n/a
+
+## Security review (both services)
+
+The review found no critical or high issues. Fixes are in progress
+(account service on main; events on `fix/review`):
+
+- **Reversed: unverified accounts are no longer findable by lookup.** A
+  quick account (nothing proven) could claim your phone or Instagram
+  and your name, and become the only match, so a host invites the
+  impostor. Now only verified accounts match. · That raises the cost to
+  owning an email inbox. It's not a full fix: SMS phone verification
+  would be. · The account service's lookup query.
+- Changing your email no longer reveals whether the new address has an
+  account. Every try is counted first, and the refusal comes only at
+  the code step. · One passkey reauth allowed unlimited existence
+  checks. · n/a
+- When a code proves an unverified account's email (the takeover), the
+  squatter's phone, Instagram, Venmo, Cash App and photo are cleared
+  too. · Otherwise lookups and payments would still point at their
+  details. Kept: everything they did on events under that id. · n/a
+- HEIC covers: decoder memory is freed and decoding moves off the main
+  thread. · Each upload leaked about 14 MB and froze the server for
+  about 0.7 s. · n/a
+- Removing or uninviting someone deletes their notifications for that
+  event, and the inbox only shows an event's link to people still on
+  it. · Otherwise the inbox handed a removed guest the new link. · n/a
+- Plus: JSON errors for malformed requests, limits on making new
+  sessions, web photo uploads that can't be cleaned are refused, and
+  the invited count goes to hosts only.
