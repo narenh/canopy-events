@@ -84,7 +84,7 @@ const COPY = {
     haveAccount: 'I have a Canopy Account, sign in',
     // Signed in, not hosting.
     question: 'Are you going?',
-    invitedQuestion: "You're invited. Are you going?",
+    invitedQuestion: 'RSVP',
     yourAnswer: 'You said: {status}.',
     waitlisted: "You're on the waitlist. You'll move up if a spot opens.",
     withdraw: 'Take back my answer',

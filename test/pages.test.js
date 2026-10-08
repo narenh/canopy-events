@@ -226,7 +226,7 @@ test('pages', async (t) => {
     assert.ok(!guests.includes('avatar-row') && !guests.includes('View all'), 'no faces, no list');
     assert.ok(guests.includes('The host shows who&#39;s coming to people who&#39;ve answered.'));
     assert.ok(!html.includes('Ben Okafor') && !html.includes('Ben O<'), 'no names anywhere');
-    assert.ok(section(html, 'rsvp').includes('You&#39;re invited. Are you going?'));
+    assert.ok(section(html, 'rsvp').includes('>RSVP<'));
   });
 
   await t.test('the host: share, invite, edit and cancel, and everyone on the list', async () => {
@@ -915,7 +915,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     await fay.del(`/api/v1/events/${e.id}/cohosts/${P.fay.id}`);
     const html = (await page(server, fay, `/e/${e.id}`)).body;
     assert.equal(section(html, 'host'), null);
-    assert.ok(section(html, 'rsvp').includes('You&#39;re invited. Are you going?'));
+    assert.ok(section(html, 'rsvp').includes('>RSVP<'));
   });
 
   await t.test('the editor: the cover, plus-ones and capacity', async () => {
