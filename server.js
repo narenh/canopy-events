@@ -96,6 +96,7 @@ const apiRouters = [
   require('./routes/wall'),
   require('./routes/covers'),
   require('./routes/notifications'),
+  require('./routes/moderation'),
   require('./routes/me')
 ].map((make) => make(ctx));
 

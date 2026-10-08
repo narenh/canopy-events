@@ -39,6 +39,8 @@ tags:
     description: The activity wall, posts and the server's own entries.
   - name: Notifications
     description: Your inbox, and the phones push goes to.
+  - name: Moderation
+    description: Removing guests, and making a new link.
   - name: Me
     description: You, your friends and your events.
   - name: Docs
@@ -115,7 +117,11 @@ paths:
         no guest names, no street address (`locationAddress` is null and
         `locationAddressHidden` true), `viewer` null and no `friendsGoing`.
         Signed in, you get the address, your own part (`viewer`) and which
-        of your friends are going.
+        of your friends are going. Someone a host removed gets the
+        signed-out view, with `viewer.rsvp.status` `removed`.
+
+        After the creator makes a new link, the old id is a 404
+        `event_not_found`, the same as an id that never existed.
       security:
         - {}
         - bearerAuth: []
@@ -258,7 +264,7 @@ paths:
       parameters:
         - name: status
           in: query
-          description: Only this status. `invited` is for hosts (403 `hosts_only` otherwise).
+          description: Only this status. `invited` and `removed` are for hosts (403 `hosts_only` otherwise).
           schema: { $ref: '#/components/schemas/RsvpStatus' }
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -563,6 +569,83 @@ paths:
       responses:
         '200':
           description: The event, with `coverImageUrl` null.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/removed/{personId}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PersonId'
+    put:
+      tags: [Moderation]
+      operationId: removeGuest
+      summary: Remove someone from the event
+      description: |
+        Hosts (co-hosts too). Their status becomes `removed`: they can't
+        answer again (409 `removed`), they're out of the guest list and
+        its counts for everyone (a host sees them with
+        `?status=removed`), their `going` entry leaves the wall and their
+        posts are hidden, and a spot they held goes to the waitlist.
+        They can still open the link, and see what someone signed out
+        sees. Someone not on the list yet can be removed ahead of time
+        (404 `person_not_found` if there's no such account). Removing
+        someone already removed is fine. 409 `is_host` for a host. Nobody
+        is notified.
+      responses:
+        '200':
+          description: Removed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [Moderation]
+      operationId: restoreGuest
+      summary: Undo a removal
+      description: |
+        Hosts. They're left **invited** (by you), with no answer, so the
+        event is back in their invitations and they can answer again. 404
+        `not_removed` if they weren't removed.
+      responses:
+        '200':
+          description: Undone.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/new-link:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    post:
+      tags: [Moderation]
+      operationId: newLink
+      summary: Make a new link
+      description: |
+        The creator only (403 `creator_only`). The event gets a new `id`
+        (and `url`); **the old one stops working at once** (404
+        `event_not_found`, like any wrong link, giving nothing away).
+        Everything else stays: hosts, answers, the wall, the cover, and
+        everyone's place in their lists, where the event now has its new
+        id. Nobody is notified, so share the new link with whoever should
+        have it.
+      responses:
+        '200':
+          description: The event, under its new id.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventEnvelope' }
@@ -930,7 +1013,7 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: "there's no event at that link", reason: event_not_found }
     NotFound:
-      description: '`event_not_found`, `not_invited`, `person_not_found`, `not_cohost` or `entry_not_found`.'
+      description: '`event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found` or `not_removed`.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -938,7 +1021,8 @@ components:
       description: |
         Not in this event's state: `event_cancelled`, `event_over`,
         `host_cannot_rsvp`, `already_responded`, `is_creator`,
-        `too_many_cohosts`, `no_room`.
+        `too_many_cohosts`, `no_room`, `removed` (a host removed you),
+        `is_host` (removing a host).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1062,11 +1146,14 @@ components:
 
     RsvpStatus:
       type: string
-      enum: [invited, going, maybe, not_going, waitlisted]
+      enum: [invited, going, maybe, not_going, waitlisted, removed]
       description: |
         `invited` is invited with no answer yet. `waitlisted` is a `going`
         that didn't fit the event's capacity; the server moves it to
         `going` when a spot that fits frees up. Nobody asks for it.
+        `removed` is a host having taken you off the event: you only ever
+        see it as your own `viewer.rsvp`, and hosts on the guest list with
+        `?status=removed`.
 
     Counts:
       description: |
@@ -1593,4 +1680,4 @@ components:
             required: [personId, reason]
             properties:
               personId: { type: string }
-              reason: { type: string, enum: [already_on_list, is_host, not_found] }
+              reason: { type: string, enum: [already_on_list, is_host, not_found, removed] }

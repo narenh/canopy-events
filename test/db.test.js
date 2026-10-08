@@ -72,6 +72,8 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   old.exec(fs.readFileSync(path.join(__dirname, 'fixtures', 'schema-v1.sql'), 'utf8'));
   old.pragma('user_version = 1');
   old.prepare("INSERT INTO events (id, title, starts_at, over_at, time_zone, created_at, updated_at) VALUES ('AAAAAAAAAAAA', 'Kept', 1, 2, 'UTC', 1, 1)").run();
+  old.prepare(`INSERT INTO rsvps (event_id, person_id, status, guests, invited_by, invited_at, responded_at, status_at, created_at)
+               VALUES ('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003', 'going', 2, 'x', 5, 6, 7, 8)`).run();
   old.close();
 
   const upgraded = init({ file, snapshots: false });
@@ -90,6 +92,16 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   assert.equal(upgraded.addNotifications('invited', ['00000000-0000-4000-8000-000000000002'], { eventId: 'AAAAAAAAAAAA' })[0].isNew, true);
   upgraded.registerDevice('00000000-0000-4000-8000-000000000002', 'ios', 'a'.repeat(64));
   assert.equal(upgraded.devicesOf('00000000-0000-4000-8000-000000000002').length, 1);
+  // Version 6: the event's link is what its id was; the answer came
+  // through rsvps being rebuilt whole; and 'removed' is a status.
+  assert.equal(upgraded.getEventByLink('AAAAAAAAAAAA').id, 'AAAAAAAAAAAA');
+  assert.deepEqual(upgraded.getRsvp('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003'), {
+    eventId: 'AAAAAAAAAAAA', personId: '00000000-0000-4000-8000-000000000003', status: 'going', guests: 2,
+    invitedBy: 'x', invitedAt: 5, respondedAt: 6, statusAt: 7, createdAt: 8
+  });
+  assert.equal(upgraded.removeGuest('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003').outcome, 'removed');
+  assert.equal(upgraded.getRsvp('AAAAAAAAAAAA', '00000000-0000-4000-8000-000000000003').status, 'removed');
+  assert.equal(upgraded.db.pragma('foreign_key_check').length, 0);
   assert.equal(upgraded.isKnownVerified('00000000-0000-4000-8000-000000000001'), true);
   upgraded.db.close();
   fresh.db.close();

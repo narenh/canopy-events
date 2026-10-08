@@ -18,7 +18,7 @@ const express = require('express');
 const { handle, fail, loadEvent, pageParams, paginate } = require('../lib/api');
 const { guessLimits } = require('../lib/limits');
 const { PERSON_ID_RE } = require('../lib/ids');
-const { ANSWERS, ALL_STATUSES, isHost, canSeeGuestNames, visibleStatuses, answerRefusal, inviteRefusal } = require('../lib/rules');
+const { ANSWERS, ALL_STATUSES, isHost, canSeeGuestNames, visibleStatuses, filterableStatuses, answerRefusal, inviteRefusal } = require('../lib/rules');
 const { loadPeople, personFrom } = require('../lib/people');
 const { eventView, guestView } = require('../lib/views');
 
@@ -59,7 +59,7 @@ module.exports = function rsvpsRoutes(ctx) {
         ? `you can bring at most ${req.event.guestsAllowed} ${req.event.guestsAllowed === 1 ? 'guest' : 'guests'}`
         : "this event isn't taking plus-ones");
     }
-    const refusal = answerRefusal(req.event, req.role);
+    const refusal = answerRefusal(req.event, req.role, store.getRsvp(req.event.id, req.person.id));
     if (refusal) return refuse(res, refusal);
     // Not going brings nobody.
     const result = store.setAnswer(req.event.id, req.person.id, body.status, body.status === 'not_going' ? 0 : guests);
@@ -79,7 +79,7 @@ module.exports = function rsvpsRoutes(ctx) {
   // Takes your answer back: invited again if a host invited you,
   // otherwise off the list. Nothing to take back is fine too.
   router.delete('/events/:id/rsvp', auth.requirePerson, withEvent, handle(async (req, res) => {
-    const refusal = answerRefusal(req.event, req.role);
+    const refusal = answerRefusal(req.event, req.role, store.getRsvp(req.event.id, req.person.id));
     if (refusal) return refuse(res, refusal);
     const { promoted } = store.withdrawAnswer(req.event.id, req.person.id);
     promotedAll(req.event.id, promoted);
@@ -99,7 +99,9 @@ module.exports = function rsvpsRoutes(ctx) {
       if (!ALL_STATUSES.includes(req.query.status)) {
         return fail(res, 400, 'bad_status', `status is one of ${ALL_STATUSES.join(', ')}`);
       }
-      if (!statuses.includes(req.query.status)) return fail(res, 403, 'hosts_only', 'only hosts see who has been invited');
+      if (!filterableStatuses(req.role).includes(req.query.status)) {
+        return fail(res, 403, 'hosts_only', 'only hosts see who has been invited or removed');
+      }
       statuses = [req.query.status];
     }
     const rsvp = store.getRsvp(event.id, req.person.id);

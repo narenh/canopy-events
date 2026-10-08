@@ -535,3 +535,59 @@ waitlist, notifications, host moderation and lookup, built on branch
   sent after the response, on `setImmediate`; failures are logged, never
   surfaced. The message is typed (`type`, ids, event title, `badge`) for
   APNs `loc-key` / FCM `body_loc_key` later. · No keys tonight. · n/a
+
+### Host moderation (schema version 6)
+
+- **`removed` is a real RSVP status**, so every existing query that
+  filters by status (counts, lists, friends, "everyone coming") leaves
+  removed people out by itself. SQLite can't change a CHECK in place, so
+  version 6 rebuilds `rsvps` (new table, copy, drop, rename, indexes
+  again), tested on a version-1 file with a row in it. · The alternative,
+  a `removed_at` column, needed a filter added to every query, and one
+  forgotten would show a removed guest. · lib/db.js VERSION_6.
+- **Any host removes, co-hosts included.** · Moderating is running the
+  event, not owning it. · routes/moderation.js `hostsOnly`.
+- **A removed person still opens the event, and sees what someone
+  signed out sees** (no address, guest list, wall or friends going),
+  with `viewer.rsvp.status: removed`. · Anyone with the link sees the
+  public details anyway; hiding them from this one person would only
+  last until they signed out. The address is what matters, and they
+  lose it. A new link is the answer to "they mustn't see it at all." ·
+  lib/views.js `insider`.
+- Removed people can't answer, withdraw, post, or be invited
+  (`skipped: removed`); their going entry is deleted, and their posts
+  are hidden (not deleted) from the wall for everyone, so undoing a
+  removal brings the posts back. Their spot goes to the waitlist. ·
+  n/a
+- **Undo leaves them `invited`** (by the host undoing it), not their old
+  answer. · Their old "going" might no longer fit the capacity, and the
+  invitation puts the event back in their list to answer again. ·
+  lib/store/rsvps.js restoreGuest.
+- Hosts can remove someone not on the list yet (they must exist). · A
+  host who knows who's trouble can act first. · n/a
+- Hosts see removed people only with `?status=removed`, not in the
+  default guest list; there's no `removed` in the public counts. · The
+  count would tell guests someone was thrown out. · lib/rules.js.
+- Nobody is notified of a removal, of undoing one, or of a new link. ·
+  None is in the spec's triggers, and "you were removed" invites an
+  argument. · Add notify calls in routes/moderation.js.
+- **New link: an internal stable id plus a public link.** Version 6
+  adds `events.public_id` (unique), set to `id` for every existing
+  event; `id` never changes and stays the key for hosts, rsvps, wall,
+  notifications and the cover's file. A new link replaces `public_id`
+  only. Every lookup from outside goes by `public_id`
+  (`getEventByLink`, used by `loadEvent`), and views only ever output
+  `publicId`. · Changing `events.id` itself is impossible under the
+  existing foreign keys (no ON UPDATE CASCADE) without rebuilding four
+  tables; an alias table would mean keeping a list of dead ids around to
+  refuse. · To reverse, point `loadEvent` back at `getEvent`.
+- **The old link is a 404 `event_not_found`, not a 410.** · The point of
+  a new link is that the old one gives nothing away, not even that there
+  was an event there. · lib/api.js loadEvent.
+- New links are the creator's alone, like cancelling. New ids are
+  checked against both `id` and `public_id`. A link from two changes ago
+  isn't remembered, so in theory it could be reissued; at 71 bits that
+  won't happen. · n/a
+- List cursors (`/me/events/*`) carry the event's internal id inside the
+  opaque cursor. That can be an event's original link, which a new link
+  has already killed, so it gives nothing away. · n/a

@@ -46,7 +46,8 @@ room for all of them, and the pages have a place for each.
 - `routes/` is the API, one file per subject, each mounted at `/api/v1`:
   `events.js` (making, reading, editing and cancelling events),
   `rsvps.js` (answers, the guest list, invitations), `hosts.js`
-  (co-hosts), `wall.js` (the activity wall), `covers.js` (cover images,
+  (co-hosts), `wall.js` (the activity wall), `moderation.js` (removing
+  guests, new links), `covers.js` (cover images,
   and serving them at `/covers/`), `notifications.js` (your inbox and
   your phones), `me.js` (you, your friends, your events) and `docs.js`
   (the spec and `/docs`). A new
@@ -219,6 +220,8 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `GET /api/v1/me/notifications`, `/unread` | your inbox, and its unread count |
 | `POST /api/v1/me/notifications/read`, `/read-all` | mark some, or all, read |
 | `POST`, `DELETE /api/v1/me/devices` | register a phone for push, or stop |
+| `PUT`, `DELETE /api/v1/events/{id}/removed/{personId}` | remove a guest, or undo it (hosts) |
+| `POST /api/v1/events/{id}/new-link` | give the event a new link; the old one stops working (the creator) |
 | `PUT /api/v1/events/{id}/rsvp` | answer: going, maybe, not_going |
 | `DELETE /api/v1/events/{id}/rsvp` | take the answer back |
 | `GET /api/v1/events/{id}/guests` | the guest list, by the visibility rule |
@@ -416,6 +419,12 @@ one. Changing the schema means a new step in `UPGRADES`, the new shape in
 SQLite replays the newer write log on top of the older snapshot). Start
 the service and check the events count in the log.
 
-Nothing in the database signs anyone in. It does hold every event's id,
-and an id is the link: anyone with a copy can open every event in it and
-see who answered what. Treat a copy like the guest lists it is.
+**An event's link isn't its `id`.** Every table points at `events.id`,
+which never changes; the link is `events.public_id`, which "make a new
+link" replaces. They start out the same. Anything that takes an id from
+outside looks it up by `public_id` (`store.getEventByLink`), so an old
+link finds nothing.
+
+Nothing in the database signs anyone in. It does hold every event's
+link, and the link is the key: anyone with a copy can open every event in
+it and see who answered what. Treat a copy like the guest lists it is.

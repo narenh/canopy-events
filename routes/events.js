@@ -38,7 +38,7 @@ module.exports = function eventsRoutes(ctx) {
     const { fields, error } = cleanEventInput(req.body, null);
     if (error) return refuse(res, error);
     let id = newEventId();
-    while (store.getEvent(id)) id = newEventId();
+    while (store.isEventIdTaken(id)) id = newEventId();
     const event = store.createEvent(id, req.person.id, fields);
     createLimits.hit(req, req.person.id);
     res.status(201).json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });

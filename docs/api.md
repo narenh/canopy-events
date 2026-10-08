@@ -181,6 +181,8 @@ statuses.
        └── you take your answer back (not invited) ──▶ (nothing)
 
    invited ── the host takes the invitation back ──▶ (nothing)
+
+   anything ── a host removes you ──▶ removed ── a host undoes it ──▶ invited
 ```
 
 - `PUT /api/v1/events/{id}/rsvp` with `{"status": "going"}` (or `maybe`,
@@ -363,6 +365,38 @@ still takes posts. 5 posts a minute, 100 a day per person.
 own posts; hosts, anything, the server's entries included. `canDelete` on
 each entry says which.
 
+## Host moderation
+
+**Removing someone** (`PUT /api/v1/events/{id}/removed/{personId}`, any
+host): their status becomes `removed`.
+
+- They can't answer again (409 `removed`) or post, and can't be invited
+  (`skipped` with `removed`).
+- They're off the guest list and its counts for everyone. A host sees
+  them only by asking: `GET /guests?status=removed`.
+- Their "going" leaves the wall and their posts are hidden. A spot they
+  held goes to the waitlist.
+- **They can still open the link**, and see exactly what someone signed
+  out sees (no address, no guest list, no wall, no friends going), with
+  `viewer.rsvp.status: "removed"` so the app can say so. The link is the
+  event, and hiding it from them alone would hide nothing: they could
+  sign out and look. If that's not enough, make a new link (below).
+- Nobody is notified.
+- You can remove someone before they've answered, or been invited.
+
+`DELETE /api/v1/events/{id}/removed/{personId}` undoes it: they're left
+**invited**, so the event is back in their invitations and they can
+answer.
+
+**Making a new link** (`POST /api/v1/events/{id}/new-link`, the creator
+only) is for a link that got out. The event gets a new `id` and `url`;
+the old id answers 404 `event_not_found` at once, exactly like a link
+that never existed. Everything else stays: the hosts, every answer, the
+wall, the cover, the waitlist, and the event's place in everyone's lists
+(where it now has its new id). Nobody is notified, so the host shares the
+new link with whoever should have it. An app holding an event id it gets
+a 404 for should drop it and refresh its lists.
+
 ## Notifications and push
 
 Push is how people hear about things (there's no email or text). Every
@@ -437,8 +471,8 @@ A host invites with `POST /api/v1/events/{id}/invites` and
 `{"personIds": [...]}` (1 to 100). Offer friends in the app; the API takes
 any Canopy person id, so a "find by phone number or Instagram" lookup can
 feed it later. Each id comes back in `invited`, or in `skipped` with a
-reason: `already_on_list`, `is_host` or `not_found`. 300 invitations per
-host a day.
+reason: `already_on_list`, `is_host`, `not_found` or `removed`. 300
+invitations per host a day.
 
 ## Your events
 
@@ -492,8 +526,8 @@ expect:
 | 403 | `answer_first` | posting on the wall before answering going or maybe: `viewer.canPost` |
 | 403 | `not_yours` | deleting someone else's post: `canDelete` |
 | 403 | `bad_origin` | a web page's problem; apps never see it |
-| 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_found` | the link is wrong, or it's gone |
-| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room` | redraw from the event |
+| 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_found` | the link is wrong, or it's gone (or the host made a new one) |
+| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room`, `removed`, `is_host` | redraw from the event |
 | 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |
 | 503 | `accounts_unreachable` | Canopy accounts is down; retry in a minute |
