@@ -97,7 +97,7 @@ const COPY = {
     rsvpHint: "New to Canopy? It's just your name, your email and a passkey.",
     haveAccount: 'I have a Canopy Account, sign in',
     // Signed in, not hosting.
-    question: 'Are you going?',
+    question: 'RSVP',
     invitedQuestion: 'RSVP',
     yourAnswer: 'You said: {status}.',
     waitlisted: "You're on the waitlist. You'll move up if a spot opens.",
