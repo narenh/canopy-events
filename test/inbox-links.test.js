@@ -73,7 +73,7 @@ test('a new link stays out of the inbox of people taken off the event', async (t
       .filter((n) => n.type === 'wall_post' && n.details.text === 'Bring snacks');
     let [n] = await posts();
     assert.equal(n.event.id, e.id);
-    // Can't go is still an answer: she's on the list, and it's still there.
+    // Can't Go is still an answer: she's on the list, and it's still there.
     assert.equal((await una.put(`${E}/rsvp`, { status: 'not_going' })).status, 200);
     [n] = await posts();
     assert.equal(n.event.id, e.id);

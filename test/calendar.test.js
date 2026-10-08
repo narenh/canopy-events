@@ -236,7 +236,7 @@ test('a new link keeps the UID and moves the URL; a change moves updatedAt', asy
   assert.ok(third.updatedAt > second.updatedAt);
   // Ana's entry didn't change with it.
   assert.equal((await ask(P.ana)).data.entries[0].updatedAt, second.updatedAt);
-  // Can't go takes it out.
+  // Can't Go takes it out.
   await ben.put(`/api/v1/events/${newId}/rsvp`, { status: 'not_going' });
   assert.deepEqual((await ask(P.ben)).data.entries, []);
 });
@@ -283,7 +283,7 @@ test('invitations: in the calendar until answered, the same entry after; a setti
   // There's no taking the answer back to [INVITED] again.
   assert.equal((await ben.del(`/api/v1/events/${party.id}/rsvp`)).status, 404);
   assert.deepEqual(await only('ben'), maybe);
-  // Can't go: out.
+  // Can't Go: out.
   await ben.put(`/api/v1/events/${party.id}/rsvp`, { status: 'not_going' });
   assert.equal(await only('ben'), null);
 

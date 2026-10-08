@@ -466,9 +466,12 @@ a{color:var(--accent-text);font-weight:var(--link-weight, inherit);text-decorati
 .state-line{font-size:var(--fs-body);color:var(--text);margin:0 0 12px;}
 .state-line.danger{color:var(--danger);}
 
-/* Going / Maybe / Can't go: three buttons in a row, yours filled in. */
+/* Going / Maybe / Can't Go: three buttons in a row, yours filled in. */
 .answers{display:flex;gap:8px;}
-.answers button{flex:1;padding:14px 6px;min-height:52px;background:var(--secondary);color:var(--text);border:1px solid var(--field-line);}
+/* Going takes half the row, Maybe and Can't Go a quarter each: going is
+   the answer we want people to reach for. */
+.answers button{flex:1 1 0;min-width:0;padding:14px 2px;white-space:nowrap;font-size:clamp(14px, 4.1vw, 17px);min-height:52px;background:var(--secondary);color:var(--text);border:1px solid var(--field-line);}
+.answers button[data-status="going"]{flex-grow:2;}
 .answers button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);border-color:var(--accent);}
 .under-answers{margin:10px 0 0;}
 /* Nothing to say: no gap under the buttons. */

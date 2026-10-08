@@ -253,7 +253,7 @@ Format: decision · why · how to reverse.
 - Home shows **invitations first**, then hosting, coming up, past (the
   spec lists hosting first). Empty lists are left out. · Invitations are
   the one list asking for something. · `HOME_LISTS` in public/ui.js.
-- An invitation on the home page offers **Going** and **Can't go** only;
+- An invitation on the home page offers **Going** and **Can't Go** only;
   "Maybe" is on the event page. · "Accept/decline right there". ·
   `invitationCard()` in public/ui.js.
 - Inviting friends is **its own page**, `/e/<id>/invite`, not a sheet
@@ -2445,7 +2445,7 @@ viewers like the address. The rest:
 - **An answer can change but is never withdrawn.** The owner's call,
   like Partiful: once you've answered you can switch between going,
   maybe and can't go, but there's no going back to no answer (or to
-  `invited`). "Can't go" is how you leave: you stay on the list as
+  `invited`). "Can't Go" is how you leave: you stay on the list as
   `not_going` (counted in `counts.notGoing`), your spot goes to the
   waitlist through the same `setAnswer` path as any change, your "going"
   leaves the wall, and the event drops out of your calendar. · As

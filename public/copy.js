@@ -39,7 +39,7 @@ const COPY = {
   status: {
     going: 'Going',
     maybe: 'Maybe',
-    not_going: "Can't go",
+    not_going: "Can't Go",
     waitlisted: 'On the waitlist',
     invited: 'Invited',
     // Only hosts ever see this one, on their own guest list; a removed
