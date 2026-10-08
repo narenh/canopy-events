@@ -1667,3 +1667,11 @@ Fixes for the security review's events findings (branch `fix/review`).
   should match (iOS repo docs/push-payloads.md). Next: a Notification
   Content Extension with an app-styled card (cover, date, place, faces,
   Going / Can't Go).
+- **(You)** Events stays one repo for now (the API and the web pages),
+  but the line between them is enforced. test/boundary.test.js follows
+  every local require() from the web entry points (routes/pages.js,
+  lib/render.js, public/*.js) and fails if they reach anything but their
+  own files and three small pure helpers (lib/people.js, lib/domain.js,
+  lib/ids.js). Pages get data only from /api/v1 over HTTP. · A later
+  split is moving folders, not untangling code. · Split when there's a
+  second web client, a need to deploy separately, or more people.
