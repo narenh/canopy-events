@@ -669,7 +669,14 @@
     return '--theme-base:' + hexOf(c.base) + ';--theme-base-rgb:' + c.base.join(',')
       + ';--theme-1:' + hexOf(c.m1) + ';--theme-2:' + hexOf(c.m2) + ';--theme-3:' + hexOf(c.m3)
       + ';--theme-4:' + hexOf(c.m4) + ';--theme-5:' + hexOf(c.m5)
-      + ';--theme-card:rgba(' + c.card.join(',') + ',0.30);--theme-card-solid:' + hexOf(c.card);
+      + ';--theme-card:rgba(' + c.card.join(',') + ',0.30);--theme-card-solid:' + hexOf(c.card)
+      // The accent follows the event too (the photo ring, the "how soon"
+      // pill, icons, links, the main button), so the whole page is one
+      // colour: Canopy green's accents turned like everything else,
+      // lightness kept. Checked at every hue and grey: dark text on the
+      // accent at least 6.8:1, links on the base at least 14.5:1, the
+      // accent against the base at least 7:1.
+      + ';--accent:' + turnHex('#2ec44f', key) + ';--on-accent:' + turnHex('#03190a', key) + ';--accent-text:' + turnHex('#b6f5c3', key);
   }
 
   // The hue that matches a photo: the server works it out when a cover is
