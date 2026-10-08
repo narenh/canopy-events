@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>__PAGE_TITLE__</title>
+<meta name="theme-color" content="#03120c">
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/events.css">
+</head>
+<!-- Adding co-hosts (/e/<id>/cohosts, the event's creator only): your
+     friends (GET /api/v1/me/friends) with a search box, like inviting,
+     each with "Add" (POST .../cohosts), or marked if they already host.
+     Drawn by public/ui.js (cohostPage). Taking a co-host off is on the
+     event page. -->
+<body class="mesh-bg">
+<!-- PAGE:HEADER -->
+<main class="wrap">
+  <!-- PAGE:BANNER -->
+  <div id="main" class="stack"><!-- PAGE:MAIN --></div>
+</main>
+<!-- PAGE:FOOTER -->
+<script type="application/json" id="pageData">__PAGE_DATA__</script>
+<script src="/copy.js"></script>
+<script src="/ui.js"></script>
+<script src="/events.js"></script>
+<script>
+applyCopy();
+
+const data = pageData();
+const list = document.getElementById('pickList');
+const search = document.getElementById('search');
+
+function drawList(){
+  if (!list) return;
+  list.innerHTML = data.friends.map((f) => UI.cohostRow(f, data.event)).join('');
+  filter();
+}
+
+// The search box: friends whose name has what's typed in it.
+function filter(){
+  if (!list) return;
+  const q = search.value.trim().toLowerCase();
+  list.querySelectorAll('.row-note').forEach((el) => el.remove());
+  let shown = 0;
+  list.querySelectorAll('.person').forEach((row) => {
+    const match = !q || row.getAttribute('data-name').includes(q);
+    row.classList.toggle('hidden', !match);
+    if (match) shown++;
+  });
+  document.getElementById('noMatch').classList.toggle('hidden', shown > 0);
+}
+if (list) search.addEventListener('input', filter);
+
+// The rest of your friends, after the first hundred, so the search
+// finds them too.
+(async function loadRest(){
+  for (let i = 0; list && data.nextCursor && i < 10; i++){
+    let answer;
+    try{ answer = await api('GET', '/me/friends?limit=100&cursor=' + encodeURIComponent(data.nextCursor)); }catch(e){ return; }
+    if (!answer.res.ok) return;
+    data.friends = data.friends.concat(answer.data.friends);
+    data.nextCursor = answer.data.nextCursor;
+    drawList();
+  }
+})();
+
+// What happened, right under that friend's row (the list can be long, and
+// the top of it out of sight).
+function say(personId, kind, text){
+  list.querySelectorAll('.row-note').forEach((el) => el.remove());
+  const row = list.querySelector('.person[data-id="' + CSS.escape(personId) + '"]');
+  if (!row) return;
+  const note = document.createElement('li');
+  note.className = 'row-note ' + kind;
+  note.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  note.textContent = text;
+  row.after(note);
+}
+
+onActions({
+  // Someone they can't make a co-host (an email that isn't confirmed, too
+  // many co-hosts) is told why, in copy.js's words for the API's reason.
+  'add-cohost': (btn) => {
+    const name = btn.getAttribute('data-name');
+    const personId = btn.getAttribute('data-person');
+    const errorEl = document.getElementById('cohostError');
+    let after = null;
+    busy(btn, errorEl, async () => {
+      const { res, data: d } = await api('POST', '/events/' + encodeURIComponent(data.event.id) + '/cohosts', { personId });
+      if (!res.ok){
+        after = ['error', COPY.cohosts.errors[d.reason] ? t('cohosts.errors.' + d.reason, { name }) : sentence(d.error)];
+        return;
+      }
+      data.event = d.event;
+      drawList();
+      after = ['notice', t('cohosts.added', { name })];
+    }).then(() => {
+      // A network failure is said at the top by busy(); move it here.
+      if (!after && errorEl.textContent){ after = ['error', errorEl.textContent]; errorEl.textContent = ''; }
+      if (after) say(personId, after[0], after[1]);
+    });
+  }
+});
+</script>
+</body>
+</html>

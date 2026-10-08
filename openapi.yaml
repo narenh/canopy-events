@@ -1036,7 +1036,7 @@ components:
         `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`,
         `bad_location_name`, `bad_location_address`, `bad_status`,
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
-        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`,
+        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`,
         `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
         `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`; and
         `bad_request` on any route for a request that can't be read at
@@ -1189,9 +1189,10 @@ components:
         hasHosted:
           type: boolean
           description: |
-            Whether you host or co-host any event, cancelled and past ones
-            included: show a Hosting tab when true. A co-host who stepped
-            down from their only event is back to false.
+            Whether you've ever hosted or co-hosted an event: show a
+            Hosting tab when true. Once true it stays true, even after
+            stepping down as a co-host or every event being over or
+            cancelled.
       example:
         person:
           id: 6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44
@@ -1327,7 +1328,7 @@ components:
       additionalProperties: false
       required: [id, url, title, description, startsAt, endsAt, timeZone, locationName, locationAddress,
                  locationAddressHidden, guestListVisibility, guestsAllowed, capacity, spotsLeft, coverImageUrl,
-                 status, cancelledAt, createdAt, updatedAt,
+                 themeHue, status, cancelledAt, createdAt, updatedAt,
                  hosts, counts, viewer]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
@@ -1357,6 +1358,15 @@ components:
             The cover image, a JPEG, or null. Public (no sign-in needed),
             so it works in link previews; it changes with every upload,
             so cache it by URL.
+        themeHue:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 359
+          description: |
+            The event's colour: the page's dark mesh background rotated to
+            this hue, in degrees (OKLCH), or null for Canopy's own green
+            (which is hue 161). Draw the background as docs/api.md
+            ("Event colours") says, so an app matches the web.
         status: { type: string, enum: [active, cancelled] }
         cancelledAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
@@ -1388,6 +1398,7 @@ components:
         capacity: 20
         spotsLeft: 14
         coverImageUrl: https://events.canopysf.com/covers/Qm7Zc2pR9xTa.jpg?v=1759870000000
+        themeHue: null
         status: active
         cancelledAt: null
         createdAt: '2026-10-07T20:00:00.000Z'
@@ -1521,6 +1532,7 @@ components:
         guestListVisibility: { type: string, enum: [everyone, responded], default: everyone }
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, default: 0, description: Plus-ones each answer may bring. }
         capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, default: null, description: 'The most people going, plus-ones included. null: no cap.' }
+        themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, default: null, description: "The page's colour as a hue in degrees; null is Canopy green (see Event)." }
 
     EventPatch:
       description: Any of the fields of EventInput, plus status. Only what's sent changes.
@@ -1536,6 +1548,7 @@ components:
         guestListVisibility: { type: string, enum: [everyone, responded] }
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, description: Lowering it keeps answers that bring more (see guestsOverLimit). }
         capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: "null clears it. Raising it promotes from the waitlist; lowering it bumps nobody." }
+        themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: "Any host, co-hosts too. null goes back to Canopy green." }
         status: { type: string, enum: [active, cancelled], description: 'cancelled cancels it; active takes that back. The creator only.' }
 
     RsvpInput:
@@ -1688,6 +1701,7 @@ components:
           timeZone: America/Los_Angeles
           status: active
           coverImageUrl: null
+          themeHue: 300
         details: { status: going }
         count: 4
 
@@ -1695,7 +1709,7 @@ components:
       description: An event as a notification mentions it. Open it by `id` for the rest.
       type: object
       additionalProperties: false
-      required: [id, url, title, startsAt, timeZone, status, coverImageUrl]
+      required: [id, url, title, startsAt, timeZone, status, coverImageUrl, themeHue]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
         url: { type: string, format: uri }
@@ -1704,6 +1718,7 @@ components:
         timeZone: { type: string }
         status: { type: string, enum: [active, cancelled] }
         coverImageUrl: { type: [string, 'null'], format: uri }
+        themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: The event's colour (see Event). }
 
     NotificationList:
       type: object
