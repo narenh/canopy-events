@@ -131,3 +131,10 @@ Format: decision · why · how to reverse.
   every so often, just not every few minutes. So the iOS agent merges
   compiling work into main and pushes about once or twice an hour, or
   after major milestones.
+- **(You)** The iOS app stays fully mocked for now: no networking, no
+  real passkey calls, no API client. The mock flows work end to end:
+  fake sign-in and quick sign-up (with the verify banner and a fake
+  verify), creating, editing and cancelling events, viewing them,
+  RSVPs including plus-ones and the waitlist, the wall, invites and the
+  inbox. All of it lives in memory behind protocols shaped like the API,
+  and a fresh launch resets to the seed data.
