@@ -1249,3 +1249,31 @@ Fixes for the security review's events findings (branch `fix/review`).
   "Match photo" button. `themeHue` only changes when the host saves, and
   an API-only upload never changes it, so the apps decide for
   themselves.
+- **(You)** No "Canopy green" button: green is just where the slider
+  starts. One end of the slider is fully greyscale, for colour-free
+  events. A greyscale cover makes "Match photo" choose greyscale.
+- Assumed (the agent may refine it): the API is `themeHue` plus a
+  `themeGrayscale` boolean, with no magic hue values. Greyscale keeps
+  the same lightness as every other position, so contrast holds.
+- **(You)** The theme API (`themeHue` + `themeGrayscale`) is fine.
+- **(You)** The guest section is called "Attending". It has a large
+  heading, a "82 Going · 64 Maybe" summary, a "View all" pill, and one
+  row of large round avatars ending in a "+N" circle (from your
+  reference screenshot).
+- Assumed: the avatars don't overlap, and as many fit as the width
+  allows. Order is friends first, then going before maybe, then newest.
+  +N counts people. The grouped list and the host's tools live behind
+  "View all". When the list is hidden, the counts stay and a one-line
+  reason replaces the avatars.
+- **(You)** Host controls on the event page: "Share link" and "Invite"
+  on one line, then "Edit" with a ⋯ menu beside it. Co-hosts, new
+  link, cancel and delete all live in that menu.
+- Assumed: you meant the event page's host area, not the editor. Delete
+  is new: `DELETE /api/v1/events/{id}`, creator only, removing everything
+  (the link then 404s). The confirm suggests cancelling instead when
+  people have answered. Co-hosts get "Step down" in the menu.
+- **(You)** UI updates reach events main more often. The web agent
+  merges main into its branch, runs the tests, and fast-forwards main
+  after each finished change, instead of the orchestrator merging at the
+  end. · Schema steps deploy as they land, so a step on main is never
+  edited, only followed by the next one.
