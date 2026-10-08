@@ -1295,3 +1295,8 @@ Fixes for the security review's events findings (branch `fix/review`).
   only the new account service answers. iOS follow-up: events'
   `/api/v1/me` stops returning your contact details, so the app's
   profile must read them from the account service's `/api/native/v1/me`.
+- **(You)** The semi-safe area is 2:1, not 16:9, and the fade was too
+  abrupt. The fade now eases in from 45% of the frame (nine stops), 70%
+  at the band's top (75% of the frame), and solid at the foot. The title
+  overlaps by the band's height (width × 1/6). docs/api.md has the exact
+  stops for the iOS app.
