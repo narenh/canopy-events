@@ -127,3 +127,7 @@ Format: decision · why · how to reverse.
 - The look uses the system's Liquid Glass tinted with Canopy green, plus
   a mesh background, rather than recreating the web's CSS. · It's
   native on iOS 27. · Design/ tokens.
+- **(You)** iOS pushes are limited to once or twice an hour, or after
+  major work, because Xcode Cloud builds from main. The orchestrator
+  merges the foundation into main once, when it's complete and builds
+  cleanly, not piece by piece.
