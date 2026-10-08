@@ -720,3 +720,10 @@ The review found no critical or high issues. Fixes are in progress
   event page (including the signed-out page and the no-cover hero).
   Other pages stay green. The iOS app will read the same field. ·
   docs/api.md says how the colours are derived, so the app can match.
+- **(You)** The date and time are much more prominent (Partiful-style).
+- Assumed: on the event page the when comes right after the title, on
+  the cover fade: the day and date large, the time almost as large, and
+  a relative pill ("Tomorrow", "This Saturday", "Happening now"). The
+  place comes after it, smaller. List rows lead with a bold accent
+  line, e.g. "SAT, OCT 10 · 7:30 PM", above the title. The signed-out
+  page gets the same treatment.
