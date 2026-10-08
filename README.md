@@ -31,10 +31,10 @@ in and out.
 
 **Where it's up to.** This is the core: the database, the API (events,
 answers, the guest list, invitations, friends, your events), its spec
-and docs, and the tests. The web pages, co-hosts and plus-ones, the
-activity wall, cover images and capacity with a waitlist come next, in
-that order (`docs/decisions.md`, "v1 scope"). The schema already has room
-for all of them.
+and docs, the web pages (below), and the tests. Co-hosts and plus-ones,
+the activity wall, cover images and capacity with a waitlist come next,
+in that order (`docs/decisions.md`, "v1 scope"). The schema already has
+room for all of them, and the pages have a place for each.
 
 ## How it works
 
@@ -48,7 +48,7 @@ for all of them.
   `rsvps.js` (answers, the guest list, invitations), `me.js` (you, your
   friends, your events) and `docs.js` (the spec and `/docs`). A new
   subject is a new file here, so work on different subjects doesn't
-  collide.
+  collide. `pages.js` is the web pages (see "The pages").
 - `lib/` is what the routes share:
   - `db.js` is persistence: one SQLite file, `DATA_DIR/events.db`, with
     the schema, its version and upgrades, and the daily snapshots. The
@@ -70,17 +70,96 @@ for all of them.
   - `ids.js` makes event ids. `limits.js` holds the in-memory counters
     behind the limits, and `clientIp()`. `domain.js` is "is this a Canopy
     address?" and where this service is (`publicBase`).
+  - `render.js` sends a page: a file from `views/` with its placeholders
+    filled, its scripts and stylesheet inlined, the verify banner, and
+    an event's link preview tags.
   - `canopy-account.js` is the account service's
     `client/canopy-account.js`, copied in **unchanged**. Update it by
     copying the file again, never by editing it here.
+- `views/` and `public/` are the pages: one HTML file per page in
+  `views/`, and in `public/` the shared `events.css`, `copy.js` (every
+  sentence the pages say), `ui.js` (draws the pages' content) and
+  `events.js` (the browser side: the API, photos, the time zone).
 - `openapi.yaml` is the API's contract. `docs/api.md` is the guide for app
   developers. `public/vendor/redoc-2.5.4/` is the renderer `/docs` uses.
 - `test/` uses `node:test`. Each file starts the real server in a child
   process on a scratch `DATA_DIR`, against a fake account service
-  (`test/fakeAccount.js`). `npm test` runs them all.
+  (`test/fakeAccount.js`). `npm test` runs them all. `pages.test.js` holds
+  the pages to the same rules, as someone signed out, an unverified
+  account, a guest and a host.
 
 `GET /healthz` answers `{"ok":true}`, and `GET /favicon.ico` answers an
 empty 204.
+
+## The pages
+
+Server-sent HTML and plain JavaScript, with no framework and no build
+step, the same as the account service. Phone first: most people open an
+event link on a phone.
+
+| | |
+|---|---|
+| `/e/<id>` | **An event**, what a shared link opens. Signed out: the title, when, the place's name, the hosts and the counts, with a big **RSVP** that goes to the account service's quick sign-up and back, and a smaller "I have a Canopy account, sign in". Signed in: the address, going / maybe / can't go (change it, or take it back), friends going, and who's coming by the host's visibility rule (counts only, with why, when the names aren't yours to see). Hosts get share, invite friends, edit and cancel (or bring it back) instead of answering. Cancelled and past events say so at the top and take no answers. |
+| `/` | **Your events**: invitations (going or can't go right there), what you're hosting, what's coming up, and what's past. "New event" for verified people; unverified people get a line saying to confirm their email to host. Signed out: what this is, and sign in. |
+| `/new`, `/e/<id>/edit` | **The editor**: title, description, start and end, the time zone (the browser's by default), the place and its address, and who sees the guest list. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
+| `/e/<id>/invite` | **Inviting friends** (hosts): your friends with a search box, the ones already on the list marked with what they said. Finding people by phone number or Instagram goes here later; `public/ui.js` marks the spot. |
+| `/friends` | **Your friends**: people you've been to an event with, and how many events in common. |
+
+Every page has the header (the logo, your events, friends, and your
+photo, which opens your Canopy profile), a sign-out link at the bottom,
+and, for an unverified account, a banner to confirm the email that can't
+be closed. Anything else a browser asks for gets a "nothing here" page.
+
+**The pages are a client of the API, like the apps.** A page asks this
+server's own `/api/v1` for what it shows, as the visitor (over loopback,
+with their cookie), draws it, and sends it with those answers inside for
+its script to start from. So a page can't show more than the API gives
+that visitor: the signed-out view, the guest list rule and the
+never-leak rule are applied once, in `lib/views.js` and `lib/rules.js`,
+and whatever the API learns later reaches the pages without a second copy
+of the rules. Changes (answering, editing, inviting) are the page's
+script calling the API with `fetch`. A 401 sends the visitor to sign in,
+a 403 `email_unverified` to confirm their email, and a 503 says Canopy
+accounts can't be reached.
+
+**One renderer, in two places.** `public/ui.js` turns the API's answers
+into HTML. The server runs it to draw each page before sending it, so
+the page is there at once and a link preview has something to read; the
+browser runs the same file to redraw after a change. Everything a person
+typed goes through its `esc()`.
+
+**Scripts and the stylesheet are inline**, put into each page by
+`lib/render.js`, for the account service's reason: Cloudflare gives `.js`
+files a 4-hour browser cache whatever the server says, so during a
+deploy a phone could get the old script with the new page.
+
+**The look is the account service's**: `public/events.css` starts with
+its `account.css` tokens, mesh background and glass cards, copied, and
+adds only what events needs, from the same colour pairs (their contrast
+is worked out in the comment at the top). Keep the tokens in step with
+that file. `public/canopy-logo.png` is its logo.
+
+**Times** are always in the event's own time zone. When that isn't the
+viewer's (their clock reads a different time), the event page says
+"Times are Los Angeles time (PDT)" and lists add the zone's short name.
+The browser tells the server its zone in a `tz` cookie, so pages after
+the first are drawn right the first time.
+
+**Link previews.** An event page carries Open Graph and Twitter tags:
+the title, and a line with the date, time and the place's name. Never
+the street address (the preview is of what a signed-out visitor sees, and
+previews are kept by the machines that fetch them) and never the
+description. There's no image yet: `UI.coverUrl()` in `public/ui.js` is
+where the cover image plugs in, for the page and the preview both.
+
+**Nothing is for search engines.** Events are link-only, so every page
+says `noindex, nofollow` (a meta tag and `X-Robots-Tag`). Link previews
+don't read either, so they still work.
+
+**Photos** are the account service's `photoUrl`s in plain `<img>` tags:
+the browser sends the Canopy cookie along. Signed out, the account
+service won't give a photo, and a photo that won't load becomes the
+person's initials.
 
 ## Accounts
 
@@ -207,7 +286,8 @@ aren't port-specific, so signing in on one signs you in on both.
    Or copy `.env.example` to `.env`, fill it in, and run `node
    --env-file=.env server.js`. Without `CANOPY_ACCOUNT_URL` and
    `CANOPY_ACCOUNT_KEY` the server stops at startup and says so.
-4. Open `http://localhost:3001/docs` for the API. With the cookie from
+4. Open `http://localhost:3001/` for the pages, and
+   `http://localhost:3001/docs` for the API. With the cookie from
    signing in at `:3000`, the API answers as you; `docs/api.md` has curl
    examples with a bearer token.
 
