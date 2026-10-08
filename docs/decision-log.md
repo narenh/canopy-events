@@ -727,3 +727,28 @@ The review found no critical or high issues. Fixes are in progress
   place comes after it, smaller. List rows lead with a bold accent
   line, e.g. "SAT, OCT 10 · 7:30 PM", above the title. The signed-out
   page gets the same treatment.
+- Account review fixes are on main (0e32e7f..8247337, then e5968a9):
+  - Changing to an address that already has an account sends that
+    address a "someone tried to move their account here" notice in
+    place of the code, so both cases answer identically. The refusal
+    (409) comes only at the code step. Also a new limit of 5 new
+    addresses per person per hour.
+  - After a takeover, the owner lands on their profile with a banner
+    saying what was cleared, so they can fix the name the squatter typed.
+  - New sessions are limited to 100 per address and 1,000 overall per
+    hour. · A carrier that puts many phones behind one address could
+    hit this; the README says so.
+  - Apps keep the `bad_photo` reason for unreadable photos, while the web
+    gets `bad_image`. · The iOS contract already documents `bad_photo`.
+  - A contested phone or handle stays unfindable even if the other claim
+    is an unverified account. · Cost: an unverified squatter can now
+    hide you. The verify banner now says unconfirmed people can't be
+    found.
+
+## Contact data security (queued, low priority, not merged tonight)
+
+- **(You)** Queued items 1–5: lookup by POST, per-site field scopes on
+  `/api/session`, encryption of contact fields with keyed-hash lookup,
+  self-serve account deletion, and a lookup audit log. They're on
+  `feat/data-security` in both repos, for your review. Their judgment
+  calls get logged on that branch.
