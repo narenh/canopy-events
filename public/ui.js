@@ -497,32 +497,50 @@
     }
   }
 
+  // A link with no text of its own is shown as its address, shortened:
+  // no http(s)://, no "www.", no slash at the end, and past LINK_TEXT_MAX
+  // characters cut with an ellipsis (the whole address is the link's
+  // title). The page's CSS also ellipsizes whatever doesn't fit the line.
+  const LINK_TEXT_MAX = 48;
+  function linkText(href) {
+    const s = String(href || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+    return s.length > LINK_TEXT_MAX ? s.slice(0, LINK_TEXT_MAX - 1) + '\u2026' : s;
+  }
+
   // Only a tel: link made of digits (and a +) makes it into an href.
   function safeTel(href) {
     return typeof href === 'string' && /^tel:\+?[0-9]+$/.test(href) ? href : null;
   }
 
-  // One detail, as a row like the place's: the icon, then the heading (the
-  // host's own, or the type's), then the value. A link is its text (or
-  // its host) to tap, with the host under it when it has text; a phone
-  // number is a tel: link; everything else is text with its line breaks.
+  // One detail, as a row like the place's, after its icon:
+  //
+  //   - a link: one line, its text (or, with none, its shortened address:
+  //     linkText) as the link, the whole address as its title;
+  //   - a phone: one line, the number as a tel: link, after the host's
+  //     label and a dot when there is one ("Ana's cell · (415) 555-0199");
+  //   - the rest: the heading (the host's own, or the type's), then the
+  //     text under it, with its line breaks.
   function detailRow(x) {
     if (!x || !DETAIL_ICON[x.type]) return '';
     let what;
+    let cls = 'meta detail';
     if (x.type === 'link') {
       const href = safeUrl(x.href);
-      const host = href ? linkHost(href) : x.value;
+      const text = x.label || linkText(href || x.value);
+      cls += ' detail-line';
       what = href
-        ? '<a class="detail-link" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(x.label || host) + '</a>'
-          + (x.label ? '<span class="sub">' + esc(host) + '</span>' : '')
-        : '<span>' + esc(x.label || x.value) + '</span>';
+        ? '<a class="detail-link" href="' + esc(href) + '" title="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(text) + '</a>'
+        : '<span>' + esc(text) + '</span>';
+    } else if (x.type === 'phone') {
+      const tel = safeTel(x.href);
+      cls += ' detail-line';
+      what = (x.label ? '<span class="detail-label">' + esc(x.label) + '</span> · ' : '')
+        + (tel ? '<a href="' + esc(tel) + '">' + esc(x.value) + '</a>' : '<span>' + esc(x.value) + '</span>');
     } else {
-      const heading = x.label || t('event.detailHeadings.' + x.type);
-      const tel = x.type === 'phone' ? safeTel(x.href) : null;
-      what = '<span class="detail-heading">' + esc(heading) + '</span>'
-        + (tel ? '<span class="sub"><a href="' + esc(tel) + '">' + esc(x.value) + '</a></span>' : '<span class="sub detail-value">' + esc(x.value) + '</span>');
+      what = '<span class="detail-heading">' + esc(x.label || t('event.detailHeadings.' + x.type)) + '</span>'
+        + '<span class="sub detail-value">' + esc(x.value) + '</span>';
     }
-    return '<div class="meta detail" data-type="' + esc(x.type) + '">' + DETAIL_ICON[x.type] + '<div class="what">' + what + '</div></div>';
+    return '<div class="' + cls + '" data-type="' + esc(x.type) + '">' + DETAIL_ICON[x.type] + '<div class="what">' + what + '</div></div>';
   }
 
   // The event's details, in the host's order, and, for someone signed out
@@ -742,12 +760,63 @@
   //     which is white too: --link-weight and --link-underline).
   //     Dark base on white 19.3:1; white links on the base 19.3:1, on a
   //     card 17.6:1.
-  //   - a hue: Canopy green's three turned to it, exactly as a page in
-  //     that hue has them (turnHex), on the grey background. Worst over
-  //     the whole wheel: dark text on the accent 6.8:1, links on the grey
-  //     base 14.5:1 (13.2:1 on a card), the accent against the base 7.0:1.
+  //   - a hue: accentTrio (above), exactly as a page in that hue has it,
+  //     on the grey background. Worst over the whole wheel: dark text on
+  //     the accent 5.0:1, links on the grey base 14.5:1.
+  // An event's accent trio for a hue H: [accent, text on it, links].
+  // Not Canopy green turned (that carried green's 16° offset into every
+  // hue, so a red page got a pink accent, and kept green's lightness, at
+  // which red can only be coral). Instead each hue's accent sits at the
+  // hue itself, at the lightness where that hue is most vivid (red's is
+  // low, yellow's and cyan's high), held between the lightness that keeps
+  // dark text on it at 5:1 and 0.80, with chroma capped near Canopy
+  // green's own (0.21) so no hue goes neon. The text on it and the links
+  // are Canopy green's (#03190a, #b6f5c3) at hue H. Canopy green itself
+  // (no hue) is untouched. Worst over the wheel: dark text on the accent
+  // 5.0:1; links on the base 14.5:1.
+  const ACCENT_MAX_C = 0.21;
+  const accentCache = {};
+  function luminanceOf(rgb) {
+    const c = rgb.map((x) => x / 255).map((v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  function contrastOf(a, b) {
+    const x = luminanceOf(a);
+    const y = luminanceOf(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  }
+  function maxChroma(L, h) {
+    let lo = 0;
+    let hi = 0.4;
+    for (let i = 0; i < 22; i++) {
+      const mid = (lo + hi) / 2;
+      if (oklchToLinear(L, mid, h).every((x) => x >= -0.0001 && x <= 1.0001)) lo = mid; else hi = mid;
+    }
+    return lo;
+  }
+  function accentTrio(h) {
+    if (accentCache[h]) return accentCache[h];
+    const [onL, onC] = rgbToOklch('#03190a');
+    const [linkL, linkC] = rgbToOklch('#b6f5c3');
+    const on = oklchToRgb(onL, onC, h);
+    let cusp = 0.6;
+    let best = 0;
+    for (let L = 0.5; L <= 0.9; L += 0.01) {
+      const c = maxChroma(L, h);
+      if (c > best) { best = c; cusp = L; }
+    }
+    let low = 0.9;
+    for (let L = 0.55; L <= 0.9; L += 0.005) {
+      if (contrastOf(oklchToRgb(L, ACCENT_MAX_C, h), on) >= 5) { low = L; break; }
+    }
+    const L = Math.min(0.8, Math.max(cusp, low));
+    const trio = [hexOf(oklchToRgb(L, ACCENT_MAX_C, h)), hexOf(on), hexOf(oklchToRgb(linkL, linkC, h))];
+    accentCache[h] = trio;
+    return trio;
+  }
+
   function accentColors(accent) {
-    if (isHue(accent)) return [turnHex('#2ec44f', accent), turnHex('#03190a', accent), turnHex('#b6f5c3', accent)];
+    if (isHue(accent)) return accentTrio(accent);
     return ['#ffffff', hexOf(themeColors(GREY).base), '#ffffff'];
   }
 
@@ -759,7 +828,7 @@
   function themeStyle(key, accent) {
     const c = themeColors(key);
     if (!c) return '';
-    let accents = [turnHex('#2ec44f', key), turnHex('#03190a', key), turnHex('#b6f5c3', key)];
+    let accents = key === GREY ? null : accentTrio(key);
     let links = '';
     if (key === GREY) {
       accents = accentColors(isHue(accent) ? accent : WHITE);
@@ -771,10 +840,9 @@
       + ';--theme-card:rgba(' + c.card.join(',') + ',0.30);--theme-card-solid:' + hexOf(c.card)
       // The accent follows the event too (the photo ring, the "how soon"
       // pill, icons, links, the main button), so the whole page is one
-      // colour: Canopy green's accents turned like everything else,
-      // lightness kept. Checked at every hue: dark text on the accent at
-      // least 6.8:1, links on the base at least 14.5:1, the accent against
-      // the base at least 7:1. A grey page's accent is its own choice
+      // colour: accentTrio, each hue's truest accent (red is red). Checked
+      // at every hue: dark text on the accent at least 5.0:1, links on the
+      // base at least 14.5:1. A grey page's accent is its own choice
       // (accentColors above).
       + ';--accent:' + accents[0] + ';--on-accent:' + accents[1] + ';--accent-text:' + accents[2] + links;
   }
@@ -1026,6 +1094,43 @@
       + '<p class="small" style="margin:0">' + tx('event.removedHint') + '</p></section>';
   }
 
+  // A guest's ⋯ menu (anyone invited or with an answer who isn't hosting),
+  // on their card's heading line: mute or unmute the event, leave it
+  // (the page asks first), and for each host, opt out of their
+  // invitations, or allow them again. Hosts are named by first name, or
+  // by short name when two share one; a former member isn't offered.
+  // `d.optouts` is the ids the visitor has opted out of
+  // (GET /api/v1/me/invite-optouts). The same popover as the host's menu
+  // (views/event.html).
+  function guestMenu(e, d) {
+    const viewer = e.viewer || {};
+    if (!viewer.rsvp || viewer.role || viewer.rsvp.status === 'removed') return '';
+    const optouts = (d && d.optouts) || [];
+    const hosts = (e.hosts || []).map((x) => x.person).filter((p) => p && p.firstName && (!d || !d.me || p.id !== d.me.id));
+    const firsts = hosts.map((p) => p.firstName);
+    const items = [];
+    items.push(viewer.muted ? ['unmute', t('event.unmute'), '', ''] : ['mute', t('event.mute'), '', '']);
+    hosts.forEach((p) => {
+      const name = firsts.filter((f) => f === p.firstName).length > 1 ? p.shortName || p.firstName : p.firstName;
+      const out = optouts.includes(p.id);
+      items.push([out ? 'allow-invites' : 'optout-invites', t(out ? 'event.allowInvites' : 'event.optOutInvites', { name }), '',
+        ' data-person="' + esc(p.id) + '" data-name="' + esc(name) + '"']);
+    });
+    items.push(['leave', t('event.leave'), 'danger', '']);
+    return '<div class="menu-wrap"><button type="button" class="secondary more-btn" id="guestMenuBtn" data-action="guest-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="guestMenu" aria-label="' + tx('event.moreActions') + '">' + ICON.more + '</button>'
+      + '<div class="menu" id="guestMenu" role="menu" aria-labelledby="guestMenuBtn" hidden>'
+      + items.map(([action, label, cls, attrs]) => '<button type="button" role="menuitem" tabindex="-1" class="menu-item' + (cls ? ' ' + cls : '') + '" data-action="' + action + '"' + attrs + '>' + esc(label) + '</button>').join('')
+      + '</div></div>';
+  }
+
+  // A card's first line with the guest menu at its right edge, and under
+  // it, what the menu just did (or why it couldn't).
+  function withGuestMenu(line, menu) {
+    if (!menu) return line;
+    return '<div class="card-head-row">' + line + menu + '</div>'
+      + '<div class="notice" id="guestNotice" role="status"></div><div class="error" id="guestError" role="alert"></div>';
+  }
+
   // Signed in, not hosting: going / maybe / can't go, and how many guests
   // they're bringing (when the host allows any). An answer changes but is
   // never taken back: "can't go" is how you leave.
@@ -1034,15 +1139,16 @@
     const status = rsvp ? rsvp.status : null;
     if (status === 'removed') return removedSection();
     const answered = !!status && status !== 'invited';
+    const menu = guestMenu(e, d);
     let h = '<section class="card" id="rsvp" data-section="rsvp">';
     if (phase === 'cancelled' || phase === 'over') {
-      h += '<p class="state-line' + (phase === 'cancelled' ? ' danger' : '') + '">' + tx(phase === 'cancelled' ? 'event.cancelled' : 'event.over') + '</p>';
+      h += withGuestMenu('<p class="state-line' + (phase === 'cancelled' ? ' danger' : '') + '">' + tx(phase === 'cancelled' ? 'event.cancelled' : 'event.over') + '</p>', menu);
       if (answered) {
         h += '<p class="small" style="margin:0">' + tx('event.yourAnswer', { status: t('status.' + status) + (rsvp.guests ? ' ' + plusGuests(rsvp.guests) : '') }) + '</p>';
       }
       return h + '</section>';
     }
-    h += '<h3>' + tx(status === 'invited' ? 'event.invitedQuestion' : 'event.question') + '</h3>';
+    h += withGuestMenu('<h3>' + tx(status === 'invited' ? 'event.invitedQuestion' : 'event.question') + '</h3>', menu);
     if (e.capacity != null && e.spotsLeft === 0 && status !== 'going' && status !== 'waitlisted') {
       h += '<p class="small full-hint">' + tx('event.fullHint') + '</p>';
     }
@@ -1548,7 +1654,19 @@
     h += '<ul class="people" id="friendList">' + friendRows(d.friends) + '</ul>';
     h += '<p class="empty' + (d.friends.length ? ' hidden' : '') + '" id="noFriends" style="margin:0">' + tx('friends.empty') + '</p>';
     if (d.nextCursor) h += '<button type="button" class="secondary more" data-action="more">' + tx('common.showMore') + '</button>';
-    return h + '</section>';
+    h += '</section>';
+    return h + optoutsSection(d.optouts);
+  }
+
+  // Whose invitations you've opted out of (from an event's ⋯ menu), each
+  // with Undo. Nothing when there's nobody.
+  function optoutsSection(people) {
+    if (!people || !people.length) return '';
+    return '<section class="card" id="optouts" data-section="optouts"><h2>' + tx('friends.optoutsHeading') + '</h2>'
+      + '<div class="error" id="optoutsError" role="alert"></div><ul class="people" id="optoutList">'
+      + people.map((p) => '<li class="person" data-id="' + esc(p.id) + '">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div></div>'
+        + '<button type="button" class="small-btn secondary" data-action="undo-optout" data-person="' + esc(p.id) + '">Undo</button></li>').join('')
+      + '</ul></section>';
   }
 
   // Someone's friend link, /f/<code>: who it is, and what you can do.
@@ -1908,27 +2026,40 @@
   const DETAIL_LABEL_MAX = 60;
   const DETAIL_VALUE_MAX = 500;
 
+  // A link's text field's placeholder: what the page shows with none (the
+  // shortened address), or "Link text" before there's an address.
+  function linkTextPlaceholder(address) {
+    return linkText(address) || t('editor.detailLinkText');
+  }
+
   function detailEditRow(x) {
     x = x || {};
     if (!DETAIL_ICON[x.type]) return '';
     const type = x.type;
     const name = t('event.detailHeadings.' + type);
-    const labelPlaceholder = type === 'link' ? t('editor.detailLinkText') : name;
-    const label = '<input type="text" class="soft detail-label" maxlength="' + DETAIL_LABEL_MAX + '" autocomplete="off" placeholder="' + esc(labelPlaceholder)
-      + '" aria-label="' + esc(type === 'link' ? labelPlaceholder : t('editor.detailHeading', { name })) + '" value="' + esc(x.label || '') + '">';
-    let value;
+    let fields;
+    let attrs = '';
     if (type === 'link') {
-      value = '<input type="text" class="soft detail-value" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="' + DETAIL_VALUE_MAX
-        + '" placeholder="' + tx('editor.detailPlaceholders.link') + '" aria-label="' + tx('editor.detailAddress') + '" value="' + esc(x.value || '') + '">';
+      // The address, then its text: the text's placeholder is the page's
+      // own line for an empty one (views/editor.html keeps it in step).
+      fields = '<input type="text" class="soft detail-value" inputmode="url" autocapitalize="off" spellcheck="false" maxlength="' + DETAIL_VALUE_MAX
+        + '" placeholder="' + tx('editor.detailPlaceholders.link') + '" aria-label="' + tx('editor.detailAddress') + '" value="' + esc(x.value || '') + '">'
+        + '<input type="text" class="soft detail-label" maxlength="' + DETAIL_LABEL_MAX + '" placeholder="' + esc(linkTextPlaceholder(x.value))
+        + '" aria-label="' + tx('editor.detailLinkText') + '" value="' + esc(x.label || '') + '">';
     } else if (type === 'phone') {
-      value = '<input type="text" class="soft detail-value" inputmode="tel" autocomplete="off" maxlength="40" placeholder="' + tx('editor.detailPlaceholders.phone')
+      // One line, the number, as the page shows it. A label it was given
+      // (by an app) goes back unchanged.
+      fields = '<input type="text" class="soft detail-value" inputmode="tel" maxlength="40" placeholder="' + tx('editor.detailPlaceholders.phone')
         + '" aria-label="' + tx('editor.detailPlaceholders.phone') + '" value="' + esc(x.value || '') + '">';
+      if (x.label) attrs = ' data-label="' + esc(x.label) + '"';
     } else {
-      value = '<textarea class="soft detail-value" maxlength="' + DETAIL_VALUE_MAX + '" rows="2" placeholder="' + tx('editor.detailPlaceholders.' + type)
+      fields = '<input type="text" class="soft detail-label" maxlength="' + DETAIL_LABEL_MAX + '" placeholder="' + esc(name)
+        + '" aria-label="' + esc(t('editor.detailHeading', { name })) + '" value="' + esc(x.label || '') + '">'
+        + '<textarea class="soft detail-value" maxlength="' + DETAIL_VALUE_MAX + '" rows="2" placeholder="' + tx('editor.detailPlaceholders.' + type)
         + '" aria-label="' + esc(name) + '">' + esc(x.value || '') + '</textarea>';
     }
-    return '<div class="meta detail-edit" data-type="' + esc(type) + '">' + DETAIL_ICON[type]
-      + '<div class="what">' + label + value + '<div class="error detail-error" role="alert"></div></div>'
+    return '<div class="meta detail-edit" data-type="' + esc(type) + '"' + attrs + '>' + DETAIL_ICON[type]
+      + '<div class="what">' + fields + '<div class="error detail-error" role="alert"></div></div>'
       + '<button type="button" class="round-btn" data-action="remove-detail" aria-label="' + tx('editor.detailRemove', { name: name.toLowerCase() }) + '">' + ICON_CLOSE + '</button></div>';
   }
 
@@ -1949,7 +2080,9 @@
     const e = d.event || {};
     const zone = e.timeZone || o.zone || 'UTC';
     const vis = e.guestListVisibility || 'everyone';
-    let h = '<form class="stack editor" id="eventForm" novalidate>';
+    // No autofill anywhere in the editor (contacts, addresses, emails,
+    // passwords): see views/editor.html, which also marks every field.
+    let h = '<form class="stack editor" id="eventForm" novalidate autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">';
     h += '<h1 class="sr-only">' + tx(d.event ? 'editor.editHeading' : 'editor.newHeading') + '</h1>';
 
     // The event card, as the page draws it.
@@ -2006,7 +2139,7 @@
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
-    eventPage, details, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
+    eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, HOME_TABS, MAX_GUESTS_ALLOWED
   };

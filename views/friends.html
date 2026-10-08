@@ -139,6 +139,19 @@ onActions({
   },
 
   // Taking someone out, after asking. Quietly: they aren't told.
+  // Taking invitations from someone again: their row goes, and the card
+  // with the last one.
+  'undo-optout': (btn) => {
+    let refused = '';
+    busy(btn, document.getElementById('optoutsError'), async () => {
+      const { res, data: d } = await api('DELETE', '/me/invite-optouts/' + encodeURIComponent(btn.getAttribute('data-person')));
+      if (!res.ok){ refused = sentence(d.error); return; }
+      const list = btn.closest('ul');
+      btn.closest('li').remove();
+      if (!list.children.length) document.getElementById('optouts').remove();
+    }).then(() => { if (refused) document.getElementById('optoutsError').textContent = refused; });
+  },
+
   'remove-friend': (btn) => {
     const id = btn.getAttribute('data-person');
     if (!confirm(t('friends.removeConfirm', { name: btn.getAttribute('data-name') }))) return;

@@ -109,6 +109,7 @@ const apiRouters = [
   require('./routes/moderation'),
   require('./routes/people'),
   require('./routes/friends'),
+  require('./routes/guestMenu'),
   require('./routes/me')
 ].map((make) => make(ctx));
 

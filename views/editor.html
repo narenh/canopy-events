@@ -32,6 +32,30 @@ const editing = !!data.event;
 const form = document.getElementById('eventForm');
 const $ = (id) => document.getElementById(id);
 
+// No autofill on any of the event's fields: a place isn't your home
+// address, and a host's phone or link isn't yours. autocomplete="off" is
+// only a hint (Chrome ignores it for fields it takes for addresses, and
+// Safari guesses from labels), so each field also gets the password
+// managers' own opt-outs (1Password, LastPass, Bitwarden, Dashlane), and
+// fields added later (a new detail row) get the same as they appear.
+// Radios keep their name (it groups them); nothing else has one.
+function noAutofill(el){
+  if (!el.matches || !el.matches('input, textarea, select')) return;
+  if (['radio', 'checkbox', 'range', 'file', 'hidden'].includes(el.type)) return;
+  el.setAttribute('autocomplete', 'off');
+  el.setAttribute('data-1p-ignore', '');
+  el.setAttribute('data-lpignore', 'true');
+  el.setAttribute('data-bwignore', '');
+  el.setAttribute('data-form-type', 'other');
+  el.setAttribute('autocorrect', el.tagName === 'TEXTAREA' ? 'on' : 'off');
+}
+form.querySelectorAll('input, textarea, select').forEach(noAutofill);
+new MutationObserver((changes) => changes.forEach((c) => c.addedNodes.forEach((n) => {
+  if (n.nodeType !== 1) return;
+  noAutofill(n);
+  n.querySelectorAll && n.querySelectorAll('input, textarea, select').forEach(noAutofill);
+}))).observe(form, { childList: true, subtree: true });
+
 // The API's refusal, under the field it's about (and focus on it). The
 // words are copy.js's for the reasons it knows, otherwise the API's own.
 const FIELD_FOR = {
@@ -513,18 +537,31 @@ onActions({
   }
 });
 
+// A link's text field previews what the page shows without one: its
+// placeholder follows the address as it's typed.
+detailRows.addEventListener('input', (e) => {
+  const row = e.target.closest('.detail-edit[data-type="link"]');
+  if (row && e.target.classList.contains('detail-value')) {
+    row.querySelector('.detail-label').setAttribute('placeholder', UI.linkTextPlaceholder(e.target.value));
+  }
+});
+
 // The rows that go: [{ row, detail }], in order. A row with nothing typed
-// in it isn't sent.
+// in it isn't sent. A phone's row has no label field; a label it came
+// with goes back as it was.
 let detailsSent = [];
 function detailsToSend(){
-  detailsSent = rowsShown().map((row) => ({
-    row,
-    detail: {
-      type: row.getAttribute('data-type'),
-      label: row.querySelector('.detail-label').value.trim() || null,
-      value: row.querySelector('.detail-value').value
-    }
-  })).filter((x) => x.detail.label || x.detail.value.trim());
+  detailsSent = rowsShown().map((row) => {
+    const labelField = row.querySelector('.detail-label');
+    return {
+      row,
+      detail: {
+        type: row.getAttribute('data-type'),
+        label: (labelField ? labelField.value.trim() : row.getAttribute('data-label')) || null,
+        value: row.querySelector('.detail-value').value
+      }
+    };
+  }).filter((x) => x.detail.value.trim() || (x.detail.label && x.row.querySelector('.detail-label')));
   return detailsSent.map((x) => x.detail);
 }
 
@@ -533,8 +570,9 @@ function showDetailRefusal(d, words){
   if (!d || typeof d.index !== 'number' || !detailsSent[d.index]) return false;
   const row = detailsSent[d.index].row;
   row.querySelector('.detail-error').textContent = words;
-  const input = d.reason === 'detail_too_long' && row.querySelector('.detail-label').value.length > 60
-    ? row.querySelector('.detail-label') : row.querySelector('.detail-value');
+  const labelField = row.querySelector('.detail-label');
+  const input = d.reason === 'detail_too_long' && labelField && labelField.value.length > 60
+    ? labelField : row.querySelector('.detail-value');
   input.focus();
   return true;
 }

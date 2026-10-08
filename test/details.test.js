@@ -228,12 +228,17 @@ test('the event page: a row per detail, links and phones to tap, and only what t
   const list = detailsOf(guest);
   assert.ok(list, 'the details are drawn');
   assert.ok(guest.indexOf('Hosted by') < guest.indexOf('id="eventDetails"'), 'after the hosts');
-  assert.deepEqual([...list.matchAll(/<div class="meta detail" data-type="(\w+)"><svg/g)].map((m) => m[1]), ALL.map((d) => d.type));
-  // Links: the label (or the host), a new tab, no opener or referrer.
-  assert.ok(list.includes('<a class="detail-link" href="https://tickets.example.com/rooftop?x=1" target="_blank" rel="noopener noreferrer">Tickets</a><span class="sub">tickets.example.com</span>'), list);
-  assert.ok(list.includes('<a class="detail-link" href="https://partiful.com/e/abc" target="_blank" rel="noopener noreferrer">partiful.com</a></div>'));
-  // A phone: tel:, under its label.
-  assert.ok(list.includes(`<span class="detail-heading">Ana&#39;s cell</span><span class="sub"><a href="tel:4155550199">${HOST_PHONE}</a></span>`));
+  assert.deepEqual([...list.matchAll(/<div class="meta detail(?: detail-line)?" data-type="(\w+)"><svg/g)].map((m) => m[1]), ALL.map((d) => d.type));
+  // A link: one line, no heading. Its text (or, with none, its address
+  // without https://, www. or the last slash), the whole address as its
+  // title, a new tab, no opener or referrer.
+  assert.ok(list.includes('<div class="meta detail detail-line" data-type="link"><svg'), list);
+  assert.ok(list.includes('<div class="what"><a class="detail-link" href="https://tickets.example.com/rooftop?x=1" title="https://tickets.example.com/rooftop?x=1" target="_blank" rel="noopener noreferrer">Tickets</a></div>'), list);
+  assert.ok(list.includes('<div class="what"><a class="detail-link" href="https://partiful.com/e/abc" title="https://partiful.com/e/abc" target="_blank" rel="noopener noreferrer">partiful.com/e/abc</a></div>'));
+  // A phone: one line, its label and a dot, then the number as a tel: link.
+  assert.ok(list.includes(`<div class="meta detail detail-line" data-type="phone"><svg`));
+  assert.ok(list.includes(`<div class="what"><span class="detail-label">Ana&#39;s cell</span> · <a href="tel:4155550199">${HOST_PHONE}</a></div>`));
+  assert.ok(!/detail-heading">(Link|Phone)</.test(list), 'no Link or Phone heading');
   // Text: the default heading, escaped, line breaks kept (CSS pre-line).
   assert.ok(list.includes('<span class="detail-heading">Info</span><span class="sub detail-value">Doors at 7.\nBring a jacket.</span>'));
   assert.ok(list.includes('<span class="detail-heading">Dress code</span><span class="sub detail-value">Black &amp; white</span>'));
@@ -257,6 +262,14 @@ test('the event page: a row per detail, links and phones to tap, and only what t
   assert.deepEqual([...detailsOf(removed).matchAll(/data-type="(\w+)"/g)].map((m) => m[1]), ['link', 'info', 'dress_code', 'food', 'link']);
   assert.ok(!removed.includes('details-hidden') && !removed.includes('4512'));
 
+  // Without labels: a phone is the number alone; a long address is cut
+  // with an ellipsis, all of it in the title.
+  const LONG = 'https://www.example.com/events/2030/rooftop-dinner-with-everyone-from-the-office/rsvp/';
+  const bare = await makeEvent(ana, { details: [{ type: 'link', value: LONG }, { type: 'phone', value: HOST_PHONE }] });
+  const bareList = detailsOf((await page(server, ben, `/e/${bare.id}`)).body);
+  assert.ok(bareList.includes(`<a class="detail-link" href="${LONG}" title="${LONG}" target="_blank" rel="noopener noreferrer">example.com/events/2030/rooftop-dinner-with-eve…</a>`), bareList);
+  assert.ok(bareList.includes(`<div class="what"><a href="tel:4155550199">${HOST_PHONE}</a></div>`), bareList);
+
   // None at all: no section.
   const none = await makeEvent(ana);
   assert.equal(detailsOf((await page(server, anon, `/e/${none.id}`)).body), null);
@@ -277,6 +290,11 @@ test('ui.js: details drawn safely, whatever comes', () => {
   // A type this page doesn't know is left out.
   assert.equal(row({ type: 'pets', value: 'x' }), '');
   assert.equal(UI.linkHost('https://www.Example.com:8443/x'), 'example.com');
+  // A link's own line: no scheme, no www., no last slash; long ones cut.
+  assert.equal(UI.linkText('https://www.example.com/'), 'example.com');
+  assert.equal(UI.linkText('http://example.com/a/b/?q=1'), 'example.com/a/b/?q=1');
+  assert.equal(UI.linkText('https://example.com/' + 'x'.repeat(100)).length, 48);
+  assert.ok(UI.linkText('https://example.com/' + 'x'.repeat(100)).endsWith('…'));
   // Signed in with nothing hidden and no rows: nothing at all.
   assert.equal(UI.detailsBlock({ details: [], hiddenDetails: 0 }, false), '');
   assert.equal(UI.detailsBlock({ details: [], hiddenDetails: 2 }, true), '');
@@ -297,12 +315,21 @@ test('the editor: the chips, and a row per detail with the right inputs', async 
   // Each type's row: its icon, its inputs, a ×.
   const link = UI.detailEditRow({ type: 'link' });
   assert.match(link, /^<div class="meta detail-edit" data-type="link"><svg/);
+  // A link: the address first, then its text, whose placeholder is what
+  // the page would show without one.
+  assert.ok(link.indexOf('detail-value') < link.indexOf('detail-label'));
   assert.match(link, /class="soft detail-label"[^>]*placeholder="Link text"/);
+  assert.match(UI.detailEditRow({ type: 'link', value: 'https://www.partiful.com/e/abc/' }), /class="soft detail-label"[^>]*placeholder="partiful.com\/e\/abc"/);
   assert.match(link, /<input type="text" class="soft detail-value" inputmode="url"/);
   assert.match(link, /data-action="remove-detail" aria-label="Remove link"/);
+  // A phone: one line, the number; no label field (one it came with rides
+  // along on the row).
   const phone = UI.detailEditRow({ type: 'phone' });
-  assert.match(phone, /class="soft detail-label"[^>]*placeholder="Phone"/);
+  assert.ok(!phone.includes('detail-label'));
   assert.match(phone, /<input type="text" class="soft detail-value" inputmode="tel"/);
+  assert.match(UI.detailEditRow({ type: 'phone', label: 'Venue', value: '123' }), /data-type="phone" data-label="Venue">/);
+  // No autocomplete or name of their own: the editor's noAutofill() does it.
+  for (const html of [link, phone]) assert.ok(!/ (name|autocomplete)=/.test(html), html);
   const food = UI.detailEditRow({ type: 'food' });
   assert.match(food, /class="soft detail-label"[^>]*placeholder="Food"/);
   assert.match(food, /<textarea class="soft detail-value" maxlength="500"/);

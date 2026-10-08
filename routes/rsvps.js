@@ -126,8 +126,23 @@ module.exports = function rsvpsRoutes(ctx) {
       return fail(res, 429, 'rate_limited', "that's a lot of invitations for one day -- try again tomorrow");
     }
     const people = await loadPeople(ctx.canopy, ids);
-    const skipped = ids.filter((id) => !people.has(id)).map((personId) => ({ personId, reason: 'not_found' }));
-    const results = store.invite(req.event.id, ids.filter((id) => people.has(id)), req.person.id);
+    // Someone who has opted out of this host's invitations (routes/
+    // guestMenu.js) isn't invited and no friendship is made, and the host
+    // isn't told why: they're skipped as `not_found`, the same as someone
+    // with no account, on purpose. (Someone already on the list, hosting
+    // or removed is skipped with the reason anyone would get, so the
+    // answer never stands out; nothing about them changes.)
+    const optedOut = store.optedOutOf(req.person.id, ids);
+    const skipped = [];
+    ids.forEach((personId) => {
+      if (!people.has(personId)) return skipped.push({ personId, reason: 'not_found' });
+      if (!optedOut.has(personId)) return;
+      const row = store.getRsvp(req.event.id, personId);
+      const reason = store.hostRole(req.event.id, personId) ? 'is_host'
+        : row && row.status === 'removed' ? 'removed' : row ? 'already_on_list' : 'not_found';
+      skipped.push({ personId, reason });
+    });
+    const results = store.invite(req.event.id, ids.filter((id) => people.has(id) && !optedOut.has(id)), req.person.id);
     const invited = [];
     results.forEach(({ personId, outcome }) => {
       if (outcome === 'invited') invited.push(personFrom(people, personId));

@@ -635,6 +635,11 @@ test('ui.js: the features, drawn', async (t) => {
     for (const key of ['grey', 0, 161, 359]) assert.equal(UI.keyOfSlider(UI.sliderOf(key)), key);
   });
 
+  await t.test('the editor asks browsers and password managers not to autofill', () => {
+    const form = UI.editorForm({ event: null });
+    assert.match(form, /<form class="stack editor" id="eventForm" novalidate autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">/);
+  });
+
   await t.test('the editor offers "Match photo" only once there\'s a photo whose colour is known', () => {
     const base = { id: 'AAAAAAAAAAAA', title: 'T', startsAt: '2030-01-01T20:00:00.000Z', timeZone: 'UTC', guestListVisibility: 'everyone' };
     assert.match(UI.editorForm({ event: { ...base, coverHue: 200, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match" aria-label="Match photo"/);

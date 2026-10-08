@@ -164,6 +164,15 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   assert.deepEqual(upgraded.updateEvent('AAAAAAAAAAAA', { details: [] }).details, []);
   assert.equal(upgraded.db.prepare("SELECT details FROM events WHERE id = 'AAAAAAAAAAAA'").get().details, null);
   assert.throws(() => upgraded.db.prepare("UPDATE events SET details = 'not json' WHERE id = 'AAAAAAAAAAAA'").run(), /CHECK/);
+  // Version 14: muting an event and opting out of a host's invitations;
+  // nobody has either until they choose to.
+  assert.deepEqual([...upgraded.mutedEvents(['AAAAAAAAAAAA'], C)], []);
+  upgraded.muteEvent('AAAAAAAAAAAA', C);
+  assert.deepEqual([...upgraded.mutedEvents(['AAAAAAAAAAAA'], C)], ['AAAAAAAAAAAA']);
+  assert.deepEqual(upgraded.inviteOptouts(C), []);
+  upgraded.optOutOfInvites(C, A);
+  assert.deepEqual(upgraded.inviteOptouts(C), [A]);
+  assert.throws(() => upgraded.db.prepare('INSERT INTO invite_optouts (person_id, host_id, created_at) VALUES (?, ?, 1)').run(C, C), /CHECK/);
   // And whoever was hosting at the upgrade has hosted, from when
   // they started; nobody else has, until they host.
   assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000001'), true);

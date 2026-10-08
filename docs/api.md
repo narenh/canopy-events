@@ -195,16 +195,17 @@ for none) of:
 
 | `type` | Heading when `label` is null | SF Symbol | `value` | `href` | Signed out |
 |---|---|---|---|---|---|
-| `link` | none: show `label`, or the address's host ("partiful.com") | `link` | an http(s) address | the same | shown |
+| `link` | none (one line: see below) | `link` | an http(s) address | the same | shown |
 | `info` | Info | `info.circle` | text | null | shown |
 | `dress_code` | Dress code | `tshirt` | text | null | shown |
 | `food` | Food | `fork.knife` | text | null | shown |
 | `parking` | Parking | `parkingsign` | text | null | hidden |
 | `accommodation` | Where to stay | `bed.double` | text | null | hidden |
-| `phone` | Phone | `phone` | a number, as typed | `tel:` and its digits | hidden |
+| `phone` | none (one line: see below) | `phone` | a number, as typed | `tel:` and its digits | hidden |
 
-- `label` (up to 60 characters, one line, or null) is a link's text, or
-  a heading in place of the type's own ("Potluck" for a `food`).
+- `label` (up to 60 characters, one line, or null) is a link's text, a
+  phone's label, or a heading in place of the type's own ("Potluck" for
+  a `food`).
 - Text values are plain (up to 500 characters) and keep their line
   breaks. Draw them as text; don't turn anything in them into links.
 - A link opens in the browser (the web page opens a new tab, with no
@@ -212,10 +213,24 @@ for none) of:
   `href` (always http or https) and a `phone`'s (always `tel:`).
 - Several of one type are fine (two links). Show them in the order they
   come. Show nothing for a `type` you don't know: more may come.
-- The web draws each as a row like the place's (the icon in the event's
-  accent, the heading, the value under it), after the hosts and spots
-  and before the description; signed out, with `hiddenDetails` above 0,
-  a line under them: "More details show once you sign in."
+- **How to draw them** (the web does this; match it): each is a row
+  like the place's, its icon in the event's accent, after the hosts and
+  spots and before the description.
+  - **A link is one line, with no heading**: the icon, then its text as
+    the link. With no `label`, the text is the address itself, shortened:
+    drop `http://` or `https://`, a leading `www.` and a slash at the
+    end, keep the rest, and past 48 characters cut it to 47 and an
+    ellipsis ("…"); also let the line end in an ellipsis wherever it
+    doesn't fit. The whole address is the link's title (a long-press
+    preview in the app).
+  - **A phone is one line, with no heading**: the icon, then the number as
+    the `tel:` link; with a `label`, "<label> · <number>" (the label in
+    bold, the number the link). The web's editor doesn't ask for a phone
+    label, but keeps one an app set.
+  - **The rest** are two lines: the heading (`label`, or the type's from
+    the table) in bold, then the text under it, smaller, line breaks kept.
+  - Signed out, with `hiddenDetails` above 0, a line under them: "More
+    details show once you sign in."
 
 **Setting them**: `details` on `POST` and `PATCH /events`, a list of
 `{type, label?, value}`. A `PATCH` replaces the whole list (send all of
@@ -444,10 +459,23 @@ on a card over the brightest glow stays at least 9.3:1). The web's code
 for all of this is `public/ui.js` (`themeColors`, `themeStyle`).
 
 **The accent** (the main buttons, the "how soon" pill, the photo ring,
-icons, links) is Canopy green's three, `#2ec44f` (the accent), `#03190a`
-(text and icons on it) and `#b6f5c3` (links), turned exactly like the
-background: each to OKLCH, keep L and C, hue *H + (its hue − 161)*,
-chroma lowered to fit (`turnHex` in `public/ui.js`). So:
+icons, links) is a trio for a hue *H* (`accentTrio` in `public/ui.js`):
+
+- **the accent:** OKLCH at hue *H*, chroma 0.21 (lowered to fit sRGB), at
+  the lightness *L* where hue *H* is most vivid (the L, in steps of 0.01
+  from 0.50 to 0.90, with the largest in-gamut chroma), clamped to at
+  least the lightness that keeps the dark text below at 5:1 on it (steps
+  of 0.005 from 0.55) and at most 0.80. Red's vivid lightness is low and
+  yellow's and cyan's high, so every hue gets its truest accent: red is
+  red, not coral or pink;
+- **text and icons on it:** `#03190a`'s L and C at hue *H*;
+- **links:** `#b6f5c3`'s L and C at hue *H*.
+
+Worst over the wheel: dark text on the accent 5.0:1, links on the base
+14.5:1. Canopy green itself (no `themeHue`) keeps `#2ec44f` / `#03190a` /
+`#b6f5c3` exactly. Port it line for line and test against the web's own
+output (e.g. hue 0 → `#ed458a`, 30 → `#f14634`, 250 → `#0095fe`, 300 →
+`#a264f6`).
 
 - **A coloured event** (`themeGrayscale` false): the accent is the trio
   turned to `themeHue` (or the trio as it is, for Canopy green).
@@ -458,9 +486,9 @@ chroma lowered to fit (`turnHex` in `public/ui.js`). So:
     icons on it are the grey page's base (`#0e0e0e`, 19.3:1), and links
     are white too, so set them apart from body text by weight (bold) and
     a thicker underline (the web: 700 and 2px).
-  - a hue *A* (0–359): the trio turned to *A*, the same colours a page in
-    hue *A* has, on the grey background. Worst over the wheel: dark text
-    on the accent 6.8:1, links on the grey base 14.5:1.
+  - a hue *A* (0–359): the trio for *A* (above), the same colours a page
+    in hue *A* has, on the grey background. Worst over the wheel: dark
+    text on the accent 5.0:1, links on the grey base 14.5:1.
 
   The background, the cards and the status bar stay grey either way.
 
@@ -594,6 +622,49 @@ still takes posts. 5 posts a minute, 100 a day per person.
 **Who deletes** (`DELETE /api/v1/events/{id}/wall/{entryId}`): you, your
 own posts; hosts, anything, the server's entries included. `canDelete` on
 each entry says which.
+
+## The guest menu: mute, leave, opt out
+
+A guest (invited, or with any answer, and not hosting) gets a ⋯ menu on
+the web, on their answer card's heading line. The app can offer the same
+three things. Hosts get 409 `is_host` from all of them except opting
+out; someone not on the event gets 409 `not_on_event`; someone a host
+removed gets 409 `removed`.
+
+**Mute**: `PUT /api/v1/events/{id}/mute`, undone by `DELETE` (always
+fine). `viewer.muted` says whether you have. While muted, your inbox and
+pushes skip the event's chatter (`wall_post`, `rsvp`, `cohost_added`)
+and still bring the essentials (`event_changed`, `event_cancelled`,
+`event_uncancelled`, `waitlist_promoted`, `invited`). Nothing changes on
+the guest list, and nobody else can tell. A host is never muted (if a
+muted guest is made a co-host, they hear everything a host does). Both
+answer `{event}`.
+
+**Leave**: `POST /api/v1/events/{id}/leave`, after asking ("Remove
+yourself from this event?"). It can't be undone: your invitation or
+answer is deleted (you're off the guest list and its counts, out of your
+lists and your calendar), your "going" leaves the wall, your
+notifications about the event are deleted, and so is your mute. A spot
+you held goes to the waitlist. Your posts stay. It isn't a host's
+removal: the link still works and you can answer again, as anyone
+opening it could. It answers `{event}` as you now see it (`viewer.rsvp`
+null). An answer is otherwise never taken back, so this is the way off
+an event; a co-host steps down instead (`DELETE
+.../cohosts/{personId}`).
+
+**Opt out of a host's invitations**: `PUT
+/api/v1/me/invite-optouts/{personId}`, undone by `DELETE` (both always
+fine; 409 `is_you` for yourself, 404 `person_not_found` for an id with
+no account). `GET /api/v1/me/invite-optouts` is `{hosts: [Person]}`,
+oldest first, only ever yours. From then on that person's invitations to
+you are skipped, and **deliberately, they aren't told why**: their
+`POST .../invites` answer lists you in `skipped` with `not_found`, the
+same as an id with no account (or, if you're already on that event,
+`already_on_list`, which is what anyone would get). Their invitations
+make no friendship either. It doesn't take you off any event you're on.
+The web offers one item per host of the event ("Opt out of invites from
+Ana"; "Allow invites from Ana" once you have), and lists them on the
+friends page with Undo; the app's Profile can do the same.
 
 ## Host moderation
 
@@ -888,7 +959,7 @@ expect:
 | 403 | `bad_origin` | a web page's problem; apps never see it |
 | 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_found` | the link is wrong, or it's gone (or the host made a new one) |
 | 404 | `friend_link_not_found`, `not_a_friend` | the friend link is wrong or was reset; they weren't in your list |
-| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room`, `removed`, `is_host` | redraw from the event |
+| 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room`, `removed`, `is_host`, `not_on_event` | redraw from the event |
 | 409 | `is_you`, `own_link` | adding yourself, or saying yes to your own friend link |
 | 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |
