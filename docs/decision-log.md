@@ -2033,3 +2033,16 @@ change.
   underline, and showPicker() is gone (in Chrome its pop-up also
   swallowed typing). Phones keep the words over the system wheel. ·
   Desktop shows the browser's date format (10/20/2026) while editing.
+
+## Explicit friends (in progress, feat/friends)
+
+- **(You)** Friends can be added by a personal friend link or QR, by
+  phone or Instagram lookup, and by inviting or being invited, on top
+  of shared events. **One-way, like following**: your friends are the
+  people in your list.
+- Assumed: accepting someone's friend link is mutual (sharing your link
+  is consent). It's a confirm page, so a GET never adds anyone. An
+  invite adds both ways. You can remove anyone, including shared-event
+  friends (hidden), and nobody is notified of adds or removals. Your
+  list is only shown to you. Adding by lookup needs a verified email,
+  like lookup itself.
