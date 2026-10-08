@@ -320,3 +320,44 @@ Format: decision · why · how to reverse.
 - Visual checks used a scratch fake account service with photos and
   seeded events (not committed), not the real account service. ·
   Passkeys can't be made from the test browser. · n/a
+
+## iOS foundation (feat/ui-foundation)
+
+- Swift 6 language mode is on (`SWIFT_VERSION = 6.0`), with MainActor
+  default isolation kept. The repository protocols are `Sendable` so
+  `async let` works. · You asked for the most modern Swift. ·
+  Build setting.
+- `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor` was
+  added. · Without it controls were system blue. · Build setting.
+- The "New event" tab-bar button is a normal `Tab` whose selection opens
+  the editor. · `Tab(role: .prominent)` is iOS 27-only, and
+  `tabViewBottomAccessory` isn't available on visionOS or macOS (both are
+  in the target's platforms). · ARCHITECTURE.md has the upgrade path.
+- No `#if os` in screens. Glass and iPhone-only modifiers go through
+  `Design/View+Glass.swift` and `Utilities/View+Platform.swift`. · Keeps
+  the screens readable. · n/a
+- The verify banner is a top safe-area inset on each tab root and on
+  pushed screens. · On the TabView it overlapped navigation bars. · n/a
+- Mock accounts: Maya (verified host), Sam (unverified quick account),
+  Ada (new). Any 6-digit code works. Mock photos come from pravatar.cc
+  and picsum.photos, with initials and gradient fallbacks. Dark mode is
+  forced. Debug launch arguments: `-mockAccount maya|quick|new`,
+  `-mockTab`, `-mockEvent <id>`, `-mockNewEvent YES`.
+- API fields the app assumed before the API had them: `capacity`,
+  `spotsLeft`, `plusOnesAllowed`, `coverImageUrl`, `hasHosted`, the
+  declined list, and the wall and inbox shapes. · They're listed under
+  "Mock vs real" in ARCHITECTURE.md, to reconcile once feat/features is
+  merged.
+- `CanopyEventsTests/MockFlowTests.swift` (Swift Testing, 9 tests) lives
+  outside the app folder, with **no test target yet** (adding one means
+  editing the project). · Yours to add.
+- **(You)** Sheets use the system sheet background, not the mesh; that
+  applies to all four sheets (editor, RSVP, invite friends, verify
+  email), not only the editor. Sign-in uses the Canopy logo PNG.
+- Your `CanopyEventsIcon.icon` was moved from the repo root into
+  `CanopyEvents/Events/`, so the synchronized folder builds it, and set
+  as the target's App Icon. · Files outside that folder aren't part of
+  the app. · Move it back and clear `ASSETCATALOG_COMPILER_APPICON_NAME`.
+- **The app targets iOS 26.6, so it won't install on the iOS 26.5
+  simulator** installed on this Mac (or any device on 26.0–26.5). Is
+  26.6 intended, or 26.0?
