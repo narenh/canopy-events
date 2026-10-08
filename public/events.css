@@ -326,7 +326,26 @@ a{color:var(--accent-text);}
   display:flex;flex-direction:column;container-type:inline-size;
   margin:-4px calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
 }
-.event-head > .head-text, .event-head > .details-card{margin-left:max(16px, env(safe-area-inset-left));margin-right:max(16px, env(safe-area-inset-right));width:auto;}
+.event-head > .head-text{margin-left:max(16px, env(safe-area-inset-left));margin-right:max(16px, env(safe-area-inset-right));width:auto;}
+/* The event card: the hero, the title and when on its fade, then the
+   place, the hosts and the description, all one card. The card's glass
+   and outline (.details-card::before) start --card-fade above the place
+   row and fade in going down, so the photo and the title have no edge
+   around them; the fade is the body's own, so it ends just above the
+   place row however long the title is. On a phone the whole card is edge
+   to edge, with no side lines (an inset card would put a line a few
+   pixels from the screen's edge, next to an edge-to-edge photo). */
+.event-head{position:relative;isolation:isolate;--card-fade:64px;}
+.event-head > .details-card{
+  position:relative;margin:0;padding:6px max(18px, env(safe-area-inset-right)) 22px max(18px, env(safe-area-inset-left));
+}
+.details-card::before{
+  content:"";position:absolute;z-index:-1;left:0;right:0;bottom:0;top:calc(-1 * var(--card-fade));pointer-events:none;
+  background:var(--card);border-bottom:1px solid var(--glass-edge);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%);
+  -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 var(--card-fade));
+  mask-image:linear-gradient(to bottom, transparent 0, #000 var(--card-fade));
+}
 .hero{
   position:relative;aspect-ratio:3 / 2;overflow:hidden;border-radius:0;
   -webkit-mask-image:linear-gradient(to bottom, #000 94%, transparent 100%);
@@ -637,8 +656,9 @@ select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(
   .field-row .field{flex:1;min-width:0;}
   .event-head{margin:0;}
   .event-head > .head-text{margin-left:0;margin-right:0;padding:0 24px;}
-  .event-head > .details-card{margin-left:0;margin-right:0;}
-  .hero{border-radius:20px 20px 0 0;}
+  .event-head > .details-card{padding:6px 24px 24px;}
+  .details-card::before{border:1px solid var(--glass-edge);border-top:none;border-radius:0 0 18px 18px;box-shadow:inset 0 -1px 0 rgba(255,255,255,0.08), 0 10px 30px rgba(0,0,0,0.18);}
+  .hero{border-radius:18px 18px 0 0;}
   .hero .tags{left:24px;}
   .event-row .thumb{width:168px;}
 }

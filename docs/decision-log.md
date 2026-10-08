@@ -1414,3 +1414,34 @@ Fixes for the security review's events findings (branch `fix/review`).
 - Events entries: hosting and going are confirmed; maybe and waitlisted
   are tentative; cancelled ones are kept marked cancelled for 30 days;
   declined and removed are dropped. No guest names.
+
+## Event card
+
+- **The cover, the title and when, the place, the hosts and the
+  description are one card.** The hero is the card's top; the details
+  under it lost their own `.card` and carry the glass and the outline on
+  `.details-card::before`, which starts 64px (`--card-fade`) above the
+  details and fades in over those 64px with a mask. It's measured from
+  the details themselves, so the outline is fully there just above the
+  place row (or the hosts, with no place) however long the title is.
+  There's no top border: the sides fade up into the photo. · The
+  owner's screenshot note. · Put `card` back on `details-card` in
+  `details()` (public/ui.js) and delete the `::before` rule.
+- **Phones: the whole card edge to edge**, the glass full width with no
+  side lines, only a line along its foot. · The hero was already edge to
+  edge on a phone; an inset card would either shrink the photo by 32px
+  with rounded corners or put a vertical line a few pixels from the
+  screen's edge beside an edge-to-edge photo. Edge to edge looked
+  cleaner at 375px with a bright, a dark and no cover. · Give
+  `.event-head` the gutter as margins below 700px and the `::before` a
+  full border.
+- From 700px the hero's top corners are 18px (the cards' radius, was
+  20px), and the outline has the same radius at the bottom. · One card.
+  · `.hero` in the 700px block.
+- The hero still fades into the page's base colour, not into the glass.
+  · The glass is see-through over a mesh whose glows move with the
+  scroll, so there's no one colour to fade to; the difference is a
+  slightly darker strip under the title, which reads as the photo's
+  shadow. · n/a
+- `COVER_DRAWN.hero` is unchanged (680px from 700px, 100vw on a phone):
+  the card is exactly as wide as the hero was. · n/a · public/ui.js.

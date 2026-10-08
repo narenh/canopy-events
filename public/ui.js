@@ -628,9 +628,9 @@
     return bits.join(' · ');
   }
 
-  // The event itself: the hero (its cover, or the generated picture, at
-  // 3:2, fading into the page), the title on the fade, then a card with
-  // when, where, who's hosting, the counts and the description.
+  // The event itself, as one card: the hero (its cover, or the generated
+  // picture, at 3:2, fading into the page) on top, the title and when on
+  // the fade, then where, who's hosting, spots and the description.
   function details(e, d, o, phase) {
     const signedIn = !!d.me;
     const w = whenHead(e, o.viewerZone);
@@ -644,7 +644,8 @@
     h += '<div class="head-text"><h1 class="event-title">' + esc(e.title) + '</h1>'
       + '<div class="when-big"><div class="when-date">' + esc(w.date) + '</div><div class="when-time">' + esc(w.time) + '</div>'
       + (w.zoneNote ? '<div class="zone-note">' + esc(w.zoneNote) + '</div>' : '') + '</div></div>';
-    h += '<div class="card details-card">';
+    // The rest of the card: where, who's hosting, spots, the description.
+    h += '<div class="details-card">';
     if (e.locationName || e.locationAddress || e.locationAddressHidden) {
       h += '<div class="meta where">' + ICON.where + '<div class="what">';
       if (e.locationName) h += '<span class="place">' + esc(e.locationName) + '</span>';
