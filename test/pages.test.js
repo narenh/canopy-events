@@ -138,12 +138,15 @@ test('pages', async (t) => {
     assert.ok(html.includes('The address shows once you sign in.'));
     assert.ok(html.includes('Hosted by Ana Lima'), 'hosts are public');
     for (const name of ['Ben', 'Okafor', 'Cy Park', 'Dee']) assert.ok(!html.includes(name), `no guest name: ${name}`);
-    assert.ok(html.includes('1 going · 1 maybe'), 'counts are public');
+    assert.ok(section(html, 'guests').includes('<p class="attend-sum">1 Going · 1 Maybe</p>'), 'counts are public');
     const here = encodeURIComponent(`${server.base}/e/${party.id}`);
     const rsvp = section(html, 'rsvp');
     assert.ok(rsvp.includes(`href="${server.fake.base}/?quick=1&amp;return=${here}">RSVP</a>`), rsvp);
     assert.ok(rsvp.includes(`href="${server.fake.base}/?return=${here}">I have a Canopy account, sign in</a>`));
-    assert.equal(section(html, 'guests'), null);
+    // Attending, signed out: the heading and counts, no faces, no list.
+    const attend = section(html, 'guests');
+    assert.ok(attend.includes('>Attending</h2>'));
+    assert.ok(!attend.includes('avatar-row') && !attend.includes('View all'));
     assert.equal(section(html, 'host'), null);
     assert.ok(!html.includes('id="verifyBanner"'));
     assert.match(r.text, /<meta name="robots" content="noindex, nofollow">/);
@@ -210,14 +213,16 @@ test('pages', async (t) => {
 
   await t.test('friends going, with names when the list is visible', async () => {
     const html = (await page(server, cy, `/e/${party.id}`)).body;
-    const friends = section(html, 'friends-going');
-    assert.ok(friends.includes('1 friend going') && friends.includes('Ben O'), friends);
+    // Friends come first in Attending's row (there's no separate card).
+    assert.equal(section(html, 'friends-going'), null);
+    assert.match(section(html, 'guests'), /<ul class="avatar-row" id="attendRow" style="--slots:5"><li title="Ben Okafor">/);
   });
 
   await t.test('responded-only list, not answered yet: counts, and why there are no names', async () => {
     const html = (await page(server, dee, `/e/${quiet.id}`)).body;
     const guests = section(html, 'guests');
-    assert.ok(guests.includes('1 going'));
+    assert.ok(guests.includes('1 Going · 0 Maybe'));
+    assert.ok(!guests.includes('avatar-row') && !guests.includes('View all'), 'no faces, no list');
     assert.ok(guests.includes('The host shows who&#39;s coming to people who&#39;ve answered.'));
     assert.ok(!html.includes('Ben Okafor') && !html.includes('Ben O<'), 'no names anywhere');
     assert.ok(section(html, 'rsvp').includes('You&#39;re invited. Are you going?'));
@@ -232,7 +237,8 @@ test('pages', async (t) => {
     assert.equal(section(html, 'rsvp'), null, 'hosts don\'t answer');
     const guests = section(html, 'guests');
     assert.ok(guests.includes("Invited, hasn&#39;t answered · 1") && guests.includes('Dee Ruiz'), guests);
-    assert.ok(html.includes('1 going · 1 maybe · 1 invited'));
+    assert.ok(section(html, 'guests').includes('1 Going · 1 Maybe'));
+    assert.ok(section(html, 'guests').includes('<details class="view-all" id="viewAll"><summary class="pill-btn">'), 'View all, shut');
   });
 
   await t.test('a cancelled event reads as cancelled, and takes no answers', async () => {
@@ -490,6 +496,31 @@ test('ui.js: the features, drawn', async (t) => {
     assert.match(UI.editorForm({ event: { ...base, themeGrayscale: true } }), /id="themeHue"[^>]*value="15"[^>]*aria-valuetext="No colour"/);
   });
 
+  await t.test('Attending: friends first, going before maybe, newest first, and +N for everyone else', () => {
+    const person = (n) => ({ id: 'p' + n, firstName: 'P' + n, lastName: 'X', shortName: 'P' + n, photoUrl: null });
+    // Answers oldest first, as the API lists them: 1..40 going, 41..60 maybe.
+    const guests = [];
+    for (let n = 1; n <= 60; n++) guests.push({ person: person(n), status: n <= 40 ? 'going' : 'maybe', guests: 0 });
+    const e = {
+      counts: { going: 82, maybe: 64, notGoing: 3, invited: null, waitlisted: 0, guests: { going: 5, maybe: 0, waitlisted: 0 } },
+      friendsGoing: { count: 1, people: [person(7)] }
+    };
+    const g = { guestsVisible: true, guests, nextCursor: 'more' };
+    assert.deepEqual(UI.attendPeople(e, g).slice(0, 3).map((p) => p.id), ['p7', 'p40', 'p39']);
+    assert.equal(UI.attendPeople(e, g)[40].id, 'p60', 'maybe after going');
+    const row = UI.attendRow(e, g, 6);
+    assert.equal((row.match(/<li title=/g) || []).length, 5, 'five faces and the +N in six places');
+    assert.ok(row.includes('<span>+141</span>'), 'everyone else going or maybe, people not guests: 146 - 5');
+    assert.equal(UI.attendSummary(e), '82 Going · 64 Maybe · +5 guests');
+    assert.equal(UI.attendSummary({ counts: { ...e.counts, waitlisted: 3 } }), '82 Going · 64 Maybe · 3 Waitlist · +5 guests');
+    // Few enough to fit: everyone, no +N.
+    const few = UI.attendRow({ counts: { going: 2, maybe: 1 } }, { guests: guests.slice(0, 2).concat(guests.slice(45, 46)) }, 5);
+    assert.equal((few.match(/<li title=/g) || []).length, 3);
+    assert.ok(!few.includes('more-circle'));
+    // Nobody yet: no row at all.
+    assert.equal(UI.attendRow({ counts: { going: 0, maybe: 0 } }, { guests: [] }, 5), '');
+  });
+
   await t.test('counts are people, plus the guests they bring', () => {
     const counts = { going: 4, maybe: 1, notGoing: 0, invited: 2, waitlisted: 1, guests: { going: 2, maybe: 1, waitlisted: 0 } };
     assert.equal(UI.countsLine({ counts }, false), '4 going +2 guests · 1 maybe +1 guest · 1 on the waitlist');
@@ -578,7 +609,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.equal(meta(r.text, 'og:image'), cover);
     assert.equal(meta(r.text, 'twitter:image'), cover);
     assert.equal(meta(r.text, 'twitter:card'), 'summary_large_image');
-    assert.ok(details.includes('1 going +1 guest · 1 maybe · 1 on the waitlist'), details);
+    assert.ok(section(r.body, 'guests').includes('1 Going · 1 Maybe · 1 Waitlist · +1 guest'), section(r.body, 'guests'));
     assert.ok(details.includes('Full. New answers join the waitlist.'));
     assert.ok(details.includes('Hosted by Ana Lima and Fay Tran'));
     assert.equal(section(r.body, 'wall'), null);

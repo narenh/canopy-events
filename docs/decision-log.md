@@ -965,6 +965,46 @@ waitlist, host moderation and lookup, plus one API fix, built on branch
   dragging back to 161 looks the same as null. · n/a · `SLIDER_GREY`,
   `sliderOf`, `keyOfSlider` in public/ui.js.
 
+### Attending (the owner's reference screenshot)
+
+- **The summary counts people**, "4 Going · 2 Maybe", adding "· 3
+  Waitlist" only when there is one, and the plus-ones going and maybe
+  bring after them ("· +3 guests"). · Everywhere else counts people
+  with plus-ones beside them, and "+N" on the faces is people too, so
+  the numbers agree. · `attendSummary`.
+- **"+N" is people**: everyone going or maybe (from the counts, not just
+  the 50 loaded) less the faces shown. Waitlisted and can't-go people
+  aren't in the row; they're in View all. · "Attending" means going or
+  maybe. · `attendRow`.
+- **The row's order**: friends going first (the API's friends-going
+  list), then going, then maybe, newest answer first within each. ·
+  The brief. · `attendPeople`.
+- **How many faces fit is worked out by the page**: the server draws 5
+  (a phone), and the script measures the row and redraws with as many
+  56px circles (64px from 700px) as fit at least 8px apart, the last
+  one "+N" when there are more; again on resize. A CSS grid of that many
+  columns, `space-between`, keeps them even. · Only the browser knows
+  the width. · views/event.html `fitAvatars`.
+- **"View all" is a `<details>`** whose summary is the pill, placed level
+  with the heading; it opens the whole list by answer under the row,
+  with the host's tools (Remove, the invited group, the removed with
+  Undo, Show more). The page remembers it open across redraws (after a
+  remove, say). In-page rather than a new page, so the host's tools keep
+  working as they are and nothing loads twice. · `guestsSection`,
+  `guestGroups`.
+- **The "Friends going" card is gone**: friends lead the row. When the
+  names are hidden (the responded-only rule) the section keeps the
+  heading and counts, says "2 friends going" if any, and the old reason;
+  no faces and no View all. Signed out: the heading and counts only. ·
+  The count of friends is the one thing the card said that the row
+  can't when names are hidden. · n/a
+- The details card no longer repeats the counts (Attending says them,
+  signed out too); it keeps spots left. Hosts' "N invited" is now the
+  invited group's count inside View all. · One place for counts. · n/a
+- Faces with no photo are initials on the event's brightest glow colour
+  (`--mesh-3`), so they follow the hue (and go grey). Tapping a face
+  does nothing; each has the person's name as a `title`. · n/a
+
 ## Security review (both services)
 
 The review found no critical or high issues. Fixes are in progress

@@ -604,8 +604,6 @@
       h += '<div class="hosted-by"><span class="faces">' + hosts.slice(0, 3).map((p) => avatar(p, 'small')).join('') + '</span>'
         + '<span>' + tx('event.hostedBy', { names: joinNames(hosts.map(fullName)) }) + '</span></div>';
     }
-    const counts = countsLine(e, !!(e.viewer && e.viewer.canEdit));
-    if (counts) h += '<p class="counts">' + esc(counts) + '</p>';
     const spots = spotsLine(e, phase);
     if (spots) h += '<p class="spots' + (e.spotsLeft === 0 ? ' full' : '') + '">' + esc(spots) + '</p>';
     if (e.description) h += '<div class="description">' + esc(e.description) + '</div>';
@@ -781,17 +779,58 @@
   // they're visible to this viewer, grouped by answer; otherwise counts
   // and why. Hosts get "Remove" on each guest, and the people they've
   // removed (`removed`, from ?status=removed) with "Undo".
-  function guestsSection(e, g, isHost, removed) {
-    if (!g) return '';
-    const counts = countsLine(e, isHost);
-    let h = '<section class="card" id="guests" data-section="guests">';
-    h += '<h3>' + tx('event.guestsHeading') + '</h3>';
-    if (!g.guestsVisible) {
-      if (counts) h += '<p class="counts" style="margin:0 0 10px">' + esc(counts) + '</p>';
-      h += '<p style="margin:0">' + tx('event.hiddenList') + '</p>';
-      return h + '</section>';
-    }
-    if (!g.guests.length) h += '<p style="margin:0">' + tx('event.noAnswers') + '</p>';
+  // "4 Going · 2 Maybe · 1 Waitlist · +3 guests": people, as everywhere
+  // else, with the plus-ones going and maybe bring after them. The
+  // waitlist only when there is one.
+  function attendSummary(e) {
+    const c = e.counts || {};
+    const g = c.guests || {};
+    const bits = [t('attend.going', { count: c.going || 0 }), t('attend.maybe', { count: c.maybe || 0 })];
+    if (c.waitlisted) bits.push(t('attend.waitlist', { count: c.waitlisted }));
+    const guests = (g.going || 0) + (g.maybe || 0);
+    if (guests) bits.push(plusGuests(guests));
+    return bits.join(' · ');
+  }
+
+  // Who's in the avatar row, in order: friends going first, then going,
+  // then maybe, the most recent answer first in each. The guest list
+  // comes from the API in the order people answered, oldest first.
+  function attendPeople(e, g) {
+    const seen = {};
+    const out = [];
+    const add = (p) => { if (p && !seen[p.id]) { seen[p.id] = true; out.push(p); } };
+    ((e.friendsGoing && e.friendsGoing.people) || []).forEach(add);
+    ['going', 'maybe'].forEach((status) => {
+      g.guests.filter((x) => x.status === status).slice().reverse().forEach((x) => add(x.person));
+    });
+    return out;
+  }
+
+  // How many circles fit in the row: the server draws for a phone, and
+  // the page's script works it out from the row's width (views/event.html).
+  const ATTEND_SLOTS = 5;
+
+  // One row of big round photos, never overlapping, as many as fit
+  // (`slots`), the last a "+N" for everyone else going or maybe.
+  function attendRow(e, g, slots) {
+    const c = e.counts || {};
+    const people = attendPeople(e, g);
+    const total = Math.max(people.length, (c.going || 0) + (c.maybe || 0));
+    if (!total) return '';
+    slots = Math.max(2, slots || ATTEND_SLOTS);
+    const shown = total <= slots ? people.slice(0, slots) : people.slice(0, slots - 1);
+    const rest = total - shown.length;
+    let h = '<ul class="avatar-row" id="attendRow" style="--slots:' + slots + '">';
+    h += shown.map((p) => '<li title="' + esc(fullName(p)) + '">' + avatar(p, 'big') + '</li>').join('');
+    if (rest > 0) h += '<li class="more-circle" title="' + tx('attend.more', { count: rest }) + '"><span>+' + esc(rest) + '</span></li>';
+    return h + '</ul>';
+  }
+
+  // The whole guest list, by answer, as it was before the row: behind
+  // "View all". Hosts get "Remove" on each guest, and the people they've
+  // removed (`removed`, from ?status=removed) with "Undo".
+  function guestGroups(e, g, isHost, removed) {
+    let h = '';
     const c = e.counts || {};
     GROUPS.forEach((status) => {
       const rows = g.guests.filter((x) => x.status === status);
@@ -810,6 +849,35 @@
       h += '<p class="small" style="margin:2px 0 4px">' + tx('event.removedGroupHint') + '</p>';
       h += '<ul class="people">' + removed.guests.map((x) => personRow(x.person, '',
         '<button type="button" class="small-btn secondary" data-action="undo-remove" data-person="' + esc(x.person.id) + '">Undo</button>')).join('') + '</ul></div>';
+    }
+    return h;
+  }
+
+  // Attending: the heading, the counts under it, "View all" on the right,
+  // and one row of faces. "View all" opens the whole list, by answer, with
+  // the host's tools; it stays open across redraws (d.showAll). Signed
+  // out: the counts only. Names the viewer may not see yet: the counts,
+  // how many friends are going, and why there are no faces.
+  // `g` is GET /events/{id}/guests's answer, or null signed out.
+  function guestsSection(e, g, isHost, removed, d) {
+    d = d || {};
+    const visible = !!(g && g.guestsVisible);
+    const any = visible && (g.guests.length || (isHost && removed && removed.guests && removed.guests.length));
+    let h = '<section class="card attend" id="guests" data-section="guests">';
+    h += '<div class="attend-head"><div class="attend-titles"><h2>' + tx('attend.heading') + '</h2>'
+      + '<p class="attend-sum">' + esc(attendSummary(e)) + '</p></div></div>';
+    if (!g) return h + '</section>';
+    if (!visible) {
+      const f = e.friendsGoing;
+      if (f && f.count) h += '<p class="attend-note">' + tx(f.count === 1 ? 'event.friendGoing' : 'event.friendsGoing', { count: f.count }) + '</p>';
+      return h + '<p class="attend-note" style="margin:0">' + tx('event.hiddenList') + '</p></section>';
+    }
+    const row = attendRow(e, g, d.attendSlots);
+    h += row || '<p class="attend-note" style="margin:0">' + tx('event.noAnswers') + '</p>';
+    if (any) {
+      h += '<details class="view-all" id="viewAll"' + (d.showAll ? ' open' : '') + '><summary class="pill-btn">'
+        + '<span class="when-closed">' + tx('attend.viewAll') + '</span><span class="when-open">' + tx('attend.hide') + '</span></summary>'
+        + '<div class="all-guests">' + guestGroups(e, g, isHost, removed) + '</div></details>';
     }
     h += '<div class="error" id="guestsError" role="alert"></div>';
     return h + '</section>';
@@ -903,9 +971,9 @@
     if (!d.me) h += signedOutSection(e, d, phase);
     else if (isHost) h += hostSection(e, phase, d);
     else h += rsvpSection(e, phase, d);
-    if (d.me && !isRemovedViewer(e)) {
-      h += friendsGoingSection(e) + guestsSection(e, d.guests, isHost, d.removed) + wallSection(e, d.wall, o);
-    }
+    // Attending: counts only signed out; nothing for someone removed.
+    if (!d.me) h += guestsSection(e, null, false, null, d);
+    else if (!isRemovedViewer(e)) h += guestsSection(e, d.guests, isHost, d.removed, d) + wallSection(e, d.wall, o);
     return h;
   }
 
@@ -1230,7 +1298,7 @@
   return {
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, coverField, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
     fullName, initials, avatar, personRow, coverUrl, coverArt, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
-    eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, signedOutSection, wallSection, wallEntry, wallSentence, ago,
+    eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, friendRows, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED
   };

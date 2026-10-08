@@ -154,6 +154,17 @@ const COPY = {
     notFoundHeading: 'Event not found'
   },
 
+  // ---------------- Who's coming, on an event ----------------
+  attend: {
+    heading: 'Attending',
+    going: '{count} Going',
+    maybe: '{count} Maybe',
+    waitlist: '{count} Waitlist',
+    viewAll: 'View all',
+    hide: 'Hide',
+    more: '{count} more'
+  },
+
   // ---------------- The activity wall, on an event ----------------
   wall: {
     heading: 'Wall',

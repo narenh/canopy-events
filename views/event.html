@@ -69,6 +69,30 @@ function draw(){
 // label on everything). Only redraw if this viewer's is different.
 if (data.drawnZone !== zone) draw();
 
+// Attending's row of faces: as many as fit this row's width, at least
+// MIN_GAP apart (the server drew it for a phone). Worked out again when
+// the window changes size.
+const MIN_GAP = 8;
+function fitAvatars(){
+  const row = document.getElementById('attendRow');
+  if (!row) return false;
+  const size = parseFloat(getComputedStyle(row).getPropertyValue('--av')) || 56;
+  const slots = Math.max(2, Math.floor((row.clientWidth + MIN_GAP) / (size + MIN_GAP)));
+  if (slots === data.attendSlots) return false;
+  data.attendSlots = slots;
+  return true;
+}
+if (fitAvatars()) draw();
+let resizing = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizing);
+  resizing = setTimeout(() => { if (fitAvatars()) draw(); }, 150);
+});
+// "View all" stays open (or shut) when the page is drawn again.
+document.addEventListener('toggle', (e) => {
+  if (e.target && e.target.id === 'viewAll') data.showAll = e.target.open;
+}, true);
+
 function show(id, text){
   const el = document.getElementById(id);
   if (el) el.textContent = text;

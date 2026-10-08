@@ -414,6 +414,42 @@ a{color:var(--accent-text);}
 .chip{display:inline-flex;align-items:center;gap:8px;background:var(--secondary);border:1px solid var(--line);border-radius:999px;padding:4px 14px 4px 4px;font-size:var(--fs-small);}
 .more{margin-top:14px;}
 
+/* ---------------- Attending ---------------- */
+/* The heading and its counts, "View all" level with the heading on the
+   right, then one row of big round faces, evenly spaced and never
+   overlapping (the page's script picks how many fit: --slots). */
+.attend{position:relative;}
+.attend-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-right:110px;}
+.attend-head h2{font-size:var(--fs-h2);font-weight:800;margin:0;}
+.attend-sum{font-size:var(--fs-small);color:var(--muted);margin:4px 0 0;}
+.attend-note{font-size:var(--fs-small);margin:14px 0 0;}
+.avatar-row{
+  --av:56px;
+  list-style:none;margin:18px 0 0;padding:0;display:grid;
+  grid-template-columns:repeat(var(--slots, 5), var(--av));justify-content:space-between;row-gap:0;
+}
+.avatar-row li{width:var(--av);height:var(--av);}
+.avatar.big{width:var(--av);height:var(--av);font-size:19px;background:var(--mesh-3, #145c3e);border:1px solid var(--glass-edge);}
+.more-circle{
+  display:flex;align-items:center;justify-content:center;border-radius:50%;
+  background:var(--secondary);border:1px solid var(--field-line);
+  font-size:20px;font-weight:800;color:var(--text);letter-spacing:-.01em;
+}
+/* "View all": a translucent capsule, level with the heading. It opens the
+   whole list under the row (a <details>, so it works without the script;
+   the page keeps it open across redraws). */
+.pill-btn{
+  display:inline-flex;align-items:center;justify-content:center;min-height:var(--tap);padding:0 18px;border-radius:999px;
+  background:var(--secondary);border:1px solid var(--field-line);color:var(--text);
+  font-size:var(--fs-small);font-weight:700;cursor:pointer;list-style:none;white-space:nowrap;
+}
+.pill-btn::-webkit-details-marker{display:none;}
+.pill-btn:focus-visible{outline:2px solid var(--text);outline-offset:2px;}
+.view-all > summary{position:absolute;top:var(--pad);right:20px;}
+.view-all .when-open, .view-all[open] .when-closed{display:none;}
+.view-all[open] .when-open{display:inline;}
+.all-guests{margin-top:16px;padding-top:4px;border-top:1px solid var(--line);}
+
 /* ---------------- Capacity and plus-ones ---------------- */
 .spots{font-size:var(--fs-small);color:var(--accent-text);font-weight:700;margin:8px 0 0;}
 .spots.full{color:var(--text);}
@@ -566,6 +602,7 @@ select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(
    phone edge to run to). */
 @media (min-width:700px){
   :root{--fs-title:36px;--fs-list-title:20px;--fs-when:26px;--fs-when-time:23px;}
+  .avatar-row{--av:64px;}
   body{padding-top:20px;}
   .wrap, .top, .foot{max-width:680px;}
   .field-row{display:flex;gap:14px;}
