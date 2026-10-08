@@ -142,6 +142,92 @@
     return w.date + ', ' + w.time + ' ' + zoneAbbr(startMs(e), e.timeZone);
   }
 
+  // The calendar day `ms` falls on in `zone`, as a whole number of days,
+  // so two of them subtract to "how many days apart" on that clock.
+  function dayNumber(ms, zone) {
+    const p = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dayKey(ms, zone));
+    return p ? Math.round(Date.UTC(+p[3], +p[1] - 1, +p[2]) / 86400000) : 0;
+  }
+
+  // When, as the top of the event page says it: { date, time, zoneNote }.
+  // One day: "Saturday, October 10" and "7:30 PM – 11:30 PM". Over more
+  // than one: "Fri, Oct 9 – Sun, Oct 11" and "7:30 PM – 11:00 AM".
+  function whenHead(e, viewerZone) {
+    const z = e.timeZone;
+    const s = startMs(e);
+    const end = endMs(e);
+    const thisYear = fmt(Date.now(), z, { year: 'numeric' });
+    const year = fmt(s, z, { year: 'numeric' }) !== thisYear ? 'numeric' : undefined;
+    const zoneNote = sameClock(s, z, viewerZone) ? null : t('event.zone', { city: zoneCity(z), zone: zoneAbbr(s, z) });
+    if (end != null && dayKey(end, z) !== dayKey(s, z)) {
+      const short = (ms) => fmt(ms, z, { weekday: 'short', month: 'short', day: 'numeric', year });
+      return { date: short(s) + ' – ' + short(end), time: timeOf(s, z) + ' – ' + timeOf(end, z), zoneNote };
+    }
+    return {
+      date: fmt(s, z, { weekday: 'long', month: 'long', day: 'numeric', year }),
+      time: timeOf(s, z) + (end != null ? ' – ' + timeOf(end, z) : ''),
+      zoneNote
+    };
+  }
+
+  // When, for a list row, the line above the title: "Sat, Oct 10 · 7:30
+  // PM" (with the zone's short name when it isn't the viewer's), or the
+  // days for an event over more than one: "Fri, Oct 9 – Sun, Oct 11".
+  function whenRow(e, viewerZone) {
+    const z = e.timeZone;
+    const s = startMs(e);
+    const end = endMs(e);
+    const year = fmt(s, z, { year: 'numeric' }) !== fmt(Date.now(), z, { year: 'numeric' }) ? 'numeric' : undefined;
+    const day = (ms) => fmt(ms, z, { weekday: 'short', month: 'short', day: 'numeric', year });
+    if (end != null && dayKey(end, z) !== dayKey(s, z)) return day(s) + ' – ' + day(end);
+    return day(s) + ' · ' + timeOf(s, z) + (sameClock(s, z, viewerZone) ? '' : ' ' + zoneAbbr(s, z));
+  }
+
+  // "Sun, Oct 11 · 8:30 PM" as HTML that only breaks between its pieces,
+  // never inside "8:30 PM".
+  function unbroken(line) {
+    return String(line).split(/( · | – )/).map((part, i) => (i % 2 ? esc(part) : '<span class="nw">' + esc(part) + '</span>')).join('');
+  }
+
+  // What people scan for: "Tonight", "Tomorrow", "This Saturday", "In 3
+  // weeks", "Happening now", "Ended". Days are counted on the event's own
+  // clock, from now. Empty for a cancelled event (it says so instead).
+  // The server draws it, and the browser draws it again (events.js), since
+  // a page can be opened long after it was sent.
+  function relativeWhen(e, now) {
+    now = now == null ? Date.now() : now;
+    const phase = phaseOf(e, now);
+    if (phase === 'cancelled') return '';
+    if (phase === 'now') return t('status.now');
+    if (phase === 'over') return t('status.over');
+    const z = e.timeZone;
+    const s = startMs(e);
+    const startDay = dayNumber(s, z);
+    const today = dayNumber(now, z);
+    const days = startDay - today;
+    const weekday = fmt(s, z, { weekday: 'long' });
+    // Calendar weeks, Monday first (day 0 was a Thursday): "this
+    // Saturday" is this week's, "next Tuesday" next week's.
+    const weeks = Math.floor((startDay + 3) / 7) - Math.floor((today + 3) / 7);
+    if (days <= 0) return Number(fmt(s, z, { hour: 'numeric', hourCycle: 'h23' })) >= 17 ? t('when.tonight') : t('when.today');
+    if (days === 1) return t('when.tomorrow');
+    if (weeks === 0) return t('when.thisWeekday', { day: weekday });
+    if (weeks === 1) return t('when.nextWeekday', { day: weekday });
+    if (days < 28) return t('when.inWeeks', { count: Math.max(2, Math.round(days / 7)) });
+    const months = Math.round(days / 30.4);
+    return months <= 1 ? t('when.inMonth') : t('when.inMonths', { count: months });
+  }
+
+  // The relative hint as a pill, with what the browser needs to draw it
+  // again (events.js).
+  function relativePill(e) {
+    const words = relativeWhen(e);
+    if (!words) return '';
+    const off = phaseOf(e) === 'over';
+    return '<span class="tag rel' + (off ? ' off' : '') + '" data-rel-start="' + esc(e.startsAt) + '" data-rel-end="' + esc(e.endsAt || '')
+      + '" data-rel-zone="' + esc(e.timeZone) + '" data-rel-status="' + esc(e.status) + '">' + esc(words) + '</span>';
+  }
+
   // cancelled, over, now (started, not over) or upcoming.
   function phaseOf(e, now) {
     now = now == null ? Date.now() : now;
@@ -255,13 +341,6 @@
     return e.spotsLeft === 1 ? t('event.spotLeft') : t('event.spotsLeft', { count: e.spotsLeft });
   }
 
-  function statusTags(e, phase) {
-    if (phase === 'cancelled') return '<span class="tag danger">' + tx('status.cancelled') + '</span>';
-    if (phase === 'over') return '<span class="tag off">' + tx('status.over') + '</span>';
-    if (phase === 'now') return '<span class="tag">' + tx('status.now') + '</span>';
-    return '';
-  }
-
   // "4 going +2 guests · 1 maybe": people, and the plus-ones they bring.
   function countsLine(e, isHost) {
     const c = e.counts || {};
@@ -283,14 +362,16 @@
   // when, where, who's hosting, the counts and the description.
   function details(e, d, o, phase) {
     const signedIn = !!d.me;
-    const w = when(e, o.viewerZone);
-    const tags = statusTags(e, phase);
+    const w = whenHead(e, o.viewerZone);
+    const tag = phase === 'cancelled' ? '<span class="tag danger">' + tx('status.cancelled') + '</span>' : relativePill(e);
     let h = '<section class="event-head' + (phase === 'cancelled' ? ' is-cancelled' : '') + (coverUrl(e) ? ' has-cover' : '') + '" id="details" data-section="details">';
     h += '<div class="hero">' + coverMedia(e) + '</div>';
-    h += '<div class="head-text">' + (tags ? '<div class="tags">' + tags + '</div>' : '') + '<h1 class="event-title">' + esc(e.title) + '</h1></div>';
+    // The title on the fade, then when: the two things a guest opening
+    // the link needs at once. The place comes after, in the card.
+    h += '<div class="head-text">' + (tag ? '<div class="tags">' + tag + '</div>' : '') + '<h1 class="event-title">' + esc(e.title) + '</h1>'
+      + '<div class="when-big"><div class="when-date">' + esc(w.date) + '</div><div class="when-time">' + esc(w.time) + '</div>'
+      + (w.zoneNote ? '<div class="zone-note">' + esc(w.zoneNote) + '</div>' : '') + '</div></div>';
     h += '<div class="card details-card">';
-    h += '<div class="meta when">' + ICON.when + '<div class="what">' + esc(w.date) + '<span class="sub">' + esc(w.time) + '</span>'
-      + (w.zoneNote ? '<span class="sub zone-note">' + esc(w.zoneNote) + '</span>' : '') + '</div></div>';
     if (e.locationName || e.locationAddress || e.locationAddressHidden) {
       h += '<div class="meta where">' + ICON.where + '<div class="what">';
       if (e.locationName) h += '<span class="place">' + esc(e.locationName) + '</span>';
@@ -618,21 +699,19 @@
   // An event in a list: a date tile, the title, when and where, and your
   // part in it.
   function eventRow(e, o, asCard, list) {
-    const z = e.timeZone;
-    const s = startMs(e);
     const phase = phaseOf(e);
     const viewer = e.viewer || {};
     let tag = '';
     if (phase === 'cancelled') tag = '<span class="tag danger">' + tx('status.cancelled') + '</span>';
     else if (viewer.canEdit && list !== 'hosting') tag = '<span class="tag off">' + tx(viewer.role === 'cohost' ? 'status.cohosting' : 'status.hosting') + '</span>';
     else if (viewer.rsvp && !['invited', 'removed'].includes(viewer.rsvp.status)) tag = '<span class="tag' + (viewer.rsvp.status === 'going' ? '' : ' off') + '">' + tx('status.' + viewer.rsvp.status) + '</span>';
-    const sub = [whenShort(e, o.viewerZone), e.locationName].filter(Boolean).join(' · ');
-    // The cover (or the generated picture) as a 3:2 thumbnail, with the
-    // date on it.
-    const tile = '<span class="mon">' + esc(fmt(s, z, { month: 'short' })) + '</span><span class="day">' + esc(fmt(s, z, { day: 'numeric' })) + '</span>';
+    // The cover (or the generated picture) as a 3:2 thumbnail; then when,
+    // in a bold line above the title, as calendars do; the title; where.
     return '<a class="event-row' + (asCard ? ' card' : '') + (phase === 'cancelled' ? ' is-cancelled' : '') + '" href="/e/' + esc(e.id) + '">'
-      + '<span class="thumb">' + coverMedia(e, ' loading="lazy"') + '<span class="date">' + tile + '</span></span>'
-      + '<span class="info"><span class="title">' + esc(e.title) + '</span><span class="sub">' + esc(sub) + '</span>'
+      + '<span class="thumb">' + coverMedia(e, ' loading="lazy"') + '</span>'
+      + '<span class="info"><span class="row-when">' + unbroken(whenRow(e, o.viewerZone)) + '</span>'
+      + '<span class="title">' + esc(e.title) + '</span>'
+      + (e.locationName ? '<span class="sub">' + esc(e.locationName) + '</span>' : '')
       + (tag ? '<span class="tags">' + tag + '</span>' : '') + '</span></a>';
   }
 
@@ -906,7 +985,7 @@
   }
 
   return {
-    esc, tx, txStrong, localInput, fromLocalInput, editorForm, coverField, safeUrl, fmt, when, whenShort, whenPreview, phaseOf, zoneAbbr, zoneCity, sameClock,
+    esc, tx, txStrong, localInput, fromLocalInput, editorForm, coverField, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
     fullName, initials, avatar, personRow, coverUrl, coverArt, plusGuests, spotsLine, countsLine, guestsShown,
     eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, friendRows, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,

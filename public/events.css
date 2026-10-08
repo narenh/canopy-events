@@ -203,6 +203,8 @@ button.danger, .button.danger{background:var(--card);color:var(--danger);border:
   --fs-h2:22px;
   --fs-h3:19px;
   --fs-title:32px;        /* the event's title */
+  --fs-when:24px;         /* its day and date, right under the title */
+  --fs-when-time:21px;    /* and its time */
   --fs-list-title:19px;   /* an event in a list */
   --lh:1.5;
   --lh-tight:1.2;
@@ -304,6 +306,14 @@ a{color:var(--accent-text);}
   color:var(--on-bg);text-shadow:0 2px 14px rgba(3,18,12,.85), 0 1px 2px rgba(3,18,12,.6);
 }
 .event-head.is-cancelled .event-title{text-decoration:line-through;text-decoration-thickness:3px;}
+/* When: right under the title, the second biggest thing on the page.
+   The day, then the time nearly as big, then the zone, small, only when
+   the viewer's clock reads differently. */
+.when-big{margin-top:12px;}
+.when-date{font-size:var(--fs-when);font-weight:600;line-height:1.2;color:var(--on-bg);}
+.when-time{font-size:var(--fs-when-time);font-weight:500;line-height:1.25;color:var(--on-bg);margin-top:4px;}
+.zone-note{font-size:var(--fs-small);color:var(--muted);margin-top:6px;}
+.tag.rel{font-size:14px;letter-spacing:.03em;padding:4px 10px;}
 /* The generated picture: soft glows in the event's greens. */
 .cover-art{
   display:block;background-color:var(--c1, #145c3e);
@@ -416,15 +426,13 @@ a{color:var(--accent-text);}
    title, when and where, and your part in it. */
 .event-row{display:flex;align-items:center;gap:14px;padding:12px;color:var(--text);text-decoration:none;}
 .event-row.card{padding:12px;}
-.event-row .thumb{position:relative;flex:0 0 auto;width:132px;aspect-ratio:3 / 2;border-radius:12px;overflow:hidden;border:1px solid var(--line);}
+.event-row .thumb{position:relative;flex:0 0 auto;width:116px;aspect-ratio:3 / 2;border-radius:12px;overflow:hidden;border:1px solid var(--line);}
 .event-row .thumb .cover, .event-row .thumb .cover-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
-.thumb .date{
-  position:absolute;left:6px;top:6px;min-width:40px;text-align:center;border-radius:9px;padding:3px 6px 4px;
-  background:rgba(3,18,12,.78);border:1px solid var(--line);
-}
-.thumb .mon{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent-text);line-height:1.2;}
-.thumb .day{display:block;font-size:18px;font-weight:800;line-height:1.05;color:var(--text);}
 .event-row .info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+/* When, above the title, as calendar apps do: bold, in the link colour
+   (--accent-text, 8.3:1 on a card at its worst). */
+.nw{white-space:nowrap;}
+.row-when{font-size:var(--fs-small);font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--accent-text);line-height:1.3;}
 .event-row .title{
   font-size:var(--fs-list-title);font-weight:700;line-height:1.25;overflow-wrap:anywhere;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
@@ -491,7 +499,7 @@ select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(
    side, and the hero inside the column with rounded corners (it has no
    phone edge to run to). */
 @media (min-width:700px){
-  :root{--fs-title:36px;--fs-list-title:20px;}
+  :root{--fs-title:36px;--fs-list-title:20px;--fs-when:26px;--fs-when-time:23px;}
   body{padding-top:20px;}
   .wrap, .top, .foot{max-width:680px;}
   .field-row{display:flex;gap:14px;}

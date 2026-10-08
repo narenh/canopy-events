@@ -51,6 +51,20 @@ const COPY = {
     now: 'Happening now'
   },
 
+  // ---------------- How soon, on an event and in lists ----------------
+  // Counted in days on the event's own clock. "Happening now" and
+  // "Ended" are status.now and status.over.
+  when: {
+    today: 'Today',
+    tonight: 'Tonight',
+    tomorrow: 'Tomorrow',
+    thisWeekday: 'This {day}',
+    nextWeekday: 'Next {day}',
+    inWeeks: 'In {count} weeks',
+    inMonth: 'In a month',
+    inMonths: 'In {count} months'
+  },
+
   // ---------------- An event, at /e/<id> ----------------
   event: {
     // Shown under the time when the event's time zone isn't yours.

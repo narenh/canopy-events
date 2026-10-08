@@ -25,6 +25,25 @@ function viewerZone(){
   document.cookie = 'tz=' + encodeURIComponent(zone) + '; path=/; max-age=31536000; samesite=lax';
 })();
 
+// "Tomorrow", "This Saturday": the server drew them when it sent the
+// page, which may have been a while ago (a tab left open overnight). The
+// browser says them again now, and every minute while the page is open.
+function refreshRelative(){
+  document.querySelectorAll('[data-rel-start]').forEach((el) => {
+    const e = {
+      startsAt: el.getAttribute('data-rel-start'),
+      endsAt: el.getAttribute('data-rel-end') || null,
+      timeZone: el.getAttribute('data-rel-zone'),
+      status: el.getAttribute('data-rel-status')
+    };
+    const words = UI.relativeWhen(e);
+    if (words && el.textContent !== words) el.textContent = words;
+    el.classList.toggle('off', UI.phaseOf(e) === 'over');
+  });
+}
+refreshRelative();
+setInterval(refreshRelative, 60000);
+
 // A photo that won't load (signed out, the account service only gives
 // photos to a Canopy session) becomes the person's initials.
 document.addEventListener('error', (e) => {

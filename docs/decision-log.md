@@ -806,3 +806,34 @@ waitlist, host moderation and lookup, plus one API fix, built on branch
   fix is a second file at upload (1200×630, centre crop) used only for
   `og:image`. · n/a
 
+### When, up front (the owner's second note)
+
+- **The event page says when right under the title**, on the fade: the
+  day at 24px semibold ("Tuesday, October 13"), the time under it at
+  21px ("7:30 PM – 11:30 PM"), 26px and 23px from 700px; the zone line
+  ("Times are Los Angeles time (PDT).") small under that, by the old
+  rule. The when row left the details card, which now starts with the
+  place. Signed out gets the same. · The owner's brief. · `whenHead`,
+  `details()` in public/ui.js.
+- **More than one day**: the date line is the two days, short ("Sat,
+  Oct 17 – Mon, Oct 19"), and the time line the two times ("4:30 PM –
+  11:30 AM"). Long day names for both didn't fit a phone's line. · n/a
+- **The relative hint is a pill above the title** (where the "Happening
+  now" and "Ended" tags were): Today (Tonight from 5 PM), Tomorrow, This
+  Saturday (this calendar week, Monday first), Next Tuesday (next
+  calendar week), In N weeks (under 4 weeks), In a month, In N months,
+  Happening now, Ended. Cancelled shows the Cancelled tag instead. Days
+  are counted on the event's own clock against now. The browser
+  recomputes every pill on load and each minute (`refreshRelative` in
+  public/events.js), so a page left open, or cached by a phone, says it
+  right. · "This Tuesday" six days out (next week's Tuesday) read
+  wrongly, hence calendar weeks. · `relativeWhen`.
+- **List rows lead with when**: "SUN, OCT 11 · 8:30 PM" in bold
+  uppercase in the link colour above the title, the zone's short name
+  added when it differs, the two days for a multi-day event; then the
+  title (two lines at most) and the place. The date chip that sat on
+  the thumbnail went (it said the same thing twice). The pieces never
+  break inside ("8:30 PM" stays together). · n/a · `whenRow`, `.row-when`.
+- The friends page lists people, not events, so it has nothing to date.
+  · n/a
+

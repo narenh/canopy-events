@@ -24,7 +24,7 @@ async function page(server, who, url, headers = {}) {
   assert.deepEqual(leaks, [], `contact details in ${url}`);
   // What the page shows: its body, without the scripts inlined after it
   // (whose source would match anything the renderer can draw).
-  const start = r.text.indexOf('<body');
+  const start = r.text.indexOf('<body class=');
   const end = r.text.indexOf('<script type="application/json" id="pageData">');
   r.body = start < 0 ? r.text : r.text.slice(start, end < 0 ? undefined : end);
   return r;
@@ -253,7 +253,7 @@ test('pages', async (t) => {
 
   await t.test('a past event reads as ended', async () => {
     const html = (await page(server, ben, `/e/${before.id}`)).body;
-    assert.ok(html.includes('class="tag off">Ended<'));
+    assert.match(html, /class="tag rel off"[^>]*>Ended</);
     assert.ok(html.includes('This event has ended.'));
     assert.ok(!html.includes('data-action="answer"'));
     const host = section((await page(server, ana, `/e/${before.id}`)).body, 'host');
@@ -406,6 +406,35 @@ test('pages when Canopy accounts can\'t be reached: a page that says so', async 
 test('ui.js: the features, drawn', async (t) => {
   await t.test('plus-ones allowed in the editor are the API\'s', () => {
     assert.equal(UI.MAX_GUESTS_ALLOWED, require('../lib/eventInput').MAX_GUESTS_ALLOWED);
+  });
+
+  await t.test('when, big: the day, the time, and days spanning more than one', () => {
+    const one = { startsAt: '2030-10-12T02:30:00.000Z', endsAt: '2030-10-12T06:00:00.000Z', timeZone: 'America/Los_Angeles' };
+    assert.deepEqual(UI.whenHead(one, 'America/Los_Angeles'), { date: 'Friday, October 11, 2030', time: '7:30 PM – 11:00 PM', zoneNote: null });
+    assert.equal(UI.whenHead(one, 'Europe/London').zoneNote, 'Times are Los Angeles time (PDT).');
+    const weekend = { startsAt: '2030-10-12T02:30:00.000Z', endsAt: '2030-10-13T18:00:00.000Z', timeZone: 'America/Los_Angeles' };
+    assert.deepEqual(UI.whenHead(weekend, 'America/Los_Angeles'), { date: 'Fri, Oct 11, 2030 – Sun, Oct 13, 2030', time: '7:30 PM – 11:00 AM', zoneNote: null });
+    assert.equal(UI.whenRow(one, 'America/Los_Angeles'), 'Fri, Oct 11, 2030 · 7:30 PM');
+    assert.equal(UI.whenRow(one, 'Europe/London'), 'Fri, Oct 11, 2030 · 7:30 PM PDT');
+    assert.equal(UI.whenRow(weekend, 'America/Los_Angeles'), 'Fri, Oct 11, 2030 – Sun, Oct 13, 2030');
+  });
+
+  await t.test('how soon, counted in days on the event\'s clock', () => {
+    // Now: Wednesday 2030-10-09, 10:00 in Los Angeles.
+    const now = Date.parse('2030-10-09T17:00:00.000Z');
+    const at = (iso) => UI.relativeWhen({ startsAt: iso, endsAt: null, timeZone: 'America/Los_Angeles', status: 'active' }, now);
+    assert.equal(at('2030-10-09T20:00:00.000Z'), 'Today'); // 1 PM
+    assert.equal(at('2030-10-10T02:30:00.000Z'), 'Tonight'); // 7:30 PM, still the 9th there
+    assert.equal(at('2030-10-10T19:00:00.000Z'), 'Tomorrow');
+    assert.equal(at('2030-10-12T19:00:00.000Z'), 'This Saturday');
+    assert.equal(at('2030-10-19T19:00:00.000Z'), 'Next Saturday');
+    assert.equal(at('2030-10-15T19:00:00.000Z'), 'Next Tuesday', 'six days away, but next week');
+    assert.equal(at('2030-10-30T19:00:00.000Z'), 'In 3 weeks');
+    assert.equal(at('2030-11-12T19:00:00.000Z'), 'In a month');
+    assert.equal(at('2031-01-09T19:00:00.000Z'), 'In 3 months');
+    assert.equal(at('2030-10-09T16:00:00.000Z'), 'Happening now');
+    assert.equal(at('2030-10-01T16:00:00.000Z'), 'Ended');
+    assert.equal(UI.relativeWhen({ startsAt: '2030-10-12T19:00:00.000Z', timeZone: 'UTC', status: 'cancelled' }, now), '');
   });
 
   await t.test('counts are people, plus the guests they bring', () => {
