@@ -1557,8 +1557,9 @@ Fixes for the security review's events findings (branch `fix/review`).
   apps don't wipe their events. Last-good copies are kept in memory
   only, since they contain addresses. Cancelled entries get "Cancelled:"
   in the title, for Google. Tickets' contract is in the account README.
-  One test (ETag/304) was flaky under the full suite; a fix is in
-  progress.
+  A flaky ETag/304 test was fixed in 7ad3a79: the test's fake sites
+  built their times from the clock on every request. The feed itself
+  was deterministic. 183/183, repeatedly.
 - **Merge order:** data-security, then calendar (account), then events
   calendar. Then copy the full `client/canopy-account.js` into events
   again.
