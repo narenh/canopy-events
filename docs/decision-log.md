@@ -2888,3 +2888,80 @@ settings), this is what was built. The rest:
   Suggested first (frequent, recent co-attendees); lists with "Invite
   all"; "Invite everyone from…" a past event; a selection tray with
   "Invite N"; people already on the event greyed with their status.
+
+## Test people and seeding
+
+On `feat/seed-script`. **(You)** asked for removable test people to fill
+real events with fake guests, mainly to design the friend inviter against
+a realistic friends list. The account service makes them (its README,
+"Admin: test people"); `scripts/seed-guests.js` here uses them. See
+"Seeding test guests" in the README for the steps.
+
+- **The script only ever acts as test people, through the public API,
+  with their bearer tokens.** · Nothing it makes is special: the server
+  can't tell a test guest from a real one, which is the point (the pages
+  and the inviter are tested against exactly what guests make). No
+  server change and no admin route in events. · A seeding endpoint here
+  (would need its own auth and could drift from what real answers do).
+- **Events doesn't know who's a test person.** The account service never
+  tells sites (`isTest` is the admin's alone), so nothing here can treat
+  them differently, or leak that they're fake.
+- **`friends` is its own command, usable with no events.** Every test
+  person says yes to the owner's friend link, which is both ways, so
+  they're in the owner's friends list and invite picker. · The owner's
+  own events in common with them can't be faked: that needs the owner's
+  token, which the script never has. The README says so.
+- **`--history <n>` makes past events among test people, by the only route
+  the API allows.** An event that's over takes no answers, so each starts
+  5 to 150 days ago and ends 30 minutes from now; the attendees answer;
+  then the host moves the end to 3 hours after the start, which makes it
+  over. The test people then have events in common and a "last together"
+  with each other. The move notifies the test attendees (`event_changed`)
+  and puts a `time_changed` entry on that event's wall, both only ever
+  seen by test people. At most 20 (the per-person limit on making events
+  is 20 a day). · Writing past rows into the database (not possible
+  against production, and not how the data would really arise).
+- **`--photos` fetches a JPEG per person from `i.pravatar.cc/400?u=<id>`
+  and uploads it through the account service's ordinary
+  `POST /api/native/v1/me/photo` with their token.** pravatar answers
+  `image/jpeg`, and the account service's photo cleaning accepts its files
+  (checked). The account service makes no images itself (no image library
+  there). Anyone who already has a photo is skipped; if either service
+  can't be reached, photos are skipped and the rest goes on. Photos go
+  when the accounts are deleted. `--avatar-url` points elsewhere (the
+  tests use a local stand-in).
+- **The answer mix: 60 to 85% of the test people answer each event (or
+  `--answers`); of the new answers about two thirds going, a fifth maybe,
+  the rest can't go (at least one each once there are 5).** Plus-ones for
+  about a quarter of those coming, when the event allows them; now and
+  then two. With a capacity, extra "going" answers become waitlisted on
+  their own (the server does it). · Counts by quota rather than a coin per
+  person, so a run always looks like a guest list (and the tests can rely
+  on a waitlist with a capacity of 8).
+- **Idempotent-ish: re-running tops up to the target rather than adding
+  more.** Anyone who already answered (or hosts, or was removed) is left
+  alone; at most 4 updates from test people per event, one per person,
+  no line repeated on a wall. Friend links already accepted aren't
+  accepted again (it asks first), so re-runs don't spend the friend-add
+  limit.
+- **Cleanup goes person by person: their updates first (while they can
+  still read the wall), then leave; an event they made is deleted; a
+  co-host steps down, then leaves; everyone is taken out of their friends
+  list.** Events come from `/me/events/all`, `/past` and `/declined`, plus
+  a state file next to the tokens file (`<tokens>.state.json`) listing
+  every event the script touched, because those lists miss a finished
+  event they were waitlisted for or couldn't go to. · The owner's side of
+  the friendships can't be removed without the owner's token; deleting the
+  test people in the Account Manager takes them out of the owner's list
+  (deleted accounts are left out of it).
+- **Gentle on the server: 3 requests at a time, 150 ms after each, a 429
+  waited out (its Retry-After, else 5 s doubling to 60 s, up to 8 times),
+  a dropped connection retried 3 times.** The limits that matter are per
+  address (the script is one address): wall posts 20 a minute, friend adds
+  500 a day, events made 60 a day; a run of 40 test people stays well
+  under all of them.
+- **`--dry-run` still reads** (it has to, to know what it would do) and
+  changes nothing, not even the state file.
+- **The tokens file is checked before anything happens** (each entry an
+  id and a 43-character token) and never printed. `.gitignore` keeps
+  `canopy-test-tokens*.json` out of the repo.
