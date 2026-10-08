@@ -488,8 +488,10 @@ function invLive(text){
   if (el){ el.textContent = ''; setTimeout(() => { el.textContent = text; }, 30); }
 }
 
-function addPerson(p, sub){
-  if (p && p.id && !inv.st.people[p.id]) inv.st.people[p.id] = { person: p, sub: sub || '' };
+// `sub` is the line under their name, as text; a friend's comes as HTML
+// (`subHtml`, from UI.friendSub).
+function addPerson(p, sub, subHtml){
+  if (p && p.id && !inv.st.people[p.id]) inv.st.people[p.id] = { person: p, sub: sub || '', subHtml: subHtml || '' };
 }
 
 // Every page of a list (up to `max` pages of 100): { ok, items, raw } of
@@ -530,7 +532,7 @@ async function loadInviter(){
   ]);
   // Friends first, so their line ("Invitation · 3 events together") wins
   // over "On Drag Race".
-  suggested.concat(friends.items).forEach((f) => addPerson(f.person, UI.friendSub(f, 'invite')));
+  suggested.concat(friends.items).forEach((f) => addPerson(f.person, '', UI.friendSub(f, 'invite')));
   st.suggestedIds = suggested.map((f) => f.person.id);
   st.lists = await Promise.all(lists.map(async (l) => {
     const members = await allPages('/me/lists/' + encodeURIComponent(l.id) + '/members', 'members', 10);
@@ -616,36 +618,51 @@ function fullNameOf(p){
   return [p.firstName, p.lastName].filter(Boolean).join(' ');
 }
 
-// "Invite everyone from…": that event's hosts and its going and maybe
-// guests you can see (the guest list's own rule), ticked, the ones on this
-// event already left as they are.
-async function pickFromEvent(select){
+// "Filter by past event": the list narrows to that event's hosts and its
+// going and maybe guests you can see (the guest list's own rule). Nobody
+// is ticked; the first choice ("Everyone") undoes it. Each event's people
+// are fetched once.
+async function filterByEvent(select){
   const st = inv.st;
   const id = select.value;
   const ev = st.past.find((x) => x.id === id);
-  if (!ev) return;
+  if (!ev){
+    st.from = null;
+    drawInviteResults();
+    refocusFrom();
+    return;
+  }
   select.disabled = true;
   let words = '';
   try{
-    const base = '/events/' + encodeURIComponent(id) + '/guests?status=';
-    const [going, maybe] = await Promise.all([allPages(base + 'going', 'guests', 5), allPages(base + 'maybe', 'guests', 5)]);
-    const visible = going.first && going.first.guestsVisible !== false;
-    // Its hosts too (not on its guest list, but they were there).
-    const hosts = (ev.hosts || []).map((h) => h.person);
-    const people = hosts.concat(going.items.concat(maybe.items).map((g) => g.person)).filter((p) => p.id !== data.me.id);
-    people.forEach((p) => addPerson(p, t('invite.fromEvent', { title: ev.title })));
-    const ids = people.map((p) => p.id).filter(pickableId);
-    if (!visible) words = t('invite.fromHidden', { title: ev.title });
-    else if (!ids.length) words = t('invite.fromNone', { title: ev.title });
-    else words = ids.length === 1 ? t('invite.fromPickedOne', { title: ev.title }) : t('invite.fromPicked', { count: ids.length, title: ev.title });
+    if (!inv.from) inv.from = new Map();
+    let from = inv.from.get(id);
+    if (!from){
+      const base = '/events/' + encodeURIComponent(id) + '/guests?status=';
+      const [going, maybe] = await Promise.all([allPages(base + 'going', 'guests', 5), allPages(base + 'maybe', 'guests', 5)]);
+      // Its hosts too (not on its guest list, but they were there).
+      const hosts = (ev.hosts || []).map((h) => h.person);
+      const people = hosts.concat(going.items.concat(maybe.items).map((g) => g.person)).filter((p) => p.id !== data.me.id);
+      people.forEach((p) => addPerson(p, t('invite.fromEvent', { title: ev.title })));
+      from = { id, title: ev.title, ids: [...new Set(people.map((p) => p.id))], hidden: !(going.first && going.first.guestsVisible !== false) };
+      inv.from.set(id, from);
+    }
+    st.from = from;
+    const n = from.ids.length;
+    words = from.hidden ? t('invite.fromHidden', { title: ev.title })
+      : !n ? t('invite.fromEmpty', { title: ev.title })
+      : n === 1 ? t('invite.fromShowingOne', { title: ev.title }) : t('invite.fromShowing', { count: n, title: ev.title });
     drawInviteResults();
-    setPicked(ids, true);
   }catch(e){
-    words = t('common.unreachable');
+    show('inviteNotice', t('common.unreachable'));
   }
+  refocusFrom();
+  if (words) invLive(words);
+}
+
+function refocusFrom(){
   const again = document.getElementById('inviteFrom');
-  if (again){ again.value = ''; again.focus(); }
-  show('inviteNotice', words);
+  if (again){ again.disabled = false; again.focus(); }
 }
 
 async function openInvite(opener){
@@ -653,6 +670,7 @@ async function openInvite(opener){
     inv.st = { me: data.me, people: {}, suggestedIds: [], lists: [], past: [], onList: {}, selected: [], query: '', lookup: null, loading: true };
   } else {
     inv.st.query = '';
+    inv.st.from = null;
     inv.st.lookup = null;
   }
   openSheet(UI.inviteSheet(data.event, inv.st), { opener, focus: '#inviteSearch' });
@@ -679,7 +697,7 @@ sheetBox.addEventListener('input', (e) => {
 sheetBox.addEventListener('change', (e) => {
   if (!inv.st) return;
   if (e.target.classList.contains('pick-box')) setPicked([e.target.value], e.target.checked);
-  else if (e.target.id === 'inviteFrom' && e.target.value) pickFromEvent(e.target);
+  else if (e.target.id === 'inviteFrom') filterByEvent(e.target);
 });
 // Enter in the search box doesn't send anything; it's a filter.
 sheetBox.addEventListener('keydown', (e) => {

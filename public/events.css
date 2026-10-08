@@ -1171,3 +1171,6 @@ textarea.address-input{min-height:0;margin-top:8px;}
 /* The editor's .pick outlines itself while focused inside; a list of
    people to pick from shows focus on the row or the control instead. */
 .people.pick:focus-within{outline:none;}
+/* A friend link, under a friend's name: a two-people icon. */
+.sub-icon{display:inline-flex;vertical-align:-0.22em;margin-right:.35em;}
+.sub-icon svg{width:1.2em;height:1.2em;}

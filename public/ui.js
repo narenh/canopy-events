@@ -1633,14 +1633,18 @@
     return f.eventsInCommon === 1 ? t(prefix + '.togetherOne') : t(prefix + '.together', { count: f.eventsInCommon });
   }
 
-  // How a friend is in your list, under their name: the way in ("Friend
-  // link", "Added") when there's one, then events together.
+  // How a friend is in your list, under their name, as HTML: the way in
+  // ("Added"; a friend link is a two-people icon) when there's one, then
+  // events together and when last.
   function friendSub(f, prefix, withLast) {
-    const how = f.source && f.source !== 'shared_events' ? t('friends.source.' + f.source) : '';
+    const link = f.source === 'link';
+    const how = f.source && f.source !== 'shared_events' && !link ? t('friends.source.' + f.source) : '';
     const last = withLast && f.lastTogetherAt
       ? t('friends.lastTogether', { date: new Date(f.lastTogetherAt).toLocaleDateString(LOCALE, { month: 'short', day: 'numeric', year: 'numeric' }) })
       : '';
-    return [how, together(f, prefix), last].filter(Boolean).join(' · ');
+    const words = esc([how, together(f, prefix), last].filter(Boolean).join(', '));
+    if (!link) return words;
+    return '<span class="sub-icon" role="img" aria-label="' + tx('friends.source.link') + '" title="' + tx('friends.source.link') + '">' + ICON_FRIENDS + '</span>' + words;
   }
 
   // Your friends, each with Remove (the page asks first).
@@ -1648,7 +1652,7 @@
     return friends.map((f) => {
       const p = f.person;
       return '<li class="person" data-id="' + esc(p.id) + '">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div>'
-        + '<div class="sub">' + esc(friendSub(f, 'friends', true)) + '</div></div>'
+        + '<div class="sub">' + friendSub(f, 'friends', true) + '</div></div>'
         + '<button type="button" class="small-btn secondary" data-action="remove-friend" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Remove</button></li>';
     }).join('');
   }
@@ -2039,8 +2043,10 @@
   // the event included (greyed). With a search, one list: whoever's name
   // matches, suggested first, then A to Z.
   function inviteOrder(st) {
-    const known = Object.keys(st.people).filter((id) => !(st.me && st.me.id === id));
-    const suggested = (st.suggestedIds || []).filter((id) => st.people[id] && pickable(st, id)).slice(0, SUGGESTED_SHOWN);
+    // Filtered to a past event: just its people, A to Z.
+    const from = st.from && !st.from.hidden ? st.from.ids : null;
+    const known = Object.keys(st.people).filter((id) => !(st.me && st.me.id === id) && (!from || from.includes(id)));
+    const suggested = from ? [] : (st.suggestedIds || []).filter((id) => st.people[id] && pickable(st, id)).slice(0, SUGGESTED_SHOWN);
     const q = foldName(String(st.query || '').trim());
     if (q && !lookupKindOf(st.query)) {
       const hits = known.filter((id) => foldName(fullName(st.people[id].person)).includes(q));
@@ -2069,7 +2075,7 @@
       : '<input type="checkbox" class="pick-box" value="' + esc(id) + '"' + (picked ? ' checked' : '') + ' aria-label="' + esc(name) + '">';
     return '<li class="person pick-row' + (status ? ' on-list' : '') + '">'
       + (status ? '<div class="pick-label">' : '<label class="pick-label">')
-      + avatar(p) + '<div class="who"><div class="name">' + esc(name) + '</div>' + (x.sub ? '<div class="sub">' + esc(x.sub) + '</div>' : '') + '</div>'
+      + avatar(p) + '<div class="who"><div class="name">' + esc(name) + '</div>' + (x.subHtml || x.sub ? '<div class="sub">' + (x.subHtml || esc(x.sub)) + '</div>' : '') + '</div>'
       + right + (status ? '</div>' : '</label>') + '</li>';
   }
 
@@ -2093,24 +2099,33 @@
     if (st.loading) return '<p class="small invite-line" role="status">' + tx('invite.loading') + '</p>';
     const order = inviteOrder(st);
     const searching = !!String(st.query || '').trim();
+    const from = st.from || null;
     let h = inviteLookup(st);
-    if (!searching) {
+    // "Filter by past event": the list narrowed to one of your past
+    // events' people (nobody ticked); the first choice undoes it.
+    if ((st.past || []).length) {
+      h += '<div class="invite-from"><label class="sr-only" for="inviteFrom">' + tx('invite.fromLabel') + '</label>'
+        + '<select id="inviteFrom"><option value="">' + tx(from ? 'invite.fromClear' : 'invite.fromLabel') + '</option>'
+        + st.past.map((e) => '<option value="' + esc(e.id) + '"' + (from && from.id === e.id ? ' selected' : '') + '>' + esc(e.title) + ', ' + esc(fmt(Date.parse(e.startsAt), e.timeZone, { month: 'short', day: 'numeric' })) + '</option>').join('')
+        + '</select></div>';
+    }
+    if (from && from.hidden) return h + '<p class="small invite-line">' + tx('invite.fromHidden', { title: from.title }) + '</p>';
+    if (!searching && !from) {
       const lists = (st.lists || []).filter((l) => l.memberIds.length);
       if (lists.length) {
         h += '<section class="invite-group" aria-labelledby="inviteListsHeading"><h3 class="group-heading" id="inviteListsHeading">' + tx('invite.listsHeading') + '</h3><ul class="people pick">';
         h += lists.map((l) => inviteListRow(st, l)).join('');
         h += '</ul></section>';
       }
-      if ((st.past || []).length) {
-        h += '<div class="invite-from"><label class="sr-only" for="inviteFrom">' + tx('invite.fromLabel') + '</label>'
-          + '<select id="inviteFrom"><option value="">' + tx('invite.fromLabel') + '</option>'
-          + st.past.map((e) => '<option value="' + esc(e.id) + '">' + esc(e.title) + ' · ' + esc(fmt(Date.parse(e.startsAt), e.timeZone, { month: 'short', day: 'numeric' })) + '</option>').join('')
-          + '</select></div>';
-      }
       if (order.suggested.length) {
         h += '<section class="invite-group" aria-labelledby="inviteSuggestedHeading"><h3 class="group-heading" id="inviteSuggestedHeading">' + tx('invite.suggestedHeading') + '</h3>'
           + '<ul class="people pick">' + order.suggested.map((id) => invitePickRow(st, id)).join('') + '</ul></section>';
       }
+    }
+    if (from && !searching) {
+      if (!order.everyone.length) return h + '<p class="small invite-line">' + tx('invite.fromEmpty', { title: from.title }) + '</p>';
+      return h + '<section class="invite-group" aria-labelledby="inviteEveryoneHeading"><h3 class="group-heading" id="inviteEveryoneHeading">' + tx('invite.fromEvent', { title: from.title }) + '</h3>'
+        + '<ul class="people pick">' + order.everyone.map((id) => invitePickRow(st, id)).join('') + '</ul></section>';
     }
     if (order.everyone.length) {
       const heading = searching ? t('invite.matchesHeading') : (order.suggested.length ? t('invite.everyoneElseHeading') : t('invite.everyoneHeading'));
@@ -2180,7 +2195,7 @@
       ? statusTag('hosting')
       : '<button type="button" class="small-btn" data-action="add-cohost" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Add</button>';
     return '<li class="person" data-id="' + esc(p.id) + '" data-name="' + esc(fullName(p).toLowerCase()) + '">' + avatar(p)
-      + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div><div class="sub">' + esc(friendSub(f, 'invite')) + '</div></div>' + right + '</li>';
+      + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div><div class="sub">' + friendSub(f, 'invite') + '</div></div>' + right + '</li>';
   }
 
   // The creator picks co-hosts from their friends, the same way as
@@ -2277,6 +2292,11 @@
     + '<circle cx="8.5" cy="9.5" r="1.9" fill="currentColor"/><path fill="currentColor" d="M4 18.5l5.2-5.6 3.3 3.4 3.2-4.1L20 18.5z"/></svg>';
   // A list: three lines with a dot each.
   const ICON_LIST = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9 6.5h11M9 12h11M9 17.5h11"/><circle cx="4.5" cy="6.5" r="1.5" fill="currentColor"/><circle cx="4.5" cy="12" r="1.5" fill="currentColor"/><circle cx="4.5" cy="17.5" r="1.5" fill="currentColor"/></svg>';
+  // Two people (SF Symbols' person.2): someone in front, someone behind.
+  const ICON_FRIENDS = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8.5" r="3.6" fill="currentColor"/>'
+    + '<path fill="currentColor" d="M2.2 19.6c0-3.7 3-6.3 6.8-6.3s6.8 2.6 6.8 6.3c0 .6-.4 1-1 1H3.2c-.6 0-1-.4-1-1z"/>'
+    + '<circle cx="16.8" cy="8" r="2.9" fill="currentColor"/>'
+    + '<path fill="currentColor" d="M17.6 20.6h3.4c.5 0 .9-.4.9-.9 0-3.1-2.2-5.3-5.1-5.3-.8 0-1.5.15-2.1.4 1.6 1.4 2.5 3.3 2.5 5.4 0 .1 0 .3.4.4z"/></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
 
   // A gallery: four tiles.

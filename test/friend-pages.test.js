@@ -132,9 +132,11 @@ test('friend pages', async (t) => {
   await t.test('the invite sheet offers added friends too, each saying how they are in your list', async () => {
     const friends = (await ana.get('/api/v1/me/friends?limit=100')).data.friends;
     const people = {};
-    friends.forEach((f) => { people[f.person.id] = { person: f.person, sub: UI.friendSub(f, 'invite') }; });
+    friends.forEach((f) => { people[f.person.id] = { person: f.person, subHtml: UI.friendSub(f, 'invite') }; });
     const html = UI.inviteResults({ me: { id: P.ana.id }, people, suggestedIds: [], lists: [], past: [], onList: {}, selected: [], query: '' });
     assert.match(html, /Cy Park<\/div><div class="sub">Added</);
-    assert.match(html, /Dee Ruiz<\/div><div class="sub">Friend link</);
+    // A friend link is a two-people icon, named for screen readers.
+    assert.match(html, /Dee Ruiz<\/div><div class="sub"><span class="sub-icon" role="img" aria-label="Friend link" title="Friend link"><svg/);
+    assert.ok(!/<div class="sub">[^<]*·/.test(html), 'no interpuncts in the line');
   });
 });

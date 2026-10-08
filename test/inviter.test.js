@@ -54,7 +54,7 @@ test('the invite sheet: Suggested first (eight, none on the event), then everyon
   assert.equal(UI.SUGGESTED_SHOWN, 8);
   const html = UI.inviteResults(st);
   const at = (s) => html.indexOf(s);
-  assert.ok(at('Your lists') < at('Invite everyone from') && at('Invite everyone from') < at('Suggested') && at('Suggested') < at('Everyone else'));
+  assert.ok(at('Filter by past event') < at('Your lists') && at('Your lists') < at('Suggested') && at('Suggested') < at('Everyone else'));
   // With nothing to suggest, one heading: Everyone.
   assert.ok(UI.inviteResults(state({ suggestedIds: [] })).includes('>Everyone<'));
 });
@@ -99,6 +99,27 @@ test('the invite sheet: "Invite all <n>" counts the list\'s people not on the ev
   assert.ok(!UI.inviteResults(state({ lists: [{ id: 'L2', name: 'Empty', memberIds: [] }] })).includes('Empty'));
 });
 
+test('the invite sheet: a past event filters the list to its people, ticking nobody', () => {
+  const from = { id: 'E1', title: 'Drag Race night 4', ids: ['s3', 's2', 'm1'], hidden: false };
+  const html = UI.inviteResults(state({ from }));
+  // Only its people, A to Z, under its name; no lists, no Suggested.
+  const names = [...html.matchAll(/<div class="name">([^<]+)<\/div>/g)].map((m) => m[1]);
+  assert.deepEqual(names, ['Cole Ford', 'Ines Moreau', 'Leo Alvarez']);
+  assert.ok(html.includes('id="inviteEveryoneHeading">From Drag Race night 4</h3>'));
+  assert.ok(!html.includes('Your lists') && !html.includes('Suggested'));
+  // Nothing ticked; the one already on the event greyed with their status.
+  assert.ok(!html.includes(' checked'));
+  assert.match(html, /pick-row on-list[\s\S]*Ines Moreau/);
+  // The select shows the filter, and its first choice undoes it.
+  assert.ok(html.includes('<option value="">Everyone</option><option value="E1" selected>'));
+  assert.deepEqual(UI.inviteOrder(state({ from })).suggested, []);
+  // Typing searches within it.
+  assert.deepEqual(UI.inviteOrder(state({ from, query: 'le' })).everyone, ['m1', 's3']);
+  // A hidden guest list, or nobody else.
+  assert.ok(UI.inviteResults(state({ from: { ...from, hidden: true } })).includes("Drag Race night 4&#39;s guest list isn&#39;t shown to you."));
+  assert.ok(UI.inviteResults(state({ from: { ...from, ids: [] } })).includes('No one else from Drag Race night 4.'));
+});
+
 test('the invite sheet: the tray is the picked as faces, newest first, and "Invite <n>"', () => {
   assert.match(UI.inviteTray(state()), /<button type="button" id="inviteSend" data-action="send-invites" disabled>Invite<\/button>/);
   const tray = UI.inviteTray(state({ selected: ['s1', 'm1', 's3'] }));
@@ -114,8 +135,8 @@ test('the invite sheet: a dialog with a labelled search box, the past events to 
   assert.ok(html.includes('<h2 id="inviteHeading">Invite to Drag Race night 5</h2>'));
   assert.match(html, /<input type="search" id="inviteSearch" placeholder="Name, phone or @username" aria-label="Search your friends, or find someone by phone number or Instagram" aria-controls="inviteResults"/);
   assert.ok(html.includes('data-action="close-invite" aria-label="Close"'));
-  assert.ok(html.includes('<label class="sr-only" for="inviteFrom">Invite everyone from…</label>'));
-  assert.ok(html.includes('<option value="E1">Drag Race night 4 · Sep 30</option>'), 'in the event\'s own time zone');
+  assert.ok(html.includes('<label class="sr-only" for="inviteFrom">Filter by past event</label>'));
+  assert.ok(html.includes('<option value="E1">Drag Race night 4, Sep 30</option>'), 'in the event\'s own time zone');
   assert.ok(html.includes('id="inviteLive" aria-live="polite"'));
   assert.ok(UI.inviteSheet({ title: 'T' }, { loading: true, people: {}, selected: [], onList: {} }).includes('Loading…'));
 });

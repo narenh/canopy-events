@@ -3421,3 +3421,14 @@ the inviter (in progress)" above). The rest:
   number (a friend already on it, greyed Maybe), an @username (a
   non-friend, ticked), Invite all, a past event (Picked 10), sending 21,
   and the greyed rows afterwards.
+
+## Inviter follow-ups
+
+- **(You)** A friend made by friend link shows a two-people icon (like
+  SF Symbols' person.2) under their name instead of the words "Friend
+  link", which stay as its screen-reader label. The line has no
+  interpuncts: "Invitation, 3 events together, last Oct 1".
+- **(You)** "Invite everyone from…" is now **Filter by past event**: it
+  narrows the sheet to that event's hosts and going/maybe guests and
+  ticks nobody. Its first choice ("Everyone") undoes it; typing searches
+  within it. It sits under the search box, above lists.
