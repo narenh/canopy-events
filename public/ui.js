@@ -958,8 +958,9 @@
       + '<p class="small" style="margin:0">' + tx('event.removedHint') + '</p></section>';
   }
 
-  // Signed in, not hosting: going / maybe / can't go, how many guests
-  // they're bringing (when the host allows any), and taking it back.
+  // Signed in, not hosting: going / maybe / can't go, and how many guests
+  // they're bringing (when the host allows any). An answer changes but is
+  // never taken back: "can't go" is how you leave.
   function rsvpSection(e, phase, d) {
     const rsvp = e.viewer && e.viewer.rsvp;
     const status = rsvp ? rsvp.status : null;
@@ -998,7 +999,6 @@
     }
     if (status === 'waitlisted') h += '<p class="small" style="margin:12px 0 0">' + tx('event.waitlisted') + '</p>';
     h += '<div class="under-answers"><span class="error" id="rsvpError" role="alert"></span>';
-    if (answered) h += '<button type="button" class="link-btn" data-action="withdraw">' + tx('event.withdraw') + '</button>';
     h += '</div></section>';
     return h;
   }

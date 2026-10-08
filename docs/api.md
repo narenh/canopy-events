@@ -183,23 +183,28 @@ statuses.
 ```
                  a host invites you
    (nothing) ─────────────────────────▶ invited
-       │                                  │  ▲
-       │ you answer                       │  │ you take your answer back
-       ▼                                  ▼  │ (you were invited)
-   going ◀──▶ maybe ◀──▶ not_going ───────────┘
-       │
-       └── you take your answer back (not invited) ──▶ (nothing)
+       │                                  │
+       │ you answer                       │ you answer
+       ▼                                  ▼
+   going ◀──▶ maybe ◀──▶ not_going
 
    invited ── the host takes the invitation back ──▶ (nothing)
 
    anything ── a host removes you ──▶ removed ── a host undoes it ──▶ invited
 ```
 
+**Answers can change, but never be withdrawn.** Once you've answered you
+can switch between `going`, `maybe` and `not_going` as often as you like,
+but nothing you can do takes you back to `invited` or to no answer.
+`not_going` is how you leave: you stay on the list as `not_going`
+(counted in `counts.notGoing`), any spot you held goes to the waitlist,
+and the event drops out of your calendar.
+
 - `PUT /api/v1/events/{id}/rsvp` with `{"status": "going"}` (or `maybe`,
   `not_going`) answers or changes the answer. Anyone signed in with the
   link may answer, invited or not.
-- `DELETE /api/v1/events/{id}/rsvp` takes it back: invited again if a host
-  invited you (`viewer.rsvp.invited` says so), otherwise nothing.
+- There's no `DELETE /api/v1/events/{id}/rsvp`: it's 404 `not_found`,
+  like any unknown route.
 - A host can take back an invitation (`DELETE
   /api/v1/events/{id}/invites/{personId}`) only while it has no answer.
 - **Refused with 409**: a cancelled event (`event_cancelled`), one that's
@@ -212,8 +217,8 @@ statuses.
   saved as `waitlisted`, and the answer has `"waitlisted": true`. Show
   "you're on the waitlist". See "Capacity and the waitlist".
 
-Both calls answer with the whole event, so the screen can redraw from the
-answer. `PUT` also says `waitlisted`.
+It answers with the whole event, so the screen can redraw from the
+answer, and `waitlisted`.
 
 ## Capacity and the waitlist
 
@@ -226,10 +231,9 @@ no cap).
 - Someone already going who asks for more plus-ones than there's room for
   gets **409 `no_room`** and keeps their spot as it was. Asking for one
   more shouldn't cost you the one you had.
-- **A freed spot goes to the waitlist at once**: someone taking their
-  answer back, changing to `maybe` or `not_going`, bringing fewer guests,
-  being removed or made a co-host, or the host raising or clearing the
-  capacity. The earliest waitlisted answer that fits, plus-ones included,
+- **A freed spot goes to the waitlist at once**: someone changing to
+  `maybe` or `not_going`, bringing fewer guests, being removed or made a
+  co-host, or the host raising or clearing the capacity. The earliest waitlisted answer that fits, plus-ones included,
   becomes `going`; then the next, until nothing fits. A big party that
   doesn't fit is passed over for a smaller one behind it, and stays first
   in line. The person promoted gets an `off_waitlist` entry on the wall.

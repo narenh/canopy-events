@@ -2326,3 +2326,51 @@ rest:
   were checked by hand in the browser (375 px): grey → accent 330 → Save
   stored `accentHue: 330` and drew a purple pill and button on grey;
   moving Colour to a hue hid the Accent slider and Save stored null.
+
+## No taking answers back
+
+- **An answer can change but is never withdrawn.** The owner's call,
+  like Partiful: once you've answered you can switch between going,
+  maybe and can't go, but there's no going back to no answer (or to
+  `invited`). "Can't go" is how you leave: you stay on the list as
+  `not_going` (counted in `counts.notGoing`), your spot goes to the
+  waitlist through the same `setAnswer` path as any change, your "going"
+  leaves the wall, and the event drops out of your calendar. · As
+  asked. · routes/rsvps.js, lib/store/rsvps.js.
+- **Removed:** `DELETE /api/v1/events/{id}/rsvp` and `withdrawAnswer`
+  (with its `backToInvited` statement; `remove` stays for uninviting),
+  openapi.yaml's `withdrawRsvp`, the "Take back my answer" button
+  (`event.withdraw` in public/copy.js, its markup in public/ui.js, its
+  handler in views/event.html; `answer()` there now always PUTs), and
+  the CSS that left room for it under the answer buttons. Earlier
+  entries in this log that mention withdrawing describe how it was. ·
+  n/a
+- **A DELETE to that path is 404 `not_found`**, JSON with a reason, from
+  the API's catch-all for unknown routes, not a 405. · Nothing else in
+  the API answers 405 for a known path with the wrong method; one
+  special case would be the only one. · server.js.
+- **What stays:** a host can still take back an invitation nobody has
+  answered (`DELETE .../invites/{personId}`, 409 `already_responded`
+  once answered), and remove a guest. Removing someone and then undoing
+  it still leaves them `invited` with no answer: that's the host's
+  doing, not a way for a guest to take an answer back. A host inviting
+  someone who already answered marks them invited and keeps the answer.
+- **Inbox guard test:** test/inbox-links.test.js used withdraw as the
+  one way a guest leaves the list while keeping their notifications.
+  No route does that now (removing and uninviting clear the inbox), so
+  the test checks that a can't-go guest still sees the event, then
+  deletes the row behind the API's back to keep the "no event for
+  people off the list" guard covered. · n/a
+- **Still to do elsewhere:** the iOS app's mock still has a withdraw
+  repository method to remove (`withdrawRSVP` in
+  EventsRepository.swift and MockEventsRepository+Guests.swift, and the
+  comment in MockEventRecord.swift), and its ARCHITECTURE.md mentions
+  withdrawing. · n/a
+- **Tests:** the DELETE route answers 404 for someone with an answer and
+  someone without, a removed guest included; nothing a guest can do
+  (PUT `invited`, a host inviting again, a host uninviting) gets an
+  answered guest back to invited or no answer; tests that withdrew to
+  free a spot (capacity, wall, calendar) now say can't go and check the
+  person stays on as `not_going`; the concurrency test has everyone
+  going say can't go at once; the store-level rollback test uses
+  `setAnswer(..., 'not_going')`; the event page has no withdraw button.

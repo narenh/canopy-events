@@ -196,7 +196,7 @@ test('pages', async (t) => {
     const rsvp = section(html, 'rsvp');
     assert.ok(rsvp.includes('data-status="going" aria-pressed="true"'), rsvp);
     assert.ok(rsvp.includes('data-status="maybe" aria-pressed="false"'));
-    assert.ok(rsvp.includes('Take back my answer'));
+    assert.ok(!rsvp.includes('data-action="withdraw"') && !rsvp.includes('Take back my answer'), 'an answer changes, never goes');
     assert.equal(section(html, 'host'), null, 'no host tools');
     const guests = section(html, 'guests');
     assert.ok(guests.includes('Going · 1') && guests.includes('Ben Okafor'));

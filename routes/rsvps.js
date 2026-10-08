@@ -6,9 +6,11 @@
 //   (nobody)  --a host invites-->  invited
 //   (nobody) or invited  --you answer-->  going | maybe | not_going
 //   going | maybe | not_going  --you change it-->  any other answer
-//   an answer  --you take it back-->  invited (if a host invited you),
-//                                     otherwise off the list
 //   invited  --the host takes it back-->  off the list
+//
+// An answer is never taken back: nothing a guest can do leads from an
+// answer to invited or off the list. "Can't go" is how you leave, and it
+// frees your spot like any other change.
 //
 // 'waitlisted' is a "going" past the event's capacity, made by the server
 // (lib/store/waitlist.js); a freed spot makes the earliest that fits
@@ -74,16 +76,6 @@ module.exports = function rsvpsRoutes(ctx) {
     }
     promotedAll(req.event.id, result.promoted);
     res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }), waitlisted: result.outcome === 'waitlisted' });
-  }));
-
-  // Takes your answer back: invited again if a host invited you,
-  // otherwise off the list. Nothing to take back is fine too.
-  router.delete('/events/:id/rsvp', auth.requirePerson, withEvent, handle(async (req, res) => {
-    const refusal = answerRefusal(req.event, req.role, store.getRsvp(req.event.id, req.person.id));
-    if (refusal) return refuse(res, refusal);
-    const { promoted } = store.withdrawAnswer(req.event.id, req.person.id);
-    promotedAll(req.event.id, promoted);
-    res.json({ event: await eventView(ctx, req, req.event, { friendsGoing: true }) });
   }));
 
   // The guest list, a page at a time, in the order people answered. Counts

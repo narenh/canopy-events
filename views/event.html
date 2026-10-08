@@ -173,10 +173,10 @@ async function refresh(withEvent){
 
 // An answer (with the guests it brings), or taking it back. Both answer
 // with the whole event.
-async function answer(method, body, btn){
+async function answer(body, btn){
   let words = '';
   await busy(btn, document.getElementById('rsvpError'), async () => {
-    const { res, data: d } = await api(method, eventPath() + '/rsvp', body);
+    const { res, data: d } = await api('PUT', eventPath() + '/rsvp', body);
     if (res.ok){
       data.event = d.event;
       data.pendingGuests = 0;
@@ -277,9 +277,8 @@ document.addEventListener('submit', (e) => {
 onActions({
   answer: (btn) => {
     const status = btn.getAttribute('data-status');
-    answer('PUT', { status, guests: guestsToSend(status) }, btn);
+    answer({ status, guests: guestsToSend(status) }, btn);
   },
-  withdraw: (btn) => answer('DELETE', undefined, btn),
   'host-menu': (btn) => {
     if (btn.getAttribute('aria-expanded') === 'true') closeMenu(true);
     else openMenu();

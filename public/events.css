@@ -463,9 +463,9 @@ a{color:var(--accent-text);font-weight:var(--link-weight, inherit);text-decorati
 .answers{display:flex;gap:8px;}
 .answers button{flex:1;padding:14px 6px;min-height:52px;background:var(--secondary);color:var(--text);border:1px solid var(--field-line);}
 .answers button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);border-color:var(--accent);}
-.under-answers{margin:10px 0 0;display:flex;justify-content:space-between;align-items:center;gap:10px;}
-/* Nothing to say and nothing to take back: no gap under the buttons. */
-.under-answers:not(:has(button)):has(.error:empty){display:none;}
+.under-answers{margin:10px 0 0;}
+/* Nothing to say: no gap under the buttons. */
+.under-answers:has(.error:empty){display:none;}
 
 /* Signed out: the big "RSVP", and the smaller way in for people who
    already have an account. */

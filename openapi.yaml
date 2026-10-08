@@ -230,6 +230,11 @@ paths:
         spots for the waitlist. `guests` (plus-
         ones) is up to the event's `guestsAllowed` (400 `too_many_guests`),
         0 if left out, and always 0 for `not_going`.
+
+        An answer can change but is never taken back: there's no way from
+        an answer to `invited` or to no answer (no `DELETE` here; it's 404
+        `not_found` like any unknown route). `not_going` is how you leave;
+        it keeps you on the list as `not_going`.
       requestBody:
         required: true
         content:
@@ -251,27 +256,6 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RsvpResult' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/SignInRequired' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/EventNotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '503': { $ref: '#/components/responses/Unavailable' }
-    delete:
-      tags: [Guests]
-      operationId: withdrawRsvp
-      summary: Take your answer back
-      description: |
-        If a host invited you, you're left invited with no answer;
-        otherwise you're off the list. With no answer to take back it does
-        nothing and still answers 200. The same 409s as answering. A spot
-        you free goes to the waitlist.
-      responses:
-        '200':
-          description: The event after; `viewer.rsvp` is `invited` or null.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EventEnvelope' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }

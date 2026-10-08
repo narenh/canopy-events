@@ -49,7 +49,7 @@ test('cookie and bearer', async (t) => {
     assert.equal(odd.status, 200);
     const ben = client(server, 'ben', { mode: 'bearer' });
     assert.equal((await ben.put(`/api/v1/events/${e.id}/rsvp`, { status: 'going' })).status, 200);
-    assert.equal((await ben.del(`/api/v1/events/${e.id}/rsvp`)).status, 200);
+    assert.equal((await ben.put(`/api/v1/events/${e.id}/rsvp`, { status: 'not_going' })).status, 200);
   });
 
   await t.test('a bearer request is judged by its token alone, never the cookie', async () => {

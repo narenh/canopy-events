@@ -15,7 +15,7 @@ test('answers, invitations and the guest list', async (t) => {
   const rsvp = (who, id, status, extra) => who.put(`/api/v1/events/${id}/rsvp`, { status, ...extra });
   const guestIds = (r) => r.data.guests.map((g) => g.person.id);
 
-  await t.test('answering, changing it, and taking it back', async () => {
+  await t.test("answering and changing it; an answer can't be taken back", async () => {
     const e = await makeEvent(ana);
     let r = await rsvp(ben, e.id, 'going');
     assert.equal(r.status, 200, r.text);
@@ -29,12 +29,25 @@ test('answers, invitations and the guest list', async (t) => {
     assert.equal(r.data.event.counts.notGoing, 1);
     // Unverified people answer too.
     assert.equal((await rsvp(una, e.id, 'going')).status, 200);
-    r = await ben.del(`/api/v1/events/${e.id}/rsvp`);
-    assert.equal(r.status, 200);
-    assert.equal(r.data.event.viewer.rsvp, null, 'not invited, so off the list');
-    assert.equal(r.data.event.counts.notGoing, 0);
-    // Nothing to take back is fine.
-    assert.equal((await ben.del(`/api/v1/events/${e.id}/rsvp`)).status, 200);
+    // There's no taking it back: the route is gone, like any unknown one
+    // (JSON with a reason), for an answer and for none alike.
+    for (const who of [ben, cy]) {
+      r = await who.del(`/api/v1/events/${e.id}/rsvp`);
+      assert.equal(r.status, 404, r.text);
+      assert.equal(r.data.reason, 'not_found');
+    }
+    // Nor any other way back to no answer: "invited" isn't an answer, and
+    // a host inviting him now changes nothing about it.
+    assert.equal((await rsvp(ben, e.id, 'invited')).data.reason, 'bad_status');
+    const invited = await ana.post(`/api/v1/events/${e.id}/invites`, { personIds: [P.ben.id] });
+    assert.deepEqual(invited.data.skipped, [{ personId: P.ben.id, reason: 'already_on_list' }]);
+    assert.equal((await ana.del(`/api/v1/events/${e.id}/invites/${P.ben.id}`)).data.reason, 'already_responded');
+    r = await ben.get(`/api/v1/events/${e.id}`);
+    assert.equal(r.data.event.viewer.rsvp.status, 'not_going');
+    assert.equal(r.data.event.counts.notGoing, 1);
+    assert.equal((await ben.get('/api/v1/me/events/invitations')).data.events.some((x) => x.id === e.id), false);
+    // He can still change it, to any answer.
+    assert.equal((await rsvp(ben, e.id, 'going')).data.event.viewer.rsvp.status, 'going');
   });
 
   await t.test('what an answer has to be', async () => {
@@ -66,7 +79,7 @@ test('answers, invitations and the guest list', async (t) => {
     let r = await rsvp(cy, e.id, 'going');
     assert.equal(r.status, 409);
     assert.equal(r.data.reason, 'event_cancelled');
-    assert.equal((await ben.del(`/api/v1/events/${e.id}/rsvp`)).data.reason, 'event_cancelled');
+    assert.equal((await rsvp(ben, e.id, 'maybe')).data.reason, 'event_cancelled', 'no changing it either');
     assert.equal((await ana.post(`/api/v1/events/${e.id}/invites`, { personIds: [P.cy.id] })).data.reason, 'event_cancelled');
 
     const old = await makeEvent(ana);
@@ -104,10 +117,10 @@ test('answers, invitations and the guest list', async (t) => {
     await rsvp(ben, e.id, 'maybe');
     assert.equal((await ben.get('/api/v1/me/events/invitations')).data.events.length, 0);
     assert.ok((await ben.get('/api/v1/me/events/upcoming')).data.events.some((x) => x.id === e.id));
-    // Takes it back: invited again, not gone.
-    const back = await ben.del(`/api/v1/events/${e.id}/rsvp`);
-    assert.equal(back.data.event.viewer.rsvp.status, 'invited');
-    assert.equal((await ben.get('/api/v1/me/events/invitations')).data.events.length, 1);
+    // There's no going back to invited: the answer stays an answer.
+    assert.equal((await ben.del(`/api/v1/events/${e.id}/rsvp`)).status, 404);
+    assert.equal((await ben.get(`/api/v1/events/${e.id}`)).data.event.viewer.rsvp.status, 'maybe');
+    assert.equal((await ben.get('/api/v1/me/events/invitations')).data.events.length, 0);
 
     // Uninviting: only while there's no answer.
     await rsvp(ben, e.id, 'going');
@@ -118,11 +131,12 @@ test('answers, invitations and the guest list', async (t) => {
     assert.equal((await una.get(`/api/v1/events/${e.id}`)).data.event.viewer.rsvp, null);
     assert.equal((await ana.del(`/api/v1/events/${e.id}/invites/${P.una.id}`)).data.reason, 'not_invited');
 
-    // Someone who answered first and is invited after stays invited when
-    // they take the answer back.
+    // Someone who answered first and is invited after keeps the answer,
+    // and is invited as well.
     await rsvp(cy, e.id, 'going');
     await ana.post(`/api/v1/events/${e.id}/invites`, { personIds: [P.cy.id] });
-    assert.equal((await cy.del(`/api/v1/events/${e.id}/rsvp`)).data.event.viewer.rsvp.status, 'invited');
+    const cys = (await cy.get(`/api/v1/events/${e.id}`)).data.event.viewer.rsvp;
+    assert.deepEqual([cys.status, cys.invited], ['going', true]);
   });
 
   await t.test('invitations: only hosts, and only lists of person ids', async () => {
@@ -194,9 +208,11 @@ test('answers, invitations and the guest list', async (t) => {
     assert.deepEqual(guestIds(after), [P.ben.id, P.fay.id]);
     // Hosts always.
     assert.equal((await ana.get(`/api/v1/events/${e.id}/guests`)).data.guests.length, 3);
-    // Taking the answer back takes the names away again.
-    await fay.del(`/api/v1/events/${e.id}/rsvp`);
-    assert.equal((await fay.get(`/api/v1/events/${e.id}/guests`)).data.guestsVisible, false);
+    // And it stays an answer: changing it keeps the names, and there's no
+    // taking it back to lose them.
+    await rsvp(fay, e.id, 'maybe');
+    assert.equal((await fay.del(`/api/v1/events/${e.id}/rsvp`)).status, 404);
+    assert.equal((await fay.get(`/api/v1/events/${e.id}/guests`)).data.guestsVisible, true);
   });
 
   await t.test('the guest list, a page at a time', async () => {

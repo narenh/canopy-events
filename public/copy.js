@@ -87,7 +87,6 @@ const COPY = {
     invitedQuestion: 'RSVP',
     yourAnswer: 'You said: {status}.',
     waitlisted: "You're on the waitlist. You'll move up if a spot opens.",
-    withdraw: 'Take back my answer',
     // The host's area.
     hostingHeading: "You're hosting",
     copied: 'Link copied.',

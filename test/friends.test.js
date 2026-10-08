@@ -65,7 +65,7 @@ test('friends', async (t) => {
   await t.test('once the party starts, Fay and Ana are friends', async () => {
     started(party.id);
     assert.ok((await friendsOf(fay)).friends.some((x) => x.person.id === P.ana.id));
-    // And taking back the going takes it back.
+    // And going changing to maybe undoes it.
     server.db().prepare("UPDATE rsvps SET status = 'maybe' WHERE event_id = ? AND person_id = ?").run(party.id, P.fay.id);
     assert.deepEqual((await friendsOf(fay)).friends, []);
   });

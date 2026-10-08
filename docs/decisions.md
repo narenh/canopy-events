@@ -113,7 +113,10 @@ details to anyone else:
   - "friends going" called out on an event page;
   - `GET /api/v1/me/friends`, with how many events in common.
 - **RSVP**: `going`, `maybe`, `not_going`. Invited with no answer yet is
-  `invited`. A waitlist adds `waitlisted` (see capacity).
+  `invited`. A waitlist adds `waitlisted` (see capacity). Like Partiful,
+  once you've answered you can switch between the three, but you can
+  **never take the answer back** to no answer; "can't go" is how you
+  leave. See the decision log's "No taking answers back".
 - **Guest list visibility is the host's choice, per event**: `everyone`
   (anyone with the link sees names and photos) or `responded` (you see
   the names once you've RSVP'd; before that, only counts). Hosts always

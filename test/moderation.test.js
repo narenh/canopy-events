@@ -62,10 +62,12 @@ test('removing a guest', async (t) => {
     });
     assert.deepEqual((await cy.get(`/api/v1/events/${e.id}/guests`)).data.guests, []);
     assert.equal((await cy.get(`/api/v1/events/${e.id}/wall`)).data.wallVisible, false);
-    for (const r of [await rsvp(cy, e.id, 'going'), await rsvp(cy, e.id, 'not_going'), await cy.del(`/api/v1/events/${e.id}/rsvp`)]) {
+    for (const r of [await rsvp(cy, e.id, 'going'), await rsvp(cy, e.id, 'maybe'), await rsvp(cy, e.id, 'not_going')]) {
       assert.equal(r.status, 409);
       assert.equal(r.data.reason, 'removed');
     }
+    // And there's no taking an answer back to try instead.
+    assert.equal((await cy.del(`/api/v1/events/${e.id}/rsvp`)).status, 404);
     assert.equal((await cy.post(`/api/v1/events/${e.id}/wall`, { text: 'hi' })).data.reason, 'answer_first');
     const inv = await ana.post(`/api/v1/events/${e.id}/invites`, { personIds: [P.cy.id] });
     assert.deepEqual(inv.data.skipped, [{ personId: P.cy.id, reason: 'removed' }]);

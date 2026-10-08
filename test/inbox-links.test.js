@@ -66,16 +66,22 @@ test('a new link stays out of the inbox of people taken off the event', async (t
   await t.test('the inbox shows the event only to people still on it', async () => {
     const e = await makeEvent(ana, { title: 'Second' });
     const E = `/api/v1/events/${e.id}`;
-    // Una answers without an invitation, hears about a host's post, then
-    // takes her answer back: she's off the list, so her inbox keeps the
-    // line but not the event.
+    // Una answers without an invitation and hears about a host's post.
     assert.equal((await una.put(`${E}/rsvp`, { status: 'maybe' })).status, 200);
     assert.equal((await ana.post(`${E}/wall`, { text: 'Bring snacks' })).status, 201);
     const posts = async () => (await una.get('/api/v1/me/notifications?limit=100')).data.notifications
       .filter((n) => n.type === 'wall_post' && n.details.text === 'Bring snacks');
     let [n] = await posts();
     assert.equal(n.event.id, e.id);
-    assert.equal((await una.del(`${E}/rsvp`)).status, 200);
+    // Can't go is still an answer: she's on the list, and it's still there.
+    assert.equal((await una.put(`${E}/rsvp`, { status: 'not_going' })).status, 200);
+    [n] = await posts();
+    assert.equal(n.event.id, e.id);
+    // No route takes a guest off the list and leaves their inbox any more
+    // (there's no taking an answer back; removing and uninviting clear
+    // it), so her row goes behind the API's back: her inbox keeps the line
+    // but not the event.
+    server.db().prepare('DELETE FROM rsvps WHERE event_id = ? AND person_id = ?').run(e.id, P.una.id);
     [n] = await posts();
     assert.ok(n, 'the notification stays');
     assert.equal(n.event, null, 'without the event');
