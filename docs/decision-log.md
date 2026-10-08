@@ -2871,3 +2871,20 @@ settings), this is what was built. The rest:
 - **(You)** The background picker is one grid with no title headings
   (each tile's screen-reader label still names its title). TMDB's credit
   appears only at the foot of the picker, not on the home page.
+
+## Lists and the inviter (in progress, feat/lists-inviter)
+
+- **(You)** "Lists", not groups. Lists are owned by a person and private,
+  and people join one themselves by a link or QR code. Weekly Drag Race:
+  newcomers join the list at the event and get invited to the next one.
+- Assumed: only the owner sees members. Joining asks first ("Join
+  Naren's Drag Race? Naren will be able to invite you to events").
+  Attaching a list to an event invites its members, and anyone who joins
+  later is auto-invited to that list's upcoming attached events. Guests
+  not on the list see "Get invited next time: Join <list>". Hosts get
+  "Show list QR" in their ⋯ menu.
+- **(You)** The inviter, all approved: an invite sheet over the event
+  page; one search field that also does phone/Instagram lookup;
+  Suggested first (frequent, recent co-attendees); lists with "Invite
+  all"; "Invite everyone from…" a past event; a selection tray with
+  "Invite N"; people already on the event greyed with their status.
