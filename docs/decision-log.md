@@ -2034,6 +2034,26 @@ change.
   swallowed typing). Phones keep the words over the system wheel. ·
   Desktop shows the browser's date format (10/20/2026) while editing.
 
+## Explicit friends (in progress, feat/friends)
+
+- **(You)** Friends can be added by a personal friend link or QR, by
+  phone or Instagram lookup, and by inviting or being invited, on top
+  of shared events. **One-way, like following**: your friends are the
+  people in your list.
+- Assumed: accepting someone's friend link is mutual (sharing your link
+  is consent). It's a confirm page, so a GET never adds anyone. An
+  invite adds both ways. You can remove anyone, including shared-event
+  friends (hidden), and nobody is notified of adds or removals. Your
+  list is only shown to you. Adding by lookup needs a verified email,
+  like lookup itself.
+- **(You)** Calendar feed: events you're invited to show as
+  "[INVITED] <title>" (tentative) when an option is on, which it is by
+  default. Answering updates the same entry: going → confirmed with the
+  plain title; maybe → tentative; can't go, uninvited or removed →
+  dropped. The setting is stored in events (`calendarInvites`), toggled
+  from a Calendar card on the events home page and in the app's
+  Profile. Queued after explicit friends, so the two schema steps don't
+  collide.
 ## Explicit friends
 
 On `feat/friends`. **(You)** decided the ways in (a friend link / QR
