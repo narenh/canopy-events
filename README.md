@@ -204,9 +204,9 @@ aren't port-specific, so signing in on one signs you in on both.
    CANOPY_ACCOUNT_URL=http://localhost:3000 CANOPY_ACCOUNT_KEY=<the key> PORT=3001 npm start
    ```
 
-   (or put those in a `.env` you load yourself; `.env.example` lists
-   them all). Without `CANOPY_ACCOUNT_URL` and `CANOPY_ACCOUNT_KEY` the
-   server stops at startup and says so.
+   Or copy `.env.example` to `.env`, fill it in, and run `node
+   --env-file=.env server.js`. Without `CANOPY_ACCOUNT_URL` and
+   `CANOPY_ACCOUNT_KEY` the server stops at startup and says so.
 4. Open `http://localhost:3001/docs` for the API. With the cookie from
    signing in at `:3000`, the API answers as you; `docs/api.md` has curl
    examples with a bearer token.
