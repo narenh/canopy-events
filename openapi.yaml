@@ -134,6 +134,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/EventNotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
     patch:
@@ -518,6 +519,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -578,6 +580,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/EventNotFound' }
@@ -656,6 +659,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/EventNotFound' }
@@ -890,6 +894,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UnreadCount' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
@@ -1033,7 +1038,9 @@ components:
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
         `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`,
         `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
-        `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`.
+        `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`; and
+        `bad_request` on any route for a request that can't be read at
+        all (a URL whose `%` escapes don't decode, say).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

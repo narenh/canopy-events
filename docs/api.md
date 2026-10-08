@@ -538,7 +538,7 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit` | fix the request; most are form errors to show |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |

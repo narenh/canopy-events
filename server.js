@@ -153,6 +153,19 @@ app.use((err, req, res, next) => {
     console.error(`[canopy-events] ${err.message}`);
     return fail(res, 503, err.reason, err.expose);
   }
+  // Any other error Express or its parsers mark as the request's fault (a
+  // 4xx in err.status): a URL whose %-escapes don't decode, say
+  // (/api/v1/events/%). That's the caller's mistake, not a 500. Our own
+  // sentence, never err.message, which can quote internals.
+  const status = err && (err.status || err.statusCode);
+  if (Number.isInteger(status) && status >= 400 && status < 500 && !res.headersSent) {
+    if (req.path.startsWith('/api/')) {
+      return fail(res, status, status === 413 ? 'too_large' : 'bad_request', "that request couldn't be read");
+    }
+    // A page: the "nothing here" page for a browser (routes/pages.js), or
+    // plain text for anything else.
+    return pages.notFound(req, res, () => res.status(status).type('text/plain').send("That request couldn't be read.\n"));
+  }
   console.error(err);
   if (res.headersSent) return next(err);
   fail(res, 500, 'server_error', 'something went wrong on our side');

@@ -759,3 +759,27 @@ Fixes for the security review's events findings (branch `fix/review`).
   non-removed row on; the wall, the guest list, cover URLs, friends and
   `/me` don't carry an event's id; every `/events/{id}` route needs the
   current link to begin with. · n/a
+- **A cover upload that isn't a well-formed form is 400 `bad_image`**,
+  not a new `bad_upload`. · multer's own errors (wrong field, too many
+  files) were already `bad_image`, and apps branch on one reason for "the
+  upload was wrong". Every non-multer error from the form parser counts,
+  since memory storage can't fail on our side. · routes/covers.js
+  `receive`.
+- **The error handler honours a 4xx `err.status`**: under `/api/` it's
+  that status with reason `bad_request` (`too_large` for 413) and our own
+  sentence, never `err.message`. `bad_request` is new, and `400` was
+  added to the five operations that didn't list one (`getEvent`,
+  `deleteWallEntry`, `deleteCover`, `newLink`,
+  `markAllNotificationsRead`), which a broken `%` escape or a broken
+  JSON body can reach. · Express already marks undecodable params as
+  400; a 404 would have needed no spec change but would claim the URL
+  was well-formed. · server.js.
+- **For a page URL** (`/e/%E0%A4%A`) it's the existing "nothing here"
+  page (`pages.notFound`, a 404) for a browser asking for HTML, and a
+  plain-text 400 otherwise. No view or `lib/render.js` change. · The
+  page machinery offers only that page; a 404 says the same thing to a
+  person. · server.js.
+- A GET to a path that only has other methods (`GET
+  /api/v1/events/{id}/wall/%zz`) is a 400 too, not the catch-all 404,
+  because Express decodes params while matching a path before checking
+  the method. · Harmless, and not worth a special case. · n/a

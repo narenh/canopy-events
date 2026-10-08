@@ -52,13 +52,17 @@ module.exports = function coverRoutes(ctx) {
     next();
   }
 
-  // multer, with its errors in the API's shape.
+  // multer, with its errors in the API's shape. Besides its own
+  // MulterErrors, the form parser underneath (busboy) throws plain Errors
+  // for a body that isn't a well-formed form ("Unexpected end of form" for
+  // one cut off, a bad part header...). Memory storage can't fail on our
+  // side, so every one of them is the upload's fault: a 400, not a 500.
   function receive(req, res, next) {
     upload(req, res, (err) => {
       if (!err) return next();
       if (err.code === 'LIMIT_FILE_SIZE') return fail(res, 413, 'too_large', `a cover is at most ${MAX_UPLOAD / 1024 / 1024} MB`);
       if (err instanceof multer.MulterError) return fail(res, 400, 'bad_image', "send one image, in a form field named 'cover'");
-      next(err);
+      fail(res, 400, 'bad_image', "that upload was cut off or isn't a form: send one image, in a form field named 'cover'");
     });
   }
 
