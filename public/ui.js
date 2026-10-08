@@ -661,11 +661,46 @@
     return themeCache[key];
   }
 
+  // A grey event's accent (the buttons, the "how soon" pill, the photo
+  // ring, icons, links): never grey, which reads as disabled. WHITE (the
+  // event's accentHue null, the default) or a hue (accentHue). Every other
+  // event's accent follows its own colour, and its accent key is null.
+  const WHITE = 'white';
+  function accentKeyOf(e) {
+    if (!e || !e.themeGrayscale) return null;
+    return isHue(e.accentHue) ? e.accentHue : WHITE;
+  }
+
+  // The accent trio for a grey page: [accent, text on it, links].
+  //
+  //   - WHITE: #ffffff, with the grey page's own dark base on it, and
+  //     white links (made bolder and more underlined than body text,
+  //     which is white too: --link-weight and --link-underline).
+  //     Dark base on white 19.3:1; white links on the base 19.3:1, on a
+  //     card 17.6:1.
+  //   - a hue: Canopy green's three turned to it, exactly as a page in
+  //     that hue has them (turnHex), on the grey background. Worst over
+  //     the whole wheel: dark text on the accent 6.8:1, links on the grey
+  //     base 14.5:1 (13.2:1 on a card), the accent against the base 7.0:1.
+  function accentColors(accent) {
+    if (isHue(accent)) return [turnHex('#2ec44f', accent), turnHex('#03190a', accent), turnHex('#b6f5c3', accent)];
+    return ['#ffffff', hexOf(themeColors(GREY).base), '#ffffff'];
+  }
+
   // The CSS custom properties that turn a page to a theme key (events.css
   // reads them, falling back to Canopy green), or '' for the default.
-  function themeStyle(key) {
+  // `accent` matters only for grey (accentKeyOf: WHITE, the default, or a
+  // hue). One function for the server's first paint and the editor's
+  // live preview.
+  function themeStyle(key, accent) {
     const c = themeColors(key);
     if (!c) return '';
+    let accents = [turnHex('#2ec44f', key), turnHex('#03190a', key), turnHex('#b6f5c3', key)];
+    let links = '';
+    if (key === GREY) {
+      accents = accentColors(isHue(accent) ? accent : WHITE);
+      if (!isHue(accent)) links = ';--link-weight:700;--link-underline:2px';
+    }
     return '--theme-base:' + hexOf(c.base) + ';--theme-base-rgb:' + c.base.join(',')
       + ';--theme-1:' + hexOf(c.m1) + ';--theme-2:' + hexOf(c.m2) + ';--theme-3:' + hexOf(c.m3)
       + ';--theme-4:' + hexOf(c.m4) + ';--theme-5:' + hexOf(c.m5)
@@ -673,10 +708,11 @@
       // The accent follows the event too (the photo ring, the "how soon"
       // pill, icons, links, the main button), so the whole page is one
       // colour: Canopy green's accents turned like everything else,
-      // lightness kept. Checked at every hue and grey: dark text on the
-      // accent at least 6.8:1, links on the base at least 14.5:1, the
-      // accent against the base at least 7:1.
-      + ';--accent:' + turnHex('#2ec44f', key) + ';--on-accent:' + turnHex('#03190a', key) + ';--accent-text:' + turnHex('#b6f5c3', key);
+      // lightness kept. Checked at every hue: dark text on the accent at
+      // least 6.8:1, links on the base at least 14.5:1, the accent against
+      // the base at least 7:1. A grey page's accent is its own choice
+      // (accentColors above).
+      + ';--accent:' + accents[0] + ';--on-accent:' + accents[1] + ';--accent-text:' + accents[2] + links;
   }
 
   // The hue that matches a photo: the server works it out when a cover is
@@ -744,11 +780,22 @@
     return v < SLIDER_GREY ? GREY : Math.min(359, v - SLIDER_GREY);
   }
 
+  // The editor's Accent slider (shown only while the colour is grey): the
+  // first SLIDER_GREY steps are white, then the hues 0 to 359, like the
+  // colour slider. An accent key (WHITE or a hue) to a position and back.
+  function accentSliderOf(accent) {
+    return isHue(accent) ? SLIDER_GREY + accent : Math.floor(SLIDER_GREY / 2);
+  }
+  function accentOfSlider(value) {
+    const v = Math.round(Number(value));
+    return v < SLIDER_GREY ? WHITE : Math.min(359, v - SLIDER_GREY);
+  }
+
   // The slider's track: grey, then the wheel at a lightness you can see
   // on a dark page (the mesh itself is too dark to tell hues apart on a
   // thin track). The grey is exactly as light as the colours.
-  function hueTrack() {
-    const grey = hexOf(oklchToRgb(0.68, 0, 0));
+  function hueTrack(start) {
+    const grey = start || hexOf(oklchToRgb(0.68, 0, 0));
     const at = (v) => (v / SLIDER_MAX * 100).toFixed(2) + '%';
     const stops = [grey + ' 0%', grey + ' ' + at(SLIDER_GREY - 1)];
     for (let h = 0; h <= 360; h += 30) stops.push(hexOf(oklchToRgb(0.68, 0.15, h % 360)) + ' ' + at(SLIDER_GREY + Math.min(h, 359)));
@@ -1697,7 +1744,22 @@
       + '<div class="hue-row"><input type="range" id="themeHue" min="0" max="' + SLIDER_MAX + '" step="1" value="' + sliderOf(key) + '"'
       + ' style="--track:' + esc(hueTrack()) + '" aria-valuetext="' + esc(themeWords(key)) + '">'
       + '<button type="button" class="secondary small-btn" id="themeMatch" data-action="theme-match"' + (hasMatch ? '' : ' hidden') + '>' + tx('editor.themeMatch') + '</button></div>'
-      + '<div class="error" id="themeHueError" role="alert"></div></div>';
+      + '<div class="error" id="themeHueError" role="alert"></div></div>'
+      + accentField(e, key);
+  }
+
+  // The second slider, for a grey event's accent: white, then the wheel.
+  // Only while the colour is grey (the editor shows and hides it).
+  function accentField(e, key) {
+    const accent = accentKeyOf(e) || WHITE;
+    return '<div class="field" id="accentField"' + (key === GREY ? '' : ' hidden') + '><label class="field-label" for="accentHue">' + tx('editor.accent') + '</label>'
+      + '<div class="hue-row"><input type="range" id="accentHue" min="0" max="' + SLIDER_MAX + '" step="1" value="' + accentSliderOf(accent) + '"'
+      + ' style="--track:' + esc(hueTrack('#ffffff')) + '" aria-valuetext="' + esc(accentWords(accent)) + '"></div>'
+      + '<div class="error" id="accentHueError" role="alert"></div></div>';
+  }
+
+  function accentWords(accent) {
+    return isHue(accent) ? accent + '°' : t('editor.accentWhite');
   }
 
   // The slider's position, said aloud.
@@ -1769,7 +1831,7 @@
   return {
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
-    fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
+    fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED

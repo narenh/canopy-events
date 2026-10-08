@@ -2264,3 +2264,65 @@ and that answering updates the same entry. The rest:
   black-and-white event's buttons don't look disabled. The Accent slider
   runs from white through the hue wheel. Existing grey events switch from
   today's grey accent to white.
+
+## Accent for grey events
+
+On `feat/grey-accent`. **(You)** decided a grey event's host picks the
+accent, and (the refinement) that it's never grey: white or a hue. The
+rest:
+
+- **Schema version 12: `events.accent_hue`, 0-359 or NULL (white), with
+  a CHECK that it's NULL unless `theme_grayscale = 1`.** · The database
+  holds the "only for grey" rule too, so no path can leave a coloured
+  event with an accent. · A step that rebuilds events without it (SQLite
+  can't drop a column with a CHECK in place).
+- **API: `accentHue` on every event (and every `EventSummary` in
+  notifications), signed out too; null on any event that isn't grey.** A
+  non-null value with `themeGrayscale` false (as it is, or as this change
+  makes it) is 400 `accent_needs_grayscale`; anything but null or a whole
+  0-359 is 400 `bad_accent_hue`; `themeGrayscale: false` clears it in the
+  same write; `null` is accepted anywhere. · As asked; null is harmless
+  everywhere, which keeps the editor's Save simple. · lib/eventInput.js.
+- **Existing grey events are white now, not grey** (`accentHue` null on
+  every one of them). · The refinement says so; grey buttons look
+  disabled. · `accentColors` in public/ui.js.
+- **White's colours: accent `#ffffff`; text and icons on it the grey
+  page's base `#0e0e0e` (19.3:1); links `#ffffff` (19.3:1 on the base,
+  17.6:1 on a card), set apart from white body text by weight 700 and a
+  2px underline** (`--link-weight`, `--link-underline`, set by
+  `themeStyle` only then; events.css reads them on `a`). The pill and the
+  primary buttons are white with dark text, the photo ring white. · The
+  page's own base rather than black so the dark matches the page. · Plain
+  black (`#000000`) as `--on-accent`.
+- **A hue accent on grey is the same trio a page in that hue has
+  (`turnHex` of `#2ec44f`/`#03190a`/`#b6f5c3`).** Re-run over the whole
+  wheel against the grey background: dark text on the accent ≥ 6.8:1,
+  links on the grey base ≥ 14.5:1 (≥ 13.2:1 on a card), the accent
+  against the base ≥ 7.0:1. test/accent.test.js checks these floors, and
+  that no hue accent comes out grey. · n/a
+- **One function for both sides: `themeStyle(key, accent)`**, the
+  accent key from `accentKeyOf(event)` (null for a coloured event, WHITE
+  or a hue for grey); `render.page` takes `accent` next to `theme`. The
+  browser bar (`theme-color`) stays the grey base. · n/a
+- **Editor: an "Accent" slider under Colour, shown only while Colour is
+  in its grey stretch; its first 30 steps are white (its track starts
+  white), then the wheel, like the colour slider.** Live preview of
+  buttons, pill and ring as it moves. Leaving grey hides it and Save
+  sends `accentHue: null`; "Match photo" moves only the colour. No help
+  text. · As asked. · views/editor.html, `UI.accentField`.
+- **Fixed on the way: "Match photo" showed with no photo to match.** The
+  button's `hidden` was beaten by `button{display:block}`; `.hue-row
+  [hidden]` (and `.field[hidden]`) are `display:none` now. · events.css.
+- **docs/api.md's "Event colours" said buttons and links stay Canopy
+  green at every hue**, which hasn't been true since the accent started
+  following the event's colour; it now says how the app derives every
+  accent (coloured, white, hue-on-grey). · n/a
+- **Tests:** the API rules and the CHECK (test/accent.test.js), the page's
+  CSS variables for a grey page with a hue and with white and its
+  `theme-color` staying grey, the editor's slider shown for grey and
+  hidden otherwise (as the server draws it), the contrast floors, the
+  version 12 step (test/db.test.js); the spec and leak walker run on every
+  answer. Showing and hiding as the slider moves, and Save sending null,
+  were checked by hand in the browser (375 px): grey → accent 330 → Save
+  stored `accentHue: 330` and drew a purple pill and button on grey;
+  moving Colour to a hue hid the Accent slider and Save stored null.

@@ -38,7 +38,7 @@ const FIELD_FOR = {
   bad_title: 'title', bad_description: 'description', bad_starts_at: 'startsAt', bad_ends_at: 'endsAt',
   ends_before_start: 'endsAt', bad_time_zone: 'timeZone', bad_location_name: 'locationName',
   bad_location_address: 'locationAddress', bad_guest_list_visibility: 'guestListVisibility',
-  bad_guests_allowed: 'guestsAllowed', bad_capacity: 'capacity', bad_theme_hue: 'themeHue', bad_theme_grayscale: 'themeHue'
+  bad_guests_allowed: 'guestsAllowed', bad_capacity: 'capacity', bad_theme_hue: 'themeHue', bad_theme_grayscale: 'themeHue', bad_accent_hue: 'accentHue', accent_needs_grayscale: 'accentHue'
 };
 // What to focus for a field whose control has another id.
 const FOCUS_FOR = { startsAt: 'startDate', timeZone: 'zoneBtn', guestListVisibility: null };
@@ -387,20 +387,29 @@ async function saveCover(id){
 // coverHue, or, for a photo just picked, the same hueFromPixels the
 // server runs, on the preview. Picking a photo jumps the slider there.
 // Nothing is saved until Save.
+//
+// While the colour is grey, a second slider, Accent, picks the buttons',
+// pill's and ring's colour: white, then round the wheel. It's hidden
+// otherwise, and leaving grey sends accentHue null (the server clears it
+// then anyway). "Match photo" only moves the colour.
 const hueInput = $('themeHue');
+const accentInput = $('accentHue');
 let themeKey = editing ? UI.themeKeyOf(data.event) : null;
+let accentKey = (editing && UI.accentKeyOf(data.event)) || UI.WHITE;
 // The colour that matches the photo now shown: a theme key, or null for
 // none known.
 let photoKey = !editing ? null : (data.event.coverGrayscale ? 'grey' : (UI.isHue(data.event.coverHue) ? data.event.coverHue : null));
 
 function showTheme(){
-  const style = UI.themeStyle(themeKey);
+  const style = UI.themeStyle(themeKey, accentKey);
   if (style) document.documentElement.setAttribute('style', style);
   else document.documentElement.removeAttribute('style');
   const meta = document.querySelector('meta[name="theme-color"]');
   const c = UI.themeColors(themeKey);
   if (meta) meta.setAttribute('content', c ? '#' + c.base.map((x) => x.toString(16).padStart(2, '0')).join('') : '#03120c');
   hueInput.setAttribute('aria-valuetext', UI.themeWords(themeKey));
+  $('accentField').hidden = themeKey !== 'grey';
+  accentInput.setAttribute('aria-valuetext', UI.accentWords(accentKey));
   $('themeMatch').hidden = photoKey === null;
   // The generated picture, in the same colour.
   $('coverArt').setAttribute('style', UI.coverArtStyle(Object.assign({ id: editing ? data.event.id : '' }, themeFields())));
@@ -414,6 +423,11 @@ function setTheme(key){
 
 hueInput.addEventListener('input', () => {
   themeKey = UI.keyOfSlider(hueInput.value);
+  showTheme();
+});
+
+accentInput.addEventListener('input', () => {
+  accentKey = UI.accentOfSlider(accentInput.value);
   showTheme();
 });
 
@@ -450,10 +464,11 @@ onActions({
   'theme-match': () => { if (photoKey !== null) setTheme(photoKey); }
 });
 
-// What Save sends: grey, a hue, or Canopy green.
+// What Save sends: grey (with its accent: a hue, or null for white), a
+// hue, or Canopy green.
 function themeFields(){
-  if (themeKey === 'grey') return { themeGrayscale: true, themeHue: null };
-  return { themeGrayscale: false, themeHue: UI.isHue(themeKey) ? themeKey : null };
+  if (themeKey === 'grey') return { themeGrayscale: true, themeHue: null, accentHue: UI.isHue(accentKey) ? accentKey : null };
+  return { themeGrayscale: false, themeHue: UI.isHue(themeKey) ? themeKey : null, accentHue: null };
 }
 
 // A new event whose cover didn't upload lands here, to try again.

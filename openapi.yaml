@@ -1384,7 +1384,7 @@ components:
         `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`,
         `bad_location_name`, `bad_location_address`, `bad_status`,
         `bad_guests`, `too_many_guests`, `bad_guests_allowed`,
-        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`,
+        `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`,
         `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
         `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_settings`,
         `unknown_setting`, `bad_calendar_invites`; and
@@ -1720,7 +1720,7 @@ components:
       additionalProperties: false
       required: [id, url, title, description, startsAt, endsAt, timeZone, locationName, locationAddress,
                  locationAddressHidden, guestListVisibility, guestsAllowed, capacity, spotsLeft, coverImageUrl,
-                 coverImages, themeHue, themeGrayscale, coverHue, coverGrayscale, status, cancelledAt, createdAt, updatedAt,
+                 coverImages, themeHue, themeGrayscale, accentHue, coverHue, coverGrayscale, status, cancelledAt, createdAt, updatedAt,
                  hosts, counts, viewer]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
@@ -1777,6 +1777,16 @@ components:
         themeGrayscale:
           type: boolean
           description: True when the host chose no colour at all; the page is neutral grey, whatever `themeHue` says.
+        accentHue:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 359
+          description: |
+            A grey event's accent (buttons, the "how soon" pill, the photo
+            ring, icons, links): a hue in degrees, or null for **white**.
+            Always null while `themeGrayscale` is false, when the accent
+            follows `themeHue` as it always has. docs/api.md ("Event
+            colours") says how to draw it.
         coverHue:
           type: [integer, 'null']
           minimum: 0
@@ -1827,6 +1837,7 @@ components:
           - { width: 1600, height: 1200, url: 'https://events.canopysf.com/covers/Qm7Zc2pR9xTa.jpg?v=1759870000000' }
         themeHue: null
         themeGrayscale: false
+        accentHue: null
         coverHue: 24
         coverGrayscale: false
         status: active
@@ -2000,6 +2011,7 @@ components:
         capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, default: null, description: 'The most people going, plus-ones included. null: no cap.' }
         themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, default: null, description: "The page's colour as a hue in degrees; null is Canopy green (see Event)." }
         themeGrayscale: { type: boolean, default: false, description: "True for no colour at all: a neutral grey page (themeHue is ignored)." }
+        accentHue: { type: [integer, 'null'], minimum: 0, maximum: 359, default: null, description: "A grey event's accent hue; null is white. A hue with themeGrayscale false is 400 accent_needs_grayscale." }
 
     EventPatch:
       description: Any of the fields of EventInput, plus status. Only what's sent changes.
@@ -2016,7 +2028,8 @@ components:
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, description: Lowering it keeps answers that bring more (see guestsOverLimit). }
         capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: "null clears it. Raising it promotes from the waitlist; lowering it bumps nobody." }
         themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: "Any host, co-hosts too. null goes back to Canopy green." }
-        themeGrayscale: { type: boolean, description: "true for a grey page; false to use themeHue again." }
+        themeGrayscale: { type: boolean, description: "true for a grey page; false to use themeHue again (which also clears accentHue)." }
+        accentHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: "A grey event's accent hue, null for white. Refused (400 accent_needs_grayscale) unless the event is, or this change makes it, grey." }
         status: { type: string, enum: [active, cancelled], description: 'cancelled cancels it; active takes that back. The creator only.' }
 
     RsvpInput:
@@ -2172,6 +2185,7 @@ components:
           coverImages: []
           themeHue: 300
           themeGrayscale: false
+          accentHue: null
         details: { status: going }
         count: 4
 
@@ -2190,7 +2204,7 @@ components:
       description: An event as a notification mentions it. Open it by `id` for the rest.
       type: object
       additionalProperties: false
-      required: [id, url, title, startsAt, timeZone, status, coverImageUrl, coverImages, themeHue, themeGrayscale]
+      required: [id, url, title, startsAt, timeZone, status, coverImageUrl, coverImages, themeHue, themeGrayscale, accentHue]
       properties:
         id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
         url: { type: string, format: uri }
@@ -2205,6 +2219,7 @@ components:
           description: Every size of the cover (see Event).
         themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: The event's colour (see Event). }
         themeGrayscale: { type: boolean, description: No colour at all (see Event). }
+        accentHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: "A grey event's accent hue; null is white (see Event)." }
 
     NotificationList:
       type: object

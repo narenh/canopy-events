@@ -149,6 +149,12 @@ test('a version 1 file, as first shipped, is brought up to the same shape as a n
   assert.deepEqual(upgraded.updateSettings(A, { calendarInvites: false }), { calendarInvites: false });
   assert.deepEqual(upgraded.settingsOf(A), { calendarInvites: false });
   assert.throws(() => upgraded.db.prepare("UPDATE person_settings SET calendar_invites = 2").run(), /CHECK/);
+  // Version 12: a grey event's accent, white (null) for every event from
+  // before, and only on a grey one.
+  assert.equal(upgraded.getEvent('AAAAAAAAAAAA').accentHue, null);
+  assert.equal(upgraded.updateEvent('AAAAAAAAAAAA', { themeGrayscale: true, accentHue: 200 }).accentHue, 200);
+  assert.throws(() => upgraded.updateEvent('AAAAAAAAAAAA', { themeGrayscale: false }), /CHECK/);
+  assert.equal(upgraded.updateEvent('AAAAAAAAAAAA', { themeGrayscale: false, accentHue: null }).accentHue, null);
   // And whoever was hosting at the upgrade has hosted, from when
   // they started; nobody else has, until they host.
   assert.equal(upgraded.hasHosted('00000000-0000-4000-8000-000000000001'), true);

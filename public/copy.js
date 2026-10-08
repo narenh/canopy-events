@@ -295,6 +295,9 @@ const COPY = {
     themeDefault: 'Canopy green',
     themeGrey: 'No colour',
     themeMatch: 'Match photo',
+    // A grey event's accent: white, or a hue.
+    accent: 'Accent',
+    accentWhite: 'White',
     // Unverified people get this instead of the form.
     verifyHeading: 'Confirm your email first',
     verifyHint: 'To make events, confirm your email. It takes a minute: we email you a code.',

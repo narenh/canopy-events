@@ -370,10 +370,37 @@ exactly", and 161 comes out within 2/255 of it.
 
 Because only the hue turns, every hue is as dark as the green, so white
 and light text keep their contrast over it (round the whole wheel, white
-on a card over the brightest glow stays at least 9.3:1). Buttons, links
-and grey text stay Canopy green (`#2ec44f` with `#03190a` on it, links
-`#b6f5c3`) at every hue, and on grey. The web's code for all of this is
-`public/ui.js` (`themeColors`).
+on a card over the brightest glow stays at least 9.3:1). The web's code
+for all of this is `public/ui.js` (`themeColors`, `themeStyle`).
+
+**The accent** (the main buttons, the "how soon" pill, the photo ring,
+icons, links) is Canopy green's three, `#2ec44f` (the accent), `#03190a`
+(text and icons on it) and `#b6f5c3` (links), turned exactly like the
+background: each to OKLCH, keep L and C, hue *H + (its hue − 161)*,
+chroma lowered to fit (`turnHex` in `public/ui.js`). So:
+
+- **A coloured event** (`themeGrayscale` false): the accent is the trio
+  turned to `themeHue` (or the trio as it is, for Canopy green).
+  `accentHue` is always null on these.
+- **A grey event** (`themeGrayscale` true): the accent is never grey
+  (grey buttons look disabled). It's `accentHue`:
+  - `null` (the default): **white**. The accent is `#ffffff`, text and
+    icons on it are the grey page's base (`#0e0e0e`, 19.3:1), and links
+    are white too, so set them apart from body text by weight (bold) and
+    a thicker underline (the web: 700 and 2px).
+  - a hue *A* (0–359): the trio turned to *A*, the same colours a page in
+    hue *A* has, on the grey background. Worst over the wheel: dark text
+    on the accent 6.8:1, links on the grey base 14.5:1.
+
+  The background, the cards and the status bar stay grey either way.
+
+Any host sets `accentHue` on `POST /events` or `PATCH /events/{id}`:
+400 `bad_accent_hue` for anything but null or a whole 0–359, 400
+`accent_needs_grayscale` for a hue on an event that isn't (and isn't
+being made) grey. Setting `themeGrayscale` to false clears `accentHue` in
+the same change; turning grey on again starts from white. The web's
+editor shows a second slider, **Accent** (white at its left end, then the
+wheel), only while the colour slider is in its grey stretch.
 
 ## Plus-ones
 
@@ -759,7 +786,7 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`, `bad_image`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |
