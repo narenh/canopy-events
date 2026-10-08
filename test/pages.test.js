@@ -63,7 +63,8 @@ test('ui.js: the browser and server renderer', async (t) => {
     assert.equal(w.zoneNote, null);
     // Phoenix doesn't change its clocks: the same as LA in July.
     assert.equal(UI.when(e, 'America/Phoenix').zoneNote, null);
-    assert.equal(UI.when(e, 'Europe/London').zoneNote, 'Times are Los Angeles time (PDT).');
+    // The zone by its friendly name, as everywhere on the event page.
+    assert.equal(UI.when(e, 'Europe/London').zoneNote, 'Times are in Pacific Time.');
     // Unknown viewer (the server's first paint): always labelled.
     assert.ok(UI.when(e, null).zoneNote);
     assert.equal(UI.whenPreview(e), 'Wednesday, July 3, 2030, 7:30 PM – 10:00 PM PDT');
@@ -271,7 +272,7 @@ test('pages', async (t) => {
     assert.ok(!la.body.includes('zone-note'));
     assert.equal(pageData(la.text).drawnZone, 'America/Los_Angeles');
     const london = (await page(server, ben, `/e/${party.id}`, { Cookie: `canopy_session=${P.ben.token}; tz=Europe/London` })).body;
-    assert.match(london, /Times are Los Angeles time \(P[SD]T\)\./);
+    assert.ok(london.includes('Times are in Pacific Time.'), london);
     const nonsense = (await page(server, ben, `/e/${party.id}`, { Cookie: `canopy_session=${P.ben.token}; tz=Not%2FAZone` })).text;
     assert.equal(pageData(nonsense).drawnZone, null);
   });
@@ -321,18 +322,54 @@ test('pages', async (t) => {
     const quick = await page(server, una, '/new');
     assert.equal(quick.status, 403);
     assert.ok(quick.body.includes('Confirm your email first') && !quick.body.includes('id="eventForm"'));
-    const fresh = await page(server, ana, '/new');
+    // From a Pacific browser (its tz cookie).
+    const pacific = { Cookie: `canopy_session=${P.ana.token}; tz=America/Los_Angeles` };
+    const fresh = await page(server, ana, '/new', pacific);
     assert.equal(fresh.status, 200);
-    for (const id of ['title', 'description', 'startsAt', 'endsAt', 'timeZone', 'locationName', 'locationAddress']) {
+    for (const id of ['title', 'description', 'startDate', 'startTime', 'endsAt', 'timeZone', 'locationName', 'locationAddress', 'guestsAllowed', 'capacity', 'themeHue']) {
       assert.ok(fresh.body.includes(`id="${id}"`), id);
     }
-    assert.ok(fresh.body.includes('Everyone with the link sees who is coming.'));
-    assert.ok(fresh.body.includes("People see who is coming once they&#39;ve answered."));
+    // It looks like the event: the card, its hero (no cover: the
+    // generated picture), and the title typed where the title goes.
+    assert.match(fresh.body, /<section class="event-head editor-head" id="details"><div class="hero" id="coverHero"><span class="cover-art" id="coverArt" style="--c0:#[0-9a-f]{6};/);
+    assert.match(fresh.body, /<div class="head-text">[\s\S]*<textarea id="title" class="event-title title-input" rows="1" maxlength="120" required placeholder="Event title"><\/textarea>/);
+    assert.match(fresh.body, /<div class="when-big when-edit"><div class="when-date"><label class="pick empty" id="startDatePick">/);
+    // On the hero: the upload button, labelled for a screen reader; no
+    // remove without a cover.
+    assert.match(fresh.body, /<div class="hero-tools"><label class="hero-btn file-btn" title="Add cover photo"><svg[^>]*>[\s\S]*?<input type="file" id="coverFile" [^>]*aria-label="Add cover photo">/);
+    assert.match(fresh.body, /<button type="button" class="hero-btn" id="coverRemove" data-action="remove-cover" aria-label="Remove cover photo" title="Remove cover photo" hidden>/);
+    // No help text: nothing explains a field. The only sentences in the
+    // form are the two status lines, hidden until needed.
+    const form = fresh.body.slice(fresh.body.indexOf('<form class="stack editor"'), fresh.body.indexOf('</form>'));
+    assert.deepEqual(form.match(/<p class="[^"]*"/g), ['<p class="hero-note hidden"', '<p class="zone-none hidden"']);
+    assert.ok(!/field-hint|legend/.test(form));
+    for (const gone of ['Shown at the top of the event', 'Only people who are signed in see the address', 'You always see everyone', 'The most people going', 'Slide to colour']) {
+      assert.ok(!fresh.body.includes(gone), gone);
+    }
+    assert.ok(form.includes('>Everyone with the link<') && form.includes('>Only people who&#39;ve answered<'));
+    assert.ok(form.includes('placeholder="Address (only signed-in guests see it)"'));
+    // The time zone: its friendly name, small, with "Change" and its menu
+    // (the six zones near Pacific, Pacific ticked and marked as yours,
+    // then the rest). The value sent is the IANA id.
+    assert.ok(form.includes('<span class="zone-name" id="zoneName">Pacific Time</span>'));
+    assert.match(form, /<button type="button" class="chip-btn" id="zoneBtn" data-action="zone-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="zoneMenu" aria-label="Change time zone">Change<\/button>/);
+    assert.match(form, /<div class="menu zone-menu" id="zoneMenu" role="menu" aria-label="Time zone" hidden>/);
+    const menu = form.slice(form.indexOf('id="zoneMenu"'), form.indexOf('</div>', form.indexOf('id="zoneMenu"')));
+    assert.deepEqual([...menu.matchAll(/data-zone="([^"]+)"/g)].map((m) => m[1]),
+      ['Pacific/Honolulu', 'America/Anchorage', 'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York']);
+    assert.match(menu, /role="menuitemradio" tabindex="-1" class="menu-item zone-item" aria-checked="true" data-action="pick-zone" data-zone="America\/Los_Angeles">.*?Pacific Time<span class="zone-yours">Your time zone<\/span>/);
+    assert.equal((menu.match(/aria-checked="true"/g) || []).length, 1);
+    assert.ok(menu.includes('data-action="zone-search">Other time zones…</button>'));
+    assert.ok(form.includes('<input type="hidden" id="timeZone" value="America/Los_Angeles">'));
+    assert.match(form, /<div class="zone-panel" id="zonePanel" role="dialog" aria-modal="true" aria-label="Time zone" hidden>/);
     const edit = await page(server, ana, `/e/${party.id}/edit`);
     assert.equal(edit.status, 200);
-    assert.ok(edit.body.includes('value="Rooftop dinner"'));
-    assert.ok(edit.body.includes(`value="${UI.localInput(party.startsAt, party.timeZone)}"`));
-    assert.ok(edit.body.includes('<option value="America/Los_Angeles" selected>'));
+    assert.ok(edit.body.includes('placeholder="Event title">Rooftop dinner</textarea>'));
+    const local = UI.localInput(party.startsAt, party.timeZone);
+    assert.ok(edit.body.includes(`<input type="date" id="startDate" value="${local.slice(0, 10)}" aria-label="Date">`));
+    assert.ok(edit.body.includes(`<input type="time" id="startTime" value="${local.slice(11)}" aria-label="Start time">`));
+    assert.ok(edit.body.includes(`id="startDateText" aria-hidden="true">${UI.dayWords(local.slice(0, 10))}</span>`));
+    assert.ok(edit.body.includes('<input type="hidden" id="timeZone" value="America/Los_Angeles">'));
     assert.ok(edit.body.includes(ADDRESS));
     const notHost = await page(server, ben, `/e/${party.id}/edit`);
     assert.equal(notHost.status, 403);
@@ -417,7 +454,7 @@ test('ui.js: the features, drawn', async (t) => {
   await t.test('when, big: the day, the time, and days spanning more than one', () => {
     const one = { startsAt: '2030-10-12T02:30:00.000Z', endsAt: '2030-10-12T06:00:00.000Z', timeZone: 'America/Los_Angeles' };
     assert.deepEqual(UI.whenHead(one, 'America/Los_Angeles'), { date: 'Friday, October 11, 2030', time: '7:30 PM – 11:00 PM', zoneNote: null });
-    assert.equal(UI.whenHead(one, 'Europe/London').zoneNote, 'Times are Los Angeles time (PDT).');
+    assert.equal(UI.whenHead(one, 'Europe/London').zoneNote, 'Times are in Pacific Time.');
     const weekend = { startsAt: '2030-10-12T02:30:00.000Z', endsAt: '2030-10-13T18:00:00.000Z', timeZone: 'America/Los_Angeles' };
     assert.deepEqual(UI.whenHead(weekend, 'America/Los_Angeles'), { date: 'Fri, Oct 11, 2030 – Sun, Oct 13, 2030', time: '7:30 PM – 11:00 AM', zoneNote: null });
     assert.equal(UI.whenRow(one, 'America/Los_Angeles'), 'Fri, Oct 11, 2030 · 7:30 PM');
@@ -494,6 +531,62 @@ test('ui.js: the features, drawn', async (t) => {
     assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: true } }), /id="themeMatch" data-action="theme-match">/);
     assert.match(UI.editorForm({ event: { ...base, coverHue: null, coverGrayscale: false } }), /id="themeMatch" data-action="theme-match" hidden>/);
     assert.match(UI.editorForm({ event: { ...base, themeGrayscale: true } }), /id="themeHue"[^>]*value="15"[^>]*aria-valuetext="No colour"/);
+  });
+
+  await t.test('time zones by friendly name', () => {
+    const july = Date.parse('2030-07-15T19:00:00Z');
+    const names = Object.fromEntries(['America/Los_Angeles', 'America/Vancouver', 'America/Denver', 'America/Boise', 'America/Phoenix', 'America/Chicago',
+      'America/New_York', 'America/Anchorage', 'Pacific/Honolulu', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'America/Mexico_City',
+      'America/Regina', 'UTC'].map((z) => [z, UI.zoneName(z, july)]));
+    assert.deepEqual(names, {
+      'America/Los_Angeles': 'Pacific Time', 'America/Vancouver': 'Pacific Time', 'America/Denver': 'Mountain Time', 'America/Boise': 'Mountain Time',
+      'America/Phoenix': 'Arizona', 'America/Chicago': 'Central Time', 'America/New_York': 'Eastern Time', 'America/Anchorage': 'Alaska Time',
+      'Pacific/Honolulu': 'Hawaii Time', 'Europe/London': 'London', 'Europe/Paris': 'Central European Time', 'Europe/Berlin': 'Central European Time',
+      // The same generic name as a main zone, but not its clock: the city.
+      'America/Mexico_City': 'Mexico City', 'America/Regina': 'Regina', UTC: 'UTC'
+    });
+    assert.equal(UI.offsetWords(-420), 'GMT−7');
+    assert.equal(UI.offsetWords(330), 'GMT+5:30');
+    assert.equal(UI.offsetWords(0), 'GMT');
+  });
+
+  await t.test('the time zone menu: the zones near the viewer\'s, at the event\'s date', () => {
+    const july = Date.parse('2030-07-15T19:00:00Z');
+    const january = Date.parse('2030-01-15T19:00:00Z');
+    const near = (viewer, at, selected) => UI.nearbyZones(viewer, at, selected).map((z) => z.zone);
+    const PACIFIC = ['Pacific/Honolulu', 'America/Anchorage', 'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York'];
+    // From Pacific, summer or winter: exactly these six, west to east.
+    assert.deepEqual(near('America/Los_Angeles', july, 'America/Los_Angeles'), PACIFIC);
+    assert.deepEqual(near('America/Los_Angeles', january, 'America/Los_Angeles'), PACIFIC);
+    // Vancouver is Pacific Time too: the same list, with Los Angeles
+    // standing for it and marked as the viewer's.
+    const van = UI.nearbyZones('America/Vancouver', july, 'America/Vancouver');
+    assert.deepEqual(van.map((z) => z.zone), PACIFIC);
+    assert.deepEqual(van.filter((z) => z.yours).map((z) => z.name), ['Pacific Time']);
+    assert.deepEqual(van.filter((z) => z.selected).map((z) => z.name), ['Pacific Time']);
+    assert.deepEqual(UI.nearbyZones('America/Los_Angeles', july).map((z) => z.offset), [-600, -480, -420, -360, -300, -240]);
+    // Arizona shares Pacific's clock in summer and Mountain's in winter,
+    // so it's only its own line for someone there.
+    const phoenix = near('America/Phoenix', july, 'America/Phoenix');
+    assert.deepEqual(phoenix, ['Pacific/Honolulu', 'America/Anchorage', 'America/Los_Angeles', 'America/Phoenix', 'America/Denver', 'America/Chicago', 'America/New_York']);
+    // Paris, summer and winter (both change clocks the same weekend, so
+    // Athens is +3 with Moscow in July and +2 in January, when Moscow gets
+    // its own line).
+    assert.deepEqual(near('Europe/Paris', july, 'Europe/Paris'), ['Europe/London', 'Europe/Paris', 'Europe/Athens', 'Asia/Dubai', 'Asia/Karachi']);
+    assert.deepEqual(near('Europe/Paris', january, 'Europe/Paris'), ['Europe/London', 'Europe/Paris', 'Europe/Athens', 'Europe/Moscow', 'Asia/Dubai']);
+    assert.deepEqual(UI.nearbyZones('Europe/Berlin', july, 'Europe/Berlin').filter((z) => z.yours).map((z) => z.zone), ['Europe/Paris']);
+    // The event's own zone is always there, even far away.
+    const far = UI.nearbyZones('Europe/Paris', july, 'America/Los_Angeles');
+    assert.deepEqual(far[0], { zone: 'America/Los_Angeles', name: 'Pacific Time', offset: -420, yours: false, selected: true });
+    // In the week the US has changed its clocks and Europe hasn't (March
+    // 2030: US on the 10th, EU on the 31st), London is 7 hours from Los
+    // Angeles, not 8, and still out of reach.
+    const march = Date.parse('2030-03-20T19:00:00Z');
+    assert.equal(UI.zoneOffset('Europe/London', march) - UI.zoneOffset('America/Los_Angeles', march), 420);
+    assert.deepEqual(near('America/Los_Angeles', march, 'America/Los_Angeles'), PACIFIC);
+    // Every zone, for the search: west to east, each with its city.
+    const all = UI.allZones(['Europe/London', 'America/Los_Angeles', 'America/Vancouver', 'Not/AZone'], july);
+    assert.deepEqual(all.map((z) => [z.name, z.city]), [['Pacific Time', 'Los Angeles'], ['Pacific Time', 'Vancouver'], ['London', 'London']]);
   });
 
   await t.test('Attending: friends first, going before maybe, newest first, and +N for everyone else', () => {
@@ -614,6 +707,8 @@ test('pages: the features, as everyone who might look', async (t) => {
     // The hero: the column (680px) on a desktop, the whole width on a
     // phone; not lazy (it's the first thing on the page).
     assert.ok(details.includes(img('cover', '(min-width: 700px) 809px, 119vw')), details);
+    // One card: the details under the hero aren't a card of their own.
+    assert.ok(details.includes('<div class="details-card">') && !details.includes('card details-card'), 'one card');
     assert.equal(meta(r.text, 'og:image'), cover);
     assert.equal(meta(r.text, 'twitter:image'), cover);
     assert.equal(meta(r.text, 'twitter:card'), 'summary_large_image');
@@ -779,12 +874,16 @@ test('pages: the features, as everyone who might look', async (t) => {
   await t.test('the editor: the cover, plus-ones and capacity', async () => {
     const edit = await page(server, ana, `/e/${party.id}/edit`);
     const form = edit.body;
-    assert.ok(form.includes(img('cover-preview', '(min-width: 700px) 762px, calc((100vw - 72px) * 1.19)', ' id="coverPreview"')), 'the cover, previewed');
-    assert.ok(form.includes('>Replace<') && form.includes('id="coverFile"') && !/id="coverRemove"[^>]*hidden/.test(form));
+    // The cover is the hero, drawn (and sized) as the event page draws it,
+    // with "Change cover photo" and the × to take it off.
+    assert.ok(form.includes('<section class="event-head editor-head has-cover" id="details">'));
+    assert.ok(form.includes(img('cover', '(min-width: 700px) 809px, 119vw', ' id="coverPreview"')), 'the cover, previewed');
+    assert.ok(form.includes('aria-label="Change cover photo"') && !/id="coverRemove"[^>]*hidden/.test(form));
     assert.ok(form.includes('<option value="2" selected>2</option>'));
     assert.ok(/id="capacity"[^>]*value="2"/.test(form));
     const fresh = (await page(server, ana, '/new')).body;
-    assert.ok(fresh.includes('Choose photo') && /id="coverRemove"[^>]*hidden/.test(fresh));
+    assert.ok(fresh.includes('aria-label="Add cover photo"') && /id="coverRemove"[^>]*hidden/.test(fresh));
+    assert.ok(fresh.includes('<img class="cover" id="coverPreview" alt="" decoding="async">'));
     assert.ok(fresh.includes('<option value="0" selected>None</option>'));
     assert.ok(/id="capacity"[^>]*value=""/.test(fresh));
     // A new event whose cover didn't upload comes back here to say so.

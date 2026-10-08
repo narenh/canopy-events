@@ -1445,3 +1445,94 @@ Fixes for the security review's events findings (branch `fix/review`).
   shadow. · n/a
 - `COVER_DRAWN.hero` is unchanged (680px from 700px, 100vw on a phone):
   the card is exactly as wide as the hero was. · n/a · public/ui.js.
+
+## Editor redesign
+
+- **The editor is the event card**, as the page draws it: the cover as
+  the hero (the generated picture in the event's colour without one),
+  the title typed where the title goes, the date and times as big as the
+  page's, the zone under them, then the place, address and description
+  in the card. Under it: a "Guests" card (who sees the list, plus-ones,
+  capacity), a "Colour" card (the slider and Match photo), and Save in a
+  bar stuck to the bottom of the screen. · The owner's direction; Save
+  in reach on a long phone form. · `editorForm` in public/ui.js,
+  views/editor.html.
+- The "New Event" / "Edit Event" heading is read out but not shown, and
+  the "‹ title" link above the form went (Back is beside Save). · The
+  page should open on the hero, as the event does. · `editorForm`.
+- **The title is a one-line textarea that grows**, so a long title
+  wraps exactly as it will on the page. Return doesn't add a line, and a
+  pasted line break becomes a space. · An `<input>` can't wrap. ·
+  `fitTitle` in views/editor.html.
+- **When: the start is a date and a time, each its own picker; the end
+  is one date-and-time picker.** Each is the browser's own input, made
+  see-through and laid over the words ("Tuesday, October 13", "7:30
+  PM"), with a dashed underline to say it can be tapped; a mouse click
+  calls `showPicker()`. "+ End time" sets the end three hours after the
+  start and opens it; × clears it. An end on another day reads "Sun, Oct
+  11, 11:00 AM" on the time line (not the page's two-line multi-day
+  form, which needs the end's day and time in two places). Moving the
+  start moves the end with it, keeping the length. A day without a time
+  sends no start, so the API's "Pick when it starts" shows under the
+  date. · Native pickers on phones, no library, and any end (overnight,
+  multi-day) still possible. · views/editor.html.
+- **Field look**: the place, address and description are quiet fields
+  with a dashed edge (dashed means "tap to edit", as under the date and
+  times). Errors still show under each field. · They have to read as the
+  page and still look editable. · `.details-card .soft`.
+- **No help text**, as asked. Labels are short and only shown where the
+  field doesn't say what it is (the guest settings and colour); the
+  rest are read out (`.sr-only`). Hints moved into placeholders where
+  they matter: "Address (only signed-in guests see it)", "No limit".
+  The visibility choices are now "Everyone with the link" and "Only
+  people who've answered" (they no longer say that the others see the
+  counts). The two status lines stay: "can't be previewed" (now a
+  caption on the hero) and "the event is saved, but its cover didn't
+  upload". Unused strings are gone from copy.js. · The owner's
+  direction. · `COPY.editor`.
+- **The cover buttons**: 48px circles of dark glass with a white edge
+  and a white icon (camera; ×), top right of the hero, readable on a
+  white sky and on a night photo. The upload's name (read out, and its
+  tooltip) is "Add cover photo" or "Change cover photo"; the × is
+  "Remove cover photo" and only there with a photo. Nothing is sent
+  until Save, as before. · n/a · `coverHero`, `.hero-btn`.
+- `COVER_DRAWN.editor` is gone: the editor's cover is the event card's
+  hero, so it asks for the hero's sizes (with the wide-photo scaling),
+  and the page test pins that. · n/a · public/ui.js.
+- A new event's generated picture is placed by an empty id, so after
+  Save the event's page places its glows differently (by its new id);
+  the colours match. · The id doesn't exist until Save. · n/a
+- **Time zones by friendly name** (`UI.zoneName`): Intl's
+  `longGeneric` name with "Standard Time" shortened to "Time", and a
+  table of overrides where that name is clumsy or wrong ("Hawaii Time",
+  "Arizona", "London", "Mexico City", "Gulf Time", "India Time",
+  "China Time"…). A zone that shares a main zone's generic name but not
+  its clock (Mexico City, Regina: "Central" with no summer time) is its
+  city, as is a zone with no name (only "GMT-5"). · The owner's list. ·
+  `ZONE_NAMES`, `MAIN_ZONES` in public/ui.js.
+- **The nearby list is one zone per offset**, within 3 hours of the
+  viewer's own at the event's start (now, without one), west to east.
+  Each offset is stood for by the first of 33 main zones with it,
+  preferring the viewer's continent (Paris gets Athens for +3, not
+  Nairobi). The viewer's own zone and the event's are always in it, and
+  marked ("Your time zone"; ✓) by friendly name, so a Vancouver viewer's
+  "Pacific Time" is Los Angeles. · "One per distinct friendly zone"
+  literally would list Arizona for every Pacific viewer (it's within
+  range all year), but the owner's example is exactly six: Arizona always
+  shares Pacific's clock (summer) or Mountain's (winter), so one per
+  offset leaves it out unless you're in Arizona. · `nearbyZones`; to show
+  every distinct name, group by `zoneName` instead of offset.
+- "Other time zones…" opens a sheet over the page (a modal dialog: the
+  search field, then every zone the browser knows, friendly name with
+  the city under it and the offset small, west to east at the event's
+  date). Enter takes the first match; Escape or a tap outside closes. ·
+  A popover is too small for 400 zones with a phone's keyboard up. ·
+  views/editor.html `openZonePanel`.
+- The server draws the zone menu for the `tz` cookie's zone (so the
+  page and its tests have it); the browser draws it again each time it
+  opens, for its own zone and the date as typed. While the menu or the
+  sheet is open, the Save bar drops beneath them. · n/a
+- **The event page uses the friendly names**: "Times are in Pacific
+  Time." under the time, and the wall's "moved it to Sat, Oct 31 · 7:30
+  PM Pacific Time". List rows and link previews keep the short "PDT":
+  they're one tight line. · n/a · `whenHead`, `whenShort`.

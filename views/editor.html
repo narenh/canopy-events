@@ -9,9 +9,10 @@
 <link rel="stylesheet" href="/events.css">
 </head>
 <!-- Making an event (/new, verified people) or editing one (/e/<id>/edit,
-     hosts). The form is public/ui.js's editorForm; this sends it to POST
-     or PATCH /api/v1/events, then the cover (PUT or DELETE .../cover),
-     and shows what the API refuses next to the field it's about. -->
+     hosts). The form is public/ui.js's editorForm, drawn like the event
+     page; this sends it to POST or PATCH /api/v1/events, then the cover
+     (PUT or DELETE .../cover), and shows what the API refuses next to
+     the field it's about. -->
 <body class="mesh-bg">
 <!-- PAGE:HEADER -->
 <main class="wrap">
@@ -29,40 +30,26 @@ applyCopy();
 const data = pageData();
 const editing = !!data.event;
 const form = document.getElementById('eventForm');
-const zoneSelect = document.getElementById('timeZone');
 const $ = (id) => document.getElementById(id);
+const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
-// Every time zone the browser knows, the chosen one selected: the
-// event's when editing, otherwise this browser's own.
-(function fillZones(){
-  const chosen = editing ? data.event.timeZone : (viewerZone() || zoneSelect.value);
-  let zones = [];
-  try{ zones = Intl.supportedValuesOf('timeZone'); }catch(e){}
-  zones = Array.from(new Set(zones.concat([chosen, 'UTC']))).sort();
-  zoneSelect.innerHTML = '';
-  zones.forEach((z) => {
-    const opt = document.createElement('option');
-    opt.value = z;
-    opt.textContent = z.replace(/_/g, ' ');
-    if (z === chosen) opt.selected = true;
-    zoneSelect.appendChild(opt);
-  });
-})();
-
-// The API's refusal, under the field it's about. The words are
-// copy.js's for the reasons it knows, otherwise the API's own.
+// The API's refusal, under the field it's about (and focus on it). The
+// words are copy.js's for the reasons it knows, otherwise the API's own.
 const FIELD_FOR = {
   bad_title: 'title', bad_description: 'description', bad_starts_at: 'startsAt', bad_ends_at: 'endsAt',
   ends_before_start: 'endsAt', bad_time_zone: 'timeZone', bad_location_name: 'locationName',
   bad_location_address: 'locationAddress', bad_guest_list_visibility: 'guestListVisibility',
   bad_guests_allowed: 'guestsAllowed', bad_capacity: 'capacity', bad_theme_hue: 'themeHue', bad_theme_grayscale: 'themeHue'
 };
+// What to focus for a field whose control has another id.
+const FOCUS_FOR = { startsAt: 'startDate', timeZone: 'zoneBtn', guestListVisibility: null };
 function showRefusal(d){
   const words = COPY.editor.errors[d.reason] || sentence(d.error);
   const fieldId = FIELD_FOR[d.reason];
   const el = (fieldId && $(fieldId + 'Error')) || $('formError');
   el.textContent = words;
-  const input = fieldId && $(fieldId);
+  const focusId = fieldId && (fieldId in FOCUS_FOR ? FOCUS_FOR[fieldId] : fieldId);
+  const input = focusId && $(focusId);
   if (input && input.focus) input.focus();
 }
 
@@ -70,15 +57,249 @@ function clearErrors(){
   form.querySelectorAll('.error').forEach((el) => { el.textContent = ''; });
 }
 
+// ---------------- The title ----------------
+//
+// Typed where the page shows it, as big, wrapping as it will there: one
+// line of text that grows. A return doesn't start a new line.
+const title = $('title');
+function fitTitle(){
+  title.style.height = 'auto';
+  title.style.height = title.scrollHeight + 'px';
+}
+title.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+title.addEventListener('input', () => {
+  if (/\n/.test(title.value)) title.value = title.value.replace(/\s*\n\s*/g, ' ');
+  fitTitle();
+});
+window.addEventListener('resize', fitTitle);
+fitTitle();
+
+// ---------------- When ----------------
+//
+// The day, the start and the end, each drawn big in the page's words with
+// the browser's own picker under it. Moving the start moves the end with
+// it (the same length), as calendars do. The times are read on the
+// chosen zone's clock when the form is saved; changing the zone keeps
+// the clock times.
+const startDate = $('startDate');
+const startTime = $('startTime');
+const endsAt = $('endsAt');
+
+function drawWhen(){
+  const set = (id, words, placeholder) => {
+    $(id + 'Text').textContent = words || placeholder;
+    $(id + 'Pick').classList.toggle('empty', !words);
+  };
+  set('startDate', UI.dayWords(startDate.value), t('editor.datePlaceholder'));
+  set('startTime', UI.clockWords(startTime.value), t('editor.startTime'));
+  set('endsAt', UI.endWords(endsAt.value, startDate.value), t('editor.endTime'));
+  const hasEnd = !!endsAt.value;
+  $('endPart').hidden = !hasEnd;
+  $('endAdd').hidden = hasEnd;
+}
+
+// The start as a wall-clock time in milliseconds (for moving the end),
+// or null.
+function startWall(){
+  if (!startDate.value) return null;
+  const [y, m, d] = startDate.value.split('-').map(Number);
+  const [hh, mm] = (startTime.value || '00:00').split(':').map(Number);
+  return Date.UTC(y, m - 1, d, hh, mm);
+}
+function wallValue(ms){
+  return new Date(ms).toISOString().slice(0, 16);
+}
+let lastStart = startWall();
+function startMoved(){
+  const now = startWall();
+  if (endsAt.value && lastStart != null && now != null && now !== lastStart){
+    const end = Date.parse(endsAt.value + ':00Z');
+    if (!isNaN(end)) endsAt.value = wallValue(end + (now - lastStart));
+  }
+  lastStart = now;
+  drawWhen();
+  drawZone();
+}
+startDate.addEventListener('input', startMoved);
+startDate.addEventListener('change', startMoved);
+startTime.addEventListener('input', startMoved);
+startTime.addEventListener('change', startMoved);
+endsAt.addEventListener('input', drawWhen);
+endsAt.addEventListener('change', drawWhen);
+
+// A click (not a tap: a phone opens the picker by itself) opens the
+// picker, where the browser offers one.
+function openPicker(input){
+  try{ if (input.showPicker) input.showPicker(); }catch(e){}
+}
+[startDate, startTime, endsAt].forEach((input) => {
+  input.addEventListener('click', () => { if (!touch) openPicker(input); });
+});
+
+onActions({
+  // A new end: three hours after the start (or none yet, with no start),
+  // then the picker to change it.
+  'add-end': () => {
+    const s = startWall();
+    if (s != null && startTime.value) endsAt.value = wallValue(s + 3 * 3600e3);
+    drawWhen();
+    endsAt.focus();
+    openPicker(endsAt);
+  },
+  'clear-end': () => {
+    endsAt.value = '';
+    drawWhen();
+    $('endAdd').focus();
+  }
+});
+
+// ---------------- The time zone ----------------
+//
+// Its friendly name, small under the time, with "Change": a menu of the
+// zones near this browser's own (at the event's date, so summer time is
+// right), then "Other time zones…", a search of every zone. A new event
+// starts in this browser's zone.
+const zoneInput = $('timeZone');
+const zoneBtn = $('zoneBtn');
+const zoneMenu = $('zoneMenu');
+const zonePanel = $('zonePanel');
+const zoneSearch = $('zoneSearch');
+const zoneList = $('zoneList');
+const here = viewerZone();
+if (!editing && here) zoneInput.value = here;
+
+// When the zones are worked out for: the start, read on that clock, or now.
+function zoneMoment(){
+  const at = startDate.value ? Date.parse(UI.fromLocalInput(startDate.value + 'T' + (startTime.value || '12:00'), zoneInput.value)) : NaN;
+  return isNaN(at) ? Date.now() : at;
+}
+function drawZone(){
+  $('zoneName').textContent = UI.zoneName(zoneInput.value, zoneMoment());
+}
+drawZone();
+
+function setZone(zone){
+  zoneInput.value = zone;
+  $('timeZoneError').textContent = '';
+  drawZone();
+}
+
+function closeZoneMenu(focusButton){
+  if (zoneMenu.hidden) return;
+  zoneMenu.hidden = true;
+  form.classList.remove('menu-open');
+  zoneBtn.setAttribute('aria-expanded', 'false');
+  if (focusButton) zoneBtn.focus();
+}
+function openZoneMenu(){
+  zoneMenu.innerHTML = UI.zoneMenuItems(here || zoneInput.value, zoneMoment(), zoneInput.value);
+  zoneMenu.hidden = false;
+  // Over the Save bar while it's open, and all of it on the screen.
+  form.classList.add('menu-open');
+  zoneBtn.setAttribute('aria-expanded', 'true');
+  zoneMenu.scrollIntoView({ block: 'nearest' });
+  const first = zoneMenu.querySelector('[aria-checked="true"]') || zoneMenu.querySelector('[role^=menuitem]');
+  if (first) first.focus({ preventScroll: true });
+}
+
+// Every zone the browser knows, by friendly name and city, west to east.
+let everyZone = null;
+function drawZoneList(){
+  if (!everyZone){
+    let zones = [];
+    try{ zones = Intl.supportedValuesOf('timeZone'); }catch(e){}
+    everyZone = UI.allZones(zones.concat([zoneInput.value, here, 'UTC'].filter(Boolean)), zoneMoment());
+  }
+  const q = zoneSearch.value.trim().toLowerCase();
+  const rows = everyZone.filter((z) => !q || (z.name + ' ' + z.city + ' ' + z.zone.replace(/_/g, ' ')).toLowerCase().includes(q));
+  zoneList.innerHTML = rows.map((z) => UI.zoneRow(z, zoneInput.value)).join('');
+  $('zoneNoMatch').classList.toggle('hidden', rows.length > 0);
+}
+function openZonePanel(){
+  closeZoneMenu(false);
+  zoneSearch.value = '';
+  drawZoneList();
+  $('zoneBackdrop').hidden = false;
+  zonePanel.hidden = false;
+  form.classList.add('menu-open');
+  const on = zoneList.querySelector('[aria-pressed="true"]');
+  if (on) on.scrollIntoView({ block: 'center' });
+  zoneSearch.focus();
+}
+function closeZonePanel(focusButton){
+  if (zonePanel.hidden) return;
+  zonePanel.hidden = true;
+  $('zoneBackdrop').hidden = true;
+  form.classList.remove('menu-open');
+  if (focusButton) zoneBtn.focus();
+}
+zoneSearch.addEventListener('input', drawZoneList);
+
+onActions({
+  'zone-menu': () => {
+    if (zoneBtn.getAttribute('aria-expanded') === 'true') closeZoneMenu(true);
+    else openZoneMenu();
+  },
+  'pick-zone': (el) => {
+    setZone(el.getAttribute('data-zone'));
+    closeZoneMenu(false);
+    closeZonePanel(false);
+    zoneBtn.focus();
+  },
+  'zone-search': openZonePanel,
+  'zone-close': () => closeZonePanel(true)
+});
+
+// A tap outside the menu or the search shuts it.
+document.addEventListener('click', (e) => {
+  if (!zoneMenu.hidden && !e.target.closest('#zoneMenu') && !e.target.closest('#zoneBtn')) closeZoneMenu(false);
+  if (!zonePanel.hidden && e.target.closest('#zoneBackdrop')) closeZonePanel(true);
+}, true);
+
+// Keys: the menu as the host's ⋯ menu (arrows, Home, End, Escape, Tab);
+// the search's list with the arrows, Enter on the search taking the first
+// match, and Escape closing it.
+document.addEventListener('keydown', (e) => {
+  if (!zoneMenu.hidden){
+    const items = Array.from(zoneMenu.querySelectorAll('[role^=menuitem]'));
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'Escape'){ e.preventDefault(); closeZoneMenu(true); }
+    else if (e.key === 'ArrowDown'){ e.preventDefault(); items[(at + 1) % items.length].focus(); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'Home'){ e.preventDefault(); items[0].focus(); }
+    else if (e.key === 'End'){ e.preventDefault(); items[items.length - 1].focus(); }
+    else if (e.key === 'Tab') closeZoneMenu(false);
+    return;
+  }
+  if (!zonePanel.hidden){
+    const rows = Array.from(zoneList.querySelectorAll('.zone-row'));
+    const at = rows.indexOf(document.activeElement);
+    if (e.key === 'Escape'){ e.preventDefault(); closeZonePanel(true); }
+    else if (e.key === 'Enter' && document.activeElement === zoneSearch){ e.preventDefault(); if (rows[0]) rows[0].click(); }
+    else if (e.key === 'ArrowDown'){ e.preventDefault(); if (rows.length) rows[Math.min(at + 1, rows.length - 1)].focus(); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); if (at <= 0) zoneSearch.focus(); else rows[at - 1].focus(); }
+    else if (e.key === 'Tab'){
+      // Kept inside the search while it's open.
+      const inside = Array.from(zonePanel.querySelectorAll('input, button'));
+      const i = inside.indexOf(document.activeElement);
+      if (e.shiftKey && i <= 0){ e.preventDefault(); inside[inside.length - 1].focus(); }
+      else if (!e.shiftKey && i === inside.length - 1){ e.preventDefault(); inside[0].focus(); }
+    }
+  }
+});
+
 // ---------------- The cover ----------------
 //
-// Picking a photo or removing the cover only changes the preview here;
-// it's sent when the form is saved, after the event itself (a new event
-// needs its id first). The server re-encodes whatever it gets (turned
-// the right way up, shrunk, no location), so the photo goes as it is.
+// The hero is the cover. Picking a photo or removing the cover only
+// changes it here; it's sent when the form is saved, after the event
+// itself (a new event needs its id first). The server re-encodes
+// whatever it gets (turned the right way up, shrunk, no location), so
+// the photo goes as it is. With no photo, the hero is the generated
+// picture, in the event's colour.
 const MAX_COVER = 15 * 1024 * 1024;
 const coverFile = $('coverFile');
 const coverPreview = $('coverPreview');
+const head = $('details');
 let coverChange = null; // null: as it was; a File: upload it; 'remove'
 let previewUrl = null;
 const hadCover = editing && !!UI.coverUrl(data.event);
@@ -101,16 +322,18 @@ function drawCover(src){
   coverPreview.removeAttribute('sizes');
   if (src) coverPreview.src = src;
   else coverPreview.removeAttribute('src');
-  coverPreview.closest('.cover-pick').classList.toggle('has-cover', !!src);
+  head.classList.toggle('has-cover', !!src);
   $('coverRemove').hidden = !src;
-  $('coverPickLabel').textContent = src ? 'Replace' : 'Choose photo';
+  const words = t(src ? 'editor.coverChange' : 'editor.coverAdd');
+  coverFile.setAttribute('aria-label', words);
+  coverFile.parentNode.setAttribute('title', words);
 }
 
 // A photo the browser can't draw (HEIC, outside Safari) still uploads:
 // the server turns it into a JPEG. Say so instead of a broken image.
 coverPreview.addEventListener('error', () => {
   if (!coverPreview.getAttribute('src')) return;
-  coverPreview.closest('.cover-pick').classList.remove('has-cover');
+  head.classList.remove('has-cover');
   $('coverNoPreview').classList.remove('hidden');
 });
 
@@ -137,6 +360,7 @@ onActions({
     coverChange = hadCover ? 'remove' : null;
     drawCover(null);
     forgetPhotoMatch();
+    coverFile.focus();
   }
 });
 
@@ -161,12 +385,13 @@ async function saveCover(id){
 // ---------------- The colour ----------------
 //
 // The slider runs from grey (no colour) round the wheel, and dragging it
-// turns this page's own background as it moves, so the host sees the
-// event's page while choosing. Untouched, a new event stays Canopy green
-// (null). "Match photo" sets it to the photo's colour (or grey, for a
-// grey photo): the stored cover's coverHue, or, for a photo just picked,
-// the same hueFromPixels the server runs, on the preview. Picking a photo
-// jumps the slider there. Nothing is saved until Save.
+// turns this page's own background (and the generated picture) as it
+// moves, so the host sees the event's page while choosing. Untouched, a
+// new event stays Canopy green (null). "Match photo" sets it to the
+// photo's colour (or grey, for a grey photo): the stored cover's
+// coverHue, or, for a photo just picked, the same hueFromPixels the
+// server runs, on the preview. Picking a photo jumps the slider there.
+// Nothing is saved until Save.
 const hueInput = $('themeHue');
 let themeKey = editing ? UI.themeKeyOf(data.event) : null;
 // The colour that matches the photo now shown: a theme key, or null for
@@ -182,6 +407,8 @@ function showTheme(){
   if (meta) meta.setAttribute('content', c ? '#' + c.base.map((x) => x.toString(16).padStart(2, '0')).join('') : '#03120c');
   hueInput.setAttribute('aria-valuetext', UI.themeWords(themeKey));
   $('themeMatch').hidden = photoKey === null;
+  // The generated picture, in the same colour.
+  $('coverArt').setAttribute('style', UI.coverArtStyle(Object.assign({ id: editing ? data.event.id : '' }, themeFields())));
 }
 
 function setTheme(key){
@@ -244,8 +471,8 @@ if (data.coverError){
 form.addEventListener('submit', (e) => {
   e.preventDefault();
   clearErrors();
-  const zone = zoneSelect.value;
-  const ends = UI.fromLocalInput($('endsAt').value, zone);
+  const zone = zoneInput.value;
+  const ends = UI.fromLocalInput(endsAt.value, zone);
   const capacity = $('capacity');
   // Letters in a number field read as empty; say so rather than send
   // "no limit".
@@ -254,9 +481,11 @@ form.addEventListener('submit', (e) => {
     return;
   }
   const body = {
-    title: $('title').value,
+    title: title.value.replace(/\s*\n\s*/g, ' '),
     description: $('description').value,
-    startsAt: UI.fromLocalInput($('startsAt').value, zone),
+    // A day with no time, or a time with no day, isn't a start: the API
+    // says so, under the date.
+    startsAt: startDate.value && startTime.value ? UI.fromLocalInput(startDate.value + 'T' + startTime.value, zone) : '',
     timeZone: zone,
     locationName: $('locationName').value,
     locationAddress: $('locationAddress').value,

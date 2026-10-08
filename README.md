@@ -121,7 +121,7 @@ event link on a phone.
 |---|---|
 | `/e/<id>` | **An event**, what a shared link opens, drawn in the event's colour. On top, the cover (or a generated picture) as a 3:2 hero fading into the page, the title on the fade, and **when**, big: the day, the time, and a pill saying how soon ("Tomorrow", "This Saturday"). Then a card with the place, the hosts, the counts (people and their plus-ones) and spots left. Signed out: no address, and a big **RSVP** to the account service's quick sign-up, with a smaller "I have a Canopy account, sign in". Signed in: going / maybe / can't go, how many guests you're bringing (when the host allows any), the waitlist when it's full, friends going, who's coming by the host's visibility rule, and the **wall** (posts, and what happened: "Ana is going", "the time changed"), with a box to post in once you've answered. Hosts get share, invite, edit and the guest list with **Remove** (and the removed, with Undo) instead of answering; the creator also cancels, makes a **new link**, and adds and removes **co-hosts**; a co-host can step down. Someone a host removed sees the public details and a calm line saying they're not on the list. |
 | `/` | **Your events**: invitations (going or can't go right there), what you're hosting, what's coming up, and what's past, each row a 3:2 picture, the date in bold, the title and the place. "New event" for verified people; unverified people get a line saying to confirm their email to host. Signed out: what this is, and sign in. |
-| `/new`, `/e/<id>/edit` | **The editor**: title, description, the cover (previewed at 3:2, sent on save), the event's colour (a slider that repaints the page as you drag), start and end, the time zone (the browser's by default), the place and its address, plus-ones, capacity, and who sees the guest list. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
+| `/new`, `/e/<id>/edit` | **The editor**, drawn like the event page: the cover as the hero (an upload button and a × on it, sent on save), the title typed where it shows, the date and times as big as the page's (each tapped to change), the time zone by friendly name with a "Change" menu (nearby zones first, then a search of all), the place and address, the description, who sees the guest list, plus-ones, capacity, and the event's colour (a slider that repaints the page as you drag). No help text. Verified people make events; hosts edit them. What the API refuses shows under the field it's about. |
 | `/e/<id>/invite` | **Inviting** (hosts): find someone by their exact phone number or Instagram username (verified hosts; a name and a photo come back, never their details), then your friends with a search box, the ones already on the list (or removed, or hosting) marked. |
 | `/e/<id>/cohosts` | **Adding co-hosts** (the creator): your friends with a search box and "Add"; anyone who can't co-host yet (an unconfirmed email) is told why under their row. |
 | `/friends` | **Your friends**: people you've been to an event with, and how many events in common. |
@@ -162,7 +162,8 @@ that file. `public/canopy-logo.png` is its logo.
 
 **Times** are always in the event's own time zone. When that isn't the
 viewer's (their clock reads a different time), the event page says
-"Times are Los Angeles time (PDT)" and lists add the zone's short name.
+"Times are in Pacific Time" (the zone's friendly name, `UI.zoneName`)
+and lists add the zone's short name.
 The browser tells the server its zone in a `tz` cookie, so pages after
 the first are drawn right the first time.
 
@@ -173,7 +174,7 @@ street address (the preview is of what a signed-out visitor sees, and
 previews are kept by the machines that fetch them) and never the
 description. The page crops the cover to 3:2; the preview gets the whole
 photo, at full size. The page's own covers (the hero, list thumbnails,
-the editor's preview) have a `srcset` of every size, so a phone
+the editor's hero) have a `srcset` of every size, so a phone
 downloads the 400 px copy for a thumbnail, not the 1600 px photo.
 
 **The look.** Type is bigger than the account service's (17px body,

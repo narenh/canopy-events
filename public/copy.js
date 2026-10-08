@@ -68,7 +68,8 @@ const COPY = {
   // ---------------- An event, at /e/<id> ----------------
   event: {
     // Shown under the time when the event's time zone isn't yours.
-    zone: 'Times are {city} time ({zone}).',
+    // {zone} is its friendly name: "Pacific Time", "Arizona", "London".
+    zone: 'Times are in {zone}.',
     // Signed out: the street address waits for signing in (link
     // previews are kept by machines, and a home address shouldn't be).
     addressHidden: 'The address shows once you sign in.',
@@ -242,46 +243,54 @@ const COPY = {
 
   // ---------------- Making or editing an event, at /new and /e/<id>/edit ----------------
   editor: {
+    // Read out, not shown: the editor looks like the event page.
     newHeading: 'New Event',
     editHeading: 'Edit Event',
-    // The form's parts.
-    what: 'What',
-    when: 'When',
-    where: 'Where',
-    guests: 'Guests',
     title: 'Title',
-    descriptionPlaceholder: "What's happening, what to bring, anything people should know.",
-    description: 'Description',
-    starts: 'Starts',
-    ends: 'Ends (optional)',
+    titlePlaceholder: 'Event title',
+    // When, drawn big like the page. Each piece is tapped to change.
+    date: 'Date',
+    datePlaceholder: 'Pick a date',
+    startTime: 'Start time',
+    endTime: 'End time',
+    addEnd: '+ End time',
+    removeEnd: 'Remove end time',
+    // The time zone, small under the time, and its menu.
     timeZone: 'Time zone',
-    timeZoneHint: 'The times above are in this time zone.',
+    zoneChange: 'Change',
+    zoneChangeLabel: 'Change time zone',
+    zoneYours: 'Your time zone',
+    zoneOther: 'Other time zones…',
+    zoneSearch: 'Search time zones',
+    zoneClose: 'Close',
+    zoneNoMatch: 'No time zones match.',
+    // Where, and what it's about.
     locationName: 'Place',
-    locationNamePlaceholder: "Ana's place, or Dolores Park",
+    locationNamePlaceholder: 'Add a place',
     locationAddress: 'Address',
-    locationAddressHint: 'Only people who are signed in see the address.',
-    guestList: 'Guest list',
-    everyone: 'Everyone with the link sees who is coming.',
-    responded: "People see who is coming once they've answered. Before that, only how many.",
-    hostsSeeAll: 'You always see everyone.',
-    // The cover image.
-    cover: 'Cover image (optional)',
-    coverHint: "Shown at the top of the event and in link previews. It's public: anyone with the image's address can see it.",
+    locationAddressPlaceholder: 'Address (only signed-in guests see it)',
+    description: 'Description',
+    descriptionPlaceholder: "What's happening, what to bring, anything people should know",
+    // Who's coming.
+    guests: 'Guests',
+    guestList: 'Who sees the guest list',
+    everyone: 'Everyone with the link',
+    responded: "Only people who've answered",
+    guestsAllowed: 'Plus-ones per guest',
+    noGuests: 'None',
+    capacity: 'Capacity',
+    capacityPlaceholder: 'No limit',
+    // The cover: the buttons on the photo.
+    coverAdd: 'Add cover photo',
+    coverChange: 'Change cover photo',
+    coverRemove: 'Remove cover photo',
     coverNoPreview: "This photo can't be previewed here. It will show once it's saved.",
     coverNotSaved: "The event is saved, but its cover didn't upload.",
     // The event's colour.
-    theme: 'Background colour',
-    themeHint: "Slide to colour this event's page, for everyone who opens it, or all the way left for no colour. This page shows how it will look.",
+    theme: 'Colour',
     themeDefault: 'Canopy green',
     themeGrey: 'No colour',
     themeMatch: 'Match photo',
-    // Plus-ones and capacity.
-    guestsAllowed: 'Guests each person can bring',
-    guestsAllowedHint: 'Plus-ones. Lowering it later keeps the answers people already gave.',
-    noGuests: 'None',
-    capacity: 'Capacity (optional)',
-    capacityPlaceholder: 'No limit',
-    capacityHint: 'The most people going, guests included. Past it, people join a waitlist and move up when a spot opens.',
     // Unverified people get this instead of the form.
     verifyHeading: 'Confirm your email first',
     verifyHint: 'To make events, confirm your email. It takes a minute: we email you a code.',

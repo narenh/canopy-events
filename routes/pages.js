@@ -230,7 +230,7 @@ module.exports = function pagesRoutes(ctx) {
       });
     }
     const data = { me: meView(req.person), event: null };
-    render.page(req, res, 'editor.html', { title: t('editor.newHeading'), main: UI.editorForm(data, { zone: render.viewerZone(req) }), data });
+    render.page(req, res, 'editor.html', { title: t('editor.newHeading'), main: UI.editorForm(data, { zone: render.viewerZone(req), viewerZone: render.viewerZone(req) }), data });
   });
 
   router.get('/e/:id/edit', attach, signedIn, pageRoute(async (req, res) => {
@@ -241,7 +241,7 @@ module.exports = function pagesRoutes(ctx) {
     // upload (views/editor.html sends them here to try again).
     const coverError = /^[a-z_]{1,40}$/.test(String(req.query.coverError || '')) ? req.query.coverError : null;
     const data = { me: meView(req.person), event, coverError };
-    render.page(req, res, 'editor.html', { title: t('editor.editHeading'), main: UI.editorForm(data), data, theme: UI.themeKeyOf(event) });
+    render.page(req, res, 'editor.html', { title: t('editor.editHeading'), main: UI.editorForm(data, { viewerZone: render.viewerZone(req) }), data, theme: UI.themeKeyOf(event) });
   }));
 
   // ---------------- Inviting friends ----------------

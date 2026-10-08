@@ -86,6 +86,196 @@
     return String(zone).split('/').pop().replace(/_/g, ' ');
   }
 
+  // ---------------- Time zones, by friendly name ----------------
+  //
+  // A zone is named the way people say it: "Pacific Time", "Central
+  // European Time", "Arizona", "London". The name is the browser's own
+  // generic name (Intl's timeZoneName: 'longGeneric'), with a few
+  // overrides where that name is clumsy ("Hawaii-Aleutian Standard Time",
+  // "United Kingdom Time") or wrong for what people mean (Phoenix is
+  // "Mountain Standard Time", but nobody in Arizona follows Mountain
+  // Time's clock changes). A zone that shares a generic name with one of
+  // the main zones below but not its clock (Mexico City is "Central
+  // Standard Time", but has no summer time) goes by its city, as does any
+  // zone the browser has no name for. The stored value is always the IANA
+  // id; these are only labels.
+
+  // The main zones, west to east: the ones the time zone menu offers
+  // first. When two of them read the same at a moment (Phoenix and Los
+  // Angeles in summer), the one listed first stands for that offset.
+  const MAIN_ZONES = [
+    'Pacific/Honolulu', 'America/Anchorage', 'America/Los_Angeles', 'America/Denver', 'America/Phoenix',
+    'America/Chicago', 'America/Mexico_City', 'America/New_York', 'America/Halifax', 'America/St_Johns',
+    'America/Sao_Paulo', 'America/Argentina/Buenos_Aires', 'Europe/London', 'Africa/Lagos', 'Europe/Paris',
+    'Africa/Johannesburg', 'Europe/Athens', 'Europe/Moscow', 'Africa/Nairobi', 'Asia/Jerusalem', 'Asia/Dubai',
+    'Asia/Karachi', 'Asia/Kolkata', 'Asia/Bangkok', 'Asia/Shanghai', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Seoul',
+    'Australia/Perth', 'Australia/Adelaide', 'Australia/Brisbane', 'Australia/Sydney', 'Pacific/Auckland'
+  ];
+  const ZONE_NAMES = {
+    'Pacific/Honolulu': 'Hawaii Time',
+    'America/Phoenix': 'Arizona',
+    'America/Mexico_City': 'Mexico City',
+    'America/Sao_Paulo': 'Brasília Time',
+    'America/Argentina/Buenos_Aires': 'Argentina Time',
+    'America/Buenos_Aires': 'Argentina Time',
+    'Europe/London': 'London',
+    'Africa/Johannesburg': 'South Africa Time',
+    'Europe/Moscow': 'Moscow Time',
+    'Asia/Dubai': 'Gulf Time',
+    'Asia/Karachi': 'Pakistan Time',
+    'Asia/Kolkata': 'India Time',
+    'Asia/Calcutta': 'India Time',
+    'Asia/Shanghai': 'China Time',
+    'Asia/Singapore': 'Singapore Time',
+    'Asia/Tokyo': 'Japan Time',
+    'Asia/Seoul': 'Korea Time',
+    'Australia/Perth': 'Western Australia Time',
+    'Australia/Adelaide': 'Central Australia Time',
+    'Australia/Brisbane': 'Brisbane',
+    'Australia/Sydney': 'Eastern Australia Time',
+    UTC: 'UTC',
+    'Etc/UTC': 'UTC'
+  };
+
+  // Building an Intl.DateTimeFormat is slow next to using one; the menu's
+  // full list asks for hundreds.
+  const zoneFormats = {};
+  function zoneFormat(zone, kind) {
+    const key = kind + ' ' + zone;
+    if (!(key in zoneFormats)) {
+      try {
+        zoneFormats[key] = kind === 'parts'
+          ? new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+          : new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longGeneric' });
+      } catch (e) {
+        zoneFormats[key] = null;
+      }
+    }
+    return zoneFormats[key];
+  }
+
+  // Minutes ahead of UTC in `zone` at `ms` (Los Angeles in July: -420).
+  function zoneOffset(zone, ms) {
+    const f = zoneFormat(zone, 'parts');
+    if (!f) return 0;
+    const p = {};
+    f.formatToParts(new Date(ms)).forEach((x) => { p[x.type] = x.value; });
+    const wall = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute);
+    return Math.round((wall - Math.floor(ms / 60000) * 60000) / 60000);
+  }
+
+  // "GMT−7", "GMT+5:30", "GMT".
+  function offsetWords(minutes) {
+    if (!minutes) return 'GMT';
+    const a = Math.abs(minutes);
+    return 'GMT' + (minutes < 0 ? '−' : '+') + Math.floor(a / 60) + (a % 60 ? ':' + String(a % 60).padStart(2, '0') : '');
+  }
+
+  // The browser's generic name, or null when it has none (only "GMT-7").
+  function genericName(zone, ms) {
+    const f = zoneFormat(zone, 'generic');
+    if (!f) return null;
+    try {
+      const part = f.formatToParts(new Date(ms)).find((x) => x.type === 'timeZoneName');
+      const name = part && part.value;
+      return name && !/^(GMT|UTC)([+-−]|$)/.test(name) ? name.replace(/ Standard Time$/, ' Time') : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // The same clock all year: the same offset in January and in July.
+  function sameRules(a, b, ms) {
+    const y = new Date(ms).getUTCFullYear();
+    return [Date.UTC(y, 0, 15), Date.UTC(y, 6, 15)].every((at) => zoneOffset(a, at) === zoneOffset(b, at));
+  }
+
+  // The main zones' own names, by generic name: who owns "Central Time".
+  let mainByName = null;
+  function mainZoneNamed(name, ms) {
+    if (!mainByName) {
+      mainByName = {};
+      MAIN_ZONES.forEach((z) => {
+        const g = genericName(z, ms);
+        if (g && !mainByName[g]) mainByName[g] = z;
+      });
+    }
+    return mainByName[name] || null;
+  }
+
+  // A zone's friendly name: "Pacific Time", "Arizona", "Mexico City".
+  // `ms` is when (for the generic name's season; it rarely matters).
+  function zoneName(zone, ms) {
+    zone = String(zone || 'UTC');
+    ms = ms == null ? Date.now() : ms;
+    if (ZONE_NAMES[zone]) return ZONE_NAMES[zone];
+    const generic = genericName(zone, ms);
+    if (generic) {
+      const owner = mainZoneNamed(generic, ms);
+      if (!owner || owner === zone) return generic;
+      if (sameRules(owner, zone, ms)) return zoneName(owner, ms);
+    }
+    return zoneCity(zone);
+  }
+
+  function regionOf(zone) {
+    return String(zone).split('/')[0];
+  }
+
+  // The time zone menu's first list: the zones within about three hours
+  // of the viewer's own, at `ms` (the event's start, so summer time is
+  // right for that day), one per offset, west to east. Each offset is
+  // stood for by the first main zone with it, preferring the viewer's own
+  // part of the world (Paris sees Athens for +3, not Nairobi). The
+  // viewer's own zone and `selected` (the event's) are always there, as
+  // their own lines unless a main zone has the same name. Answers [{
+  // zone, name, offset, yours, selected }].
+  const NEARBY_MINUTES = 180;
+  function nearbyZones(viewer, ms, selected) {
+    ms = ms == null ? Date.now() : ms;
+    viewer = viewer || selected || 'UTC';
+    const mine = zoneOffset(viewer, ms);
+    const region = regionOf(viewer);
+    const byOffset = {};
+    MAIN_ZONES.forEach((zone, i) => {
+      const offset = zoneOffset(zone, ms);
+      if (Math.abs(offset - mine) > NEARBY_MINUTES) return;
+      const rank = (regionOf(zone) === region ? 0 : 1000) + i;
+      if (!byOffset[offset] || rank < byOffset[offset].rank) byOffset[offset] = { zone, offset, rank };
+    });
+    const list = Object.keys(byOffset).map((k) => byOffset[k]);
+    // The viewer's and the event's own, when no main zone has their name.
+    [viewer, selected].forEach((zone) => {
+      if (!zone) return;
+      const name = zoneName(zone, ms);
+      if (list.some((x) => zoneName(x.zone, ms) === name)) return;
+      const main = MAIN_ZONES.indexOf(zone);
+      list.push({ zone, offset: zoneOffset(zone, ms), rank: main < 0 ? 999 : main });
+    });
+    const yours = zoneName(viewer, ms);
+    const chosen = selected ? zoneName(selected, ms) : null;
+    return list
+      .sort((a, b) => a.offset - b.offset || a.rank - b.rank)
+      .map((x) => {
+        const name = zoneName(x.zone, ms);
+        return { zone: x.zone, name, offset: x.offset, yours: name === yours, selected: name === chosen };
+      });
+  }
+
+  // Every zone, for the menu's search: [{ zone, name, city, offset }],
+  // west to east, then by name. `zones` is the browser's list
+  // (Intl.supportedValuesOf('timeZone')).
+  function allZones(zones, ms) {
+    ms = ms == null ? Date.now() : ms;
+    const seen = {};
+    return zones.filter((z) => {
+      if (seen[z] || !zoneFormat(z, 'parts')) return false;
+      seen[z] = true;
+      return true;
+    }).map((zone) => ({ zone, name: zoneName(zone, ms), city: zoneCity(zone), offset: zoneOffset(zone, ms) }))
+      .sort((a, b) => a.offset - b.offset || a.name.localeCompare(b.name) || a.city.localeCompare(b.city));
+  }
+
   // Whether a viewer in `viewerZone` reads the event's times the same:
   // the same wall clock at that moment. Two zones with the same offset
   // that day (Phoenix and Los Angeles in summer) need no label. With no
@@ -119,19 +309,19 @@
         ? timeOf(end, z)
         : fmt(end, z, { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + timeOf(end, z));
     }
-    const zoneNote = sameClock(s, z, viewerZone) ? null : t('event.zone', { city: zoneCity(z), zone: zoneAbbr(s, z) });
+    const zoneNote = sameClock(s, z, viewerZone) ? null : t('event.zone', { zone: zoneName(z, s) });
     return { date, time, zoneNote };
   }
 
-  // When, in one short line for a list: "Sat, Oct 31 · 7:30 PM", with the
-  // zone's short name when it isn't the viewer's.
+  // When, in one short line (the wall's "moved it to"): "Sat, Oct 31 ·
+  // 7:30 PM", with the zone's friendly name when it isn't the viewer's.
   function whenShort(e, viewerZone) {
     const z = e.timeZone;
     const s = startMs(e);
     const thisYear = fmt(Date.now(), z, { year: 'numeric' });
     const showYear = fmt(s, z, { year: 'numeric' }) !== thisYear;
     let line = fmt(s, z, { weekday: 'short', month: 'short', day: 'numeric', year: showYear ? 'numeric' : undefined }) + ' · ' + timeOf(s, z);
-    if (!sameClock(s, z, viewerZone)) line += ' ' + zoneAbbr(s, z);
+    if (!sameClock(s, z, viewerZone)) line += ' ' + zoneName(z, s);
     return line;
   }
 
@@ -158,7 +348,7 @@
     const end = endMs(e);
     const thisYear = fmt(Date.now(), z, { year: 'numeric' });
     const year = fmt(s, z, { year: 'numeric' }) !== thisYear ? 'numeric' : undefined;
-    const zoneNote = sameClock(s, z, viewerZone) ? null : t('event.zone', { city: zoneCity(z), zone: zoneAbbr(s, z) });
+    const zoneNote = sameClock(s, z, viewerZone) ? null : t('event.zone', { zone: zoneName(z, s) });
     if (end != null && dayKey(end, z) !== dayKey(s, z)) {
       const short = (ms) => fmt(ms, z, { weekday: 'short', month: 'short', day: 'numeric', year });
       return { date: short(s) + ' – ' + short(end), time: timeOf(s, z) + ' – ' + timeOf(end, z), zoneNote };
@@ -308,12 +498,10 @@
   // and wider (public/events.css), narrower]. Every frame is 3:2.
   //   hero: the page's column, 680 wide; edge to edge on a phone.
   //   thumb: the list's thumbnail (.event-row .thumb).
-  //   editor: the preview, inside the form card (20px padding) in the
-  //   column; on a phone, the screen less the page's 16px and the card's.
+  //   The editor's preview is the same hero, so it asks for 'hero' too.
   const COVER_DRAWN = {
     hero: ['680px', '100vw'],
-    thumb: ['168px', '116px'],
-    editor: ['640px', '(100vw - 72px)']
+    thumb: ['168px', '116px']
   };
 
   // `sizes` for a cover drawn at `place`. The frame is filled
@@ -576,17 +764,22 @@
     return h >>> 0;
   }
 
-  function coverArt(e, cls) {
+  // The generated picture's colours and placement, as its style (the
+  // editor sets it again as its colour slider moves).
+  function coverArtStyle(e) {
     const h = seedOf(e && e.id);
     const part = (n, shift) => (h >>> shift) % n;
     // In the event's colour, when it has one.
     const key = themeKeyOf(e);
     const [c1, c2, c3] = ART_GREENS[part(ART_GREENS.length, 0)].map((hex) => turnHex(hex, key));
-    const style = '--c0:' + turnHex('#03120c', key) + ';--c1:' + c1 + ';--c2:' + c2 + ';--c3:' + c3
+    return '--c0:' + turnHex('#03120c', key) + ';--c1:' + c1 + ';--c2:' + c2 + ';--c3:' + c3
       + ';--x1:' + (8 + part(45, 3)) + '%;--y1:' + (10 + part(40, 9)) + '%'
       + ';--x2:' + (50 + part(45, 14)) + '%;--y2:' + (35 + part(50, 20)) + '%'
       + ';--a:' + (90 + part(180, 25)) + 'deg';
-    return '<span class="cover-art' + (cls ? ' ' + cls : '') + '" style="' + esc(style) + '" aria-hidden="true"></span>';
+  }
+
+  function coverArt(e, cls, attrs) {
+    return '<span class="cover-art' + (cls ? ' ' + cls : '') + '"' + (attrs || '') + ' style="' + esc(coverArtStyle(e)) + '" aria-hidden="true"></span>';
   }
 
   // The event's picture at `place` (see COVER_DRAWN): its cover, or the
@@ -1220,6 +1413,14 @@
   }
 
   // ---------------- The editor ----------------
+  //
+  // The editor looks like the event page: the same card, with the cover
+  // (or the generated picture) as its hero, a button on the photo to pick
+  // one and a × to take it off, the title typed where the title goes, and
+  // the date and time as big as the page shows them, each one tapped to
+  // change. Then the place and the description in the card, the guest
+  // settings and the colour. No help text: short labels, read out but
+  // not shown where the field says what it is, and placeholders.
 
   // An instant as a datetime-local field's value ("2026-10-31T19:30"),
   // on the clock in `zone`.
@@ -1250,35 +1451,117 @@
     return new Date(ms).toISOString();
   }
 
-  function field(id, labelKey, control, hintKey) {
-    return '<div class="field"><label class="field-label" for="' + id + '">' + tx(labelKey) + '</label>' + control
-      + (hintKey ? '<p class="field-hint">' + tx(hintKey) + '</p>' : '')
-      + '<div class="error" id="' + id + 'Error" role="alert"></div></div>';
+  // The editor's date and times, said as the page says them. They're the
+  // wall-clock values typed ("2026-10-10", "19:30"), so no zone is
+  // involved: "Saturday, October 10", "7:30 PM".
+  function wallMs(value) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(String(value || ''));
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)) : null;
+  }
+  function dayWords(date, now) {
+    const ms = wallMs(date);
+    if (ms == null) return '';
+    const year = new Date(ms).getUTCFullYear() !== new Date(now == null ? Date.now() : now).getFullYear() ? 'numeric' : undefined;
+    return fmt(ms, 'UTC', { weekday: 'long', month: 'long', day: 'numeric', year });
+  }
+  function clockWords(time) {
+    const m = /^(\d{2}):(\d{2})/.exec(String(time || ''));
+    return m ? fmt(Date.UTC(2000, 0, 1, +m[1], +m[2]), 'UTC', { hour: 'numeric', minute: '2-digit' }) : '';
+  }
+  // The end: its time on the start's day ("11:30 PM"), and with its day
+  // otherwise ("Sun, Oct 11, 11:00 AM").
+  function endWords(endLocal, startDate) {
+    const ms = wallMs(endLocal);
+    if (ms == null) return '';
+    const time = clockWords(String(endLocal).slice(11));
+    if (String(endLocal).slice(0, 10) === startDate) return time;
+    return fmt(ms, 'UTC', { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + time;
+  }
+
+  const ICON_CAMERA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.2 3a2 2 0 0 0-1.7.9L6.6 5.3H5a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V8.3a3 3 0 0 0-3-3h-1.6l-.9-1.4A2 2 0 0 0 14.8 3zM12 8.2a4.6 4.6 0 1 1 0 9.2 4.6 4.6 0 0 1 0-9.2zm0 2a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2z"/></svg>';
+  const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
+
+  // The cover, as the hero: the photo (or, with none, the generated
+  // picture in the event's colour), and on it, top right, a button to
+  // pick a photo and, when there's one, a × to take it off. Nothing is
+  // sent until the form is saved (views/editor.html).
+  function coverHero(e) {
+    const url = coverUrl(e);
+    return '<div class="hero" id="coverHero">' + coverArt(e, '', ' id="coverArt"')
+      + (coverImg(e, 'hero', 'cover', ' id="coverPreview"') || '<img class="cover" id="coverPreview" alt="" decoding="async">')
+      + '<p class="hero-note hidden" id="coverNoPreview">' + tx('editor.coverNoPreview') + '</p>'
+      + '<div class="hero-tools">'
+      + '<label class="hero-btn file-btn" title="' + tx(url ? 'editor.coverChange' : 'editor.coverAdd') + '">' + ICON_CAMERA
+      + '<input type="file" id="coverFile" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" aria-label="' + tx(url ? 'editor.coverChange' : 'editor.coverAdd') + '"></label>'
+      + '<button type="button" class="hero-btn" id="coverRemove" data-action="remove-cover" aria-label="' + tx('editor.coverRemove') + '" title="' + tx('editor.coverRemove') + '"' + (url ? '' : ' hidden') + '>' + ICON_CLOSE + '</button>'
+      + '</div></div>';
+  }
+
+  // One tappable piece of when: the words, big, with the browser's own
+  // picker under them (see-through, so a tap anywhere on the words opens
+  // it; views/editor.html opens it on a click where that needs asking).
+  function pick(id, type, value, labelKey, words, placeholderKey) {
+    return '<label class="pick' + (words ? '' : ' empty') + '" id="' + id + 'Pick"><span class="pick-text" id="' + id + 'Text" aria-hidden="true">'
+      + esc(words || t(placeholderKey)) + '</span><input type="' + type + '" id="' + id + '" value="' + esc(value) + '" aria-label="' + tx(labelKey) + '"></label>';
+  }
+
+  // The time zone menu's first list (UI.nearbyZones), as menu items: the
+  // event's zone ticked, the viewer's own marked. "Other time zones…"
+  // last, which opens the search (views/editor.html).
+  function zoneMenuItems(viewer, ms, selected) {
+    return nearbyZones(viewer, ms, selected).map((z) => '<button type="button" role="menuitemradio" tabindex="-1" class="menu-item zone-item" aria-checked="' + (z.selected ? 'true' : 'false')
+      + '" data-action="pick-zone" data-zone="' + esc(z.zone) + '"><span class="zone-tick" aria-hidden="true">' + (z.selected ? '✓' : '') + '</span><span class="zone-item-name">' + esc(z.name)
+      + (z.yours ? '<span class="zone-yours">' + tx('editor.zoneYours') + '</span>' : '') + '</span><span class="zone-offset">' + esc(offsetWords(z.offset)) + '</span></button>').join('')
+      + '<button type="button" role="menuitem" tabindex="-1" class="menu-item zone-other" data-action="zone-search">' + tx('editor.zoneOther') + '</button>';
+  }
+
+  // One line of the full list: friendly name, city (when it says more),
+  // and the offset, small.
+  function zoneRow(z, selected) {
+    return '<li><button type="button" class="zone-row" data-action="pick-zone" data-zone="' + esc(z.zone) + '" aria-pressed="' + (z.zone === selected ? 'true' : 'false') + '">'
+      + '<span class="zone-row-name">' + esc(z.name) + (z.city !== z.name ? '<span class="zone-row-city">' + esc(z.city) + '</span>' : '') + '</span>'
+      + '<span class="zone-offset">' + esc(offsetWords(z.offset)) + '</span></button></li>';
+  }
+
+  // When: the day, then the start and end times, as big as on the page,
+  // then the time zone by name, small, with "Change".
+  function whenEditor(e, zone, viewer) {
+    const start = localInput(e.startsAt, zone);
+    const end = localInput(e.endsAt, zone);
+    const date = start.slice(0, 10);
+    const time = start.slice(11, 16);
+    const at = e.startsAt ? Date.parse(e.startsAt) : Date.now();
+    let h = '<div class="when-big when-edit">';
+    h += '<div class="when-date">' + pick('startDate', 'date', date, 'editor.date', dayWords(date), 'editor.datePlaceholder') + '</div>';
+    h += '<div class="when-time">' + pick('startTime', 'time', time, 'editor.startTime', clockWords(time), 'editor.startTime')
+      + '<span class="end-part" id="endPart"' + (end ? '' : ' hidden') + '><span class="dash" aria-hidden="true">–</span>'
+      + pick('endsAt', 'datetime-local', end, 'editor.endTime', endWords(end, date), 'editor.endTime')
+      + '<button type="button" class="round-btn" id="endClear" data-action="clear-end" aria-label="' + tx('editor.removeEnd') + '" title="' + tx('editor.removeEnd') + '">' + ICON_CLOSE + '</button></span>'
+      + '<button type="button" class="chip-btn" id="endAdd" data-action="add-end"' + (end ? ' hidden' : '') + '>' + tx('editor.addEnd') + '</button></div>';
+    h += '<div class="error" id="startsAtError" role="alert"></div><div class="error" id="endsAtError" role="alert"></div>';
+    // The zone: its name, and a menu to change it (the nearby zones,
+    // then a search of all of them). The value sent is the IANA id.
+    h += '<div class="zone-line"><span class="zone-name" id="zoneName">' + esc(zoneName(zone, at)) + '</span>'
+      + '<div class="menu-wrap"><button type="button" class="chip-btn" id="zoneBtn" data-action="zone-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="zoneMenu" aria-label="'
+      + tx('editor.zoneChangeLabel') + '">' + tx('editor.zoneChange') + '</button>'
+      + '<div class="menu zone-menu" id="zoneMenu" role="menu" aria-label="' + tx('editor.timeZone') + '" hidden>' + zoneMenuItems(viewer || zone, at, zone) + '</div></div></div>'
+      + '<input type="hidden" id="timeZone" value="' + esc(zone) + '"><div class="error" id="timeZoneError" role="alert"></div>';
+    // Every zone, searched: filled in by the page's script.
+    h += '<div class="zone-backdrop" id="zoneBackdrop" hidden></div><div class="zone-panel" id="zonePanel" role="dialog" aria-modal="true" aria-label="' + tx('editor.timeZone') + '" hidden>'
+      + '<div class="zone-search-row"><input type="search" id="zoneSearch" placeholder="' + tx('editor.zoneSearch') + '" aria-label="' + tx('editor.zoneSearch') + '" aria-controls="zoneList" autocomplete="off" autocapitalize="off" spellcheck="false">'
+      + '<button type="button" class="round-btn" data-action="zone-close" aria-label="' + tx('editor.zoneClose') + '">' + ICON_CLOSE + '</button></div>'
+      + '<ul class="zone-list" id="zoneList"></ul><p class="zone-none hidden" id="zoneNoMatch">' + tx('editor.zoneNoMatch') + '</p></div>';
+    return h + '</div>';
   }
 
   // Plus-ones a host may allow: the same as lib/eventInput.js's
   // MAX_GUESTS_ALLOWED (a test holds them together).
   const MAX_GUESTS_ALLOWED = 10;
 
-  // The cover: a preview (the current one, or a photo just picked), a
-  // button to pick one and one to take it off. Nothing is sent until the
-  // form is saved (views/editor.html); the server re-encodes what it gets.
-  function coverField(e) {
-    const url = coverUrl(e);
-    return '<div class="field" id="coverField"><span class="field-label">' + tx('editor.cover') + '</span>'
-      + '<div class="cover-pick' + (url ? ' has-cover' : '') + '">'
-      // The page's frame: 3:2, with the band under the top 2:1 (where
-      // the fade and the title go) dimmed below a guide line.
-      + '<div class="cover-frame">' + (coverImg(e, 'editor', 'cover-preview', ' id="coverPreview"') || '<img class="cover-preview" id="coverPreview" alt="" decoding="async">')
-      + '<span class="safe-guide" aria-hidden="true"></span></div>'
-      + '<p class="field-hint hidden" id="coverNoPreview">' + tx('editor.coverNoPreview') + '</p>'
-      + '<div class="cover-buttons">'
-      + '<label class="button secondary file-btn"><span id="coverPickLabel">' + (url ? 'Replace' : 'Choose photo') + '</span>'
-      + '<input type="file" id="coverFile" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"></label>'
-      + '<button type="button" class="secondary" id="coverRemove" data-action="remove-cover"' + (url ? '' : ' hidden') + '>Remove</button>'
-      + '</div></div>'
-      + '<p class="field-hint">' + tx('editor.coverHint') + '</p>'
-      + '<div class="error" id="coverError" role="alert"></div></div>';
+  // A field with a short visible label, and its error under it.
+  function field(id, labelKey, control) {
+    return '<div class="field"><label class="field-label" for="' + id + '">' + tx(labelKey) + '</label>' + control
+      + '<div class="error" id="' + id + 'Error" role="alert"></div></div>';
   }
 
   // The event's colour: a slider from grey round the wheel (dragging it
@@ -1292,7 +1575,6 @@
       + '<div class="hue-row"><input type="range" id="themeHue" min="0" max="' + SLIDER_MAX + '" step="1" value="' + sliderOf(key) + '"'
       + ' style="--track:' + esc(hueTrack()) + '" aria-valuetext="' + esc(themeWords(key)) + '">'
       + '<button type="button" class="secondary small-btn" id="themeMatch" data-action="theme-match"' + (hasMatch ? '' : ' hidden') + '>' + tx('editor.themeMatch') + '</button></div>'
-      + '<p class="field-hint">' + tx('editor.themeHint') + '</p>'
       + '<div class="error" id="themeHueError" role="alert"></div></div>';
   }
 
@@ -1302,70 +1584,69 @@
     return isHue(key) ? key + '°' : t('editor.themeDefault');
   }
 
-  // The form for making an event (d.event null) or editing one, in
-  // fieldsets: what (title, description, cover), when, where, and guests
-  // (plus-ones, capacity, who sees the list).
+  // The form for making an event (d.event null) or editing one. `o` is {
+  // zone (a new event's: the viewer's), viewerZone (for the zone menu's
+  // nearby list) }.
   function editorForm(d, o) {
     o = o || {};
     const e = d.event || {};
     const zone = e.timeZone || o.zone || 'UTC';
     const vis = e.guestListVisibility || 'everyone';
-    let h = '';
-    if (d.event) h += '<a class="back-link" href="/e/' + esc(e.id) + '">‹ ' + esc(e.title) + '</a>';
-    h += '<form class="card form-card" id="eventForm" novalidate>';
-    h += '<h2>' + tx(d.event ? 'editor.editHeading' : 'editor.newHeading') + '</h2>';
+    let h = '<form class="stack editor" id="eventForm" novalidate>';
+    h += '<h1 class="sr-only">' + tx(d.event ? 'editor.editHeading' : 'editor.newHeading') + '</h1>';
 
-    h += '<fieldset><legend>' + tx('editor.what') + '</legend>';
-    h += field('title', 'editor.title', '<input type="text" id="title" maxlength="120" required value="' + esc(e.title || '') + '">');
-    h += field('description', 'editor.description', '<textarea id="description" maxlength="5000" placeholder="' + tx('editor.descriptionPlaceholder') + '">' + esc(e.description || '') + '</textarea>');
-    h += coverField(e);
-    h += themeField(e);
-    h += '</fieldset>';
+    // The event card, as the page draws it.
+    h += '<section class="event-head editor-head' + (coverUrl(e) ? ' has-cover' : '') + '" id="details">';
+    h += coverHero(e);
+    h += '<div class="head-text"><div class="error" id="coverError" role="alert"></div>'
+      + '<label class="sr-only" for="title">' + tx('editor.title') + '</label>'
+      + '<textarea id="title" class="event-title title-input" rows="1" maxlength="120" required placeholder="' + tx('editor.titlePlaceholder') + '">' + esc(e.title || '') + '</textarea>'
+      + '<div class="error" id="titleError" role="alert"></div>'
+      + whenEditor(e, zone, o.viewerZone) + '</div>';
+    h += '<div class="details-card">';
+    h += '<div class="meta where">' + ICON.where + '<div class="what">'
+      + '<label class="sr-only" for="locationName">' + tx('editor.locationName') + '</label>'
+      + '<input type="text" id="locationName" class="soft place-input" maxlength="200" placeholder="' + tx('editor.locationNamePlaceholder') + '" value="' + esc(e.locationName || '') + '">'
+      + '<div class="error" id="locationNameError" role="alert"></div>'
+      + '<label class="sr-only" for="locationAddress">' + tx('editor.locationAddress') + '</label>'
+      + '<textarea id="locationAddress" class="soft address-input" maxlength="500" rows="2" placeholder="' + tx('editor.locationAddressPlaceholder') + '">' + esc(e.locationAddress || '') + '</textarea>'
+      + '<div class="error" id="locationAddressError" role="alert"></div></div></div>';
+    h += '<div class="description-edit"><label class="sr-only" for="description">' + tx('editor.description') + '</label>'
+      + '<textarea id="description" class="soft" maxlength="5000" rows="4" placeholder="' + tx('editor.descriptionPlaceholder') + '">' + esc(e.description || '') + '</textarea>'
+      + '<div class="error" id="descriptionError" role="alert"></div></div>';
+    h += '</div></section>';
 
-    h += '<fieldset><legend>' + tx('editor.when') + '</legend>';
-    h += '<div class="field-row">';
-    h += field('startsAt', 'editor.starts', '<input type="datetime-local" id="startsAt" required value="' + esc(localInput(e.startsAt, zone)) + '">');
-    h += field('endsAt', 'editor.ends', '<input type="datetime-local" id="endsAt" value="' + esc(localInput(e.endsAt, zone)) + '">');
-    h += '</div>';
-    // The full list is filled in by the page's script, from the browser's
-    // own list of zones; the server only knows which one is chosen.
-    h += field('timeZone', 'editor.timeZone', '<select id="timeZone"><option value="' + esc(zone) + '" selected>' + esc(zone.replace(/_/g, ' ')) + '</option></select>', 'editor.timeZoneHint');
-    h += '</fieldset>';
-
-    h += '<fieldset><legend>' + tx('editor.where') + '</legend>';
-    h += field('locationName', 'editor.locationName', '<input type="text" id="locationName" maxlength="200" placeholder="' + tx('editor.locationNamePlaceholder') + '" value="' + esc(e.locationName || '') + '">');
-    h += field('locationAddress', 'editor.locationAddress', '<textarea id="locationAddress" maxlength="500" rows="2" style="min-height:0">' + esc(e.locationAddress || '') + '</textarea>', 'editor.locationAddressHint');
-    h += '</fieldset>';
-
-    h += '<fieldset><legend>' + tx('editor.guests') + '</legend>';
+    // Who's coming: who sees the list, plus-ones and capacity.
+    h += '<section class="card editor-card" id="guestSettings"><h2 class="card-heading">' + tx('editor.guests') + '</h2>';
+    h += '<div class="field" id="visibilityField" role="radiogroup" aria-labelledby="visibilityLabel"><span class="field-label" id="visibilityLabel">' + tx('editor.guestList') + '</span>';
+    ['everyone', 'responded'].forEach((v) => {
+      h += '<label class="choice"><input type="radio" name="guestListVisibility" value="' + v + '"' + (vis === v ? ' checked' : '') + '><span>' + tx('editor.' + v) + '</span></label>';
+    });
+    h += '<div class="error" id="guestListVisibilityError" role="alert"></div></div>';
     const allowed = e.guestsAllowed || 0;
     let options = '';
     for (let n = 0; n <= MAX_GUESTS_ALLOWED; n++) {
       options += '<option value="' + n + '"' + (n === allowed ? ' selected' : '') + '>' + (n ? n : tx('editor.noGuests')) + '</option>';
     }
     h += '<div class="field-row">';
-    h += field('guestsAllowed', 'editor.guestsAllowed', '<select id="guestsAllowed">' + options + '</select>', 'editor.guestsAllowedHint');
-    h += field('capacity', 'editor.capacity', '<input type="number" id="capacity" inputmode="numeric" min="1" max="10000" step="1" placeholder="' + tx('editor.capacityPlaceholder') + '" value="' + esc(e.capacity == null ? '' : e.capacity) + '">', 'editor.capacityHint');
-    h += '</div>';
-    h += '<div class="field" id="visibilityField"><span class="field-label">' + tx('editor.guestList') + '</span>';
-    ['everyone', 'responded'].forEach((v) => {
-      h += '<label class="choice"><input type="radio" name="guestListVisibility" value="' + v + '"' + (vis === v ? ' checked' : '') + '><span>' + tx('editor.' + v) + '</span></label>';
-    });
-    h += '<p class="field-hint">' + tx('editor.hostsSeeAll') + '</p>';
-    h += '<div class="error" id="guestListVisibilityError" role="alert"></div></div>';
-    h += '</fieldset>';
+    h += field('guestsAllowed', 'editor.guestsAllowed', '<select id="guestsAllowed">' + options + '</select>');
+    h += field('capacity', 'editor.capacity', '<input type="number" id="capacity" inputmode="numeric" min="1" max="10000" step="1" placeholder="' + tx('editor.capacityPlaceholder') + '" value="' + esc(e.capacity == null ? '' : e.capacity) + '">');
+    h += '</div></section>';
 
-    h += '<div class="error" id="formError" role="alert"></div>';
-    h += '<div class="form-buttons">'
+    h += '<section class="card editor-card" id="colour">' + themeField(e) + '</section>';
+
+    // Save, always in reach.
+    h += '<div class="save-bar"><div class="error" id="formError" role="alert"></div><div class="form-buttons">'
       + (d.event ? '<a class="button secondary" href="/e/' + esc(e.id) + '">Back</a>' : '')
-      + '<button type="submit" id="saveBtn">' + (d.event ? 'Save' : 'Create event') + '</button></div>';
+      + '<button type="submit" id="saveBtn">' + (d.event ? 'Save' : 'Create event') + '</button></div></div>';
     h += '</form>';
     return h;
   }
 
   return {
-    esc, tx, txStrong, localInput, fromLocalInput, editorForm, coverField, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
-    fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
+    esc, tx, txStrong, localInput, fromLocalInput, editorForm, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
+    zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
+    fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     eventPage, details, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     eventRow, homeLists, homeList, friendRows, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, MAX_GUESTS_ALLOWED
