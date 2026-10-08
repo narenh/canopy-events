@@ -17,7 +17,7 @@ const os = require('os');
 const path = require('path');
 const net = require('net');
 const Database = require('better-sqlite3');
-const { startFakeAccount } = require('./fakeAccount');
+const { startFakeAccount, KEEP_ALIVE_MS } = require('./fakeAccount');
 const { checkResponse } = require('./openapi');
 const { TOKEN: TMDB_TOKEN } = require('./fakeTmdb');
 
@@ -109,6 +109,9 @@ async function startServer(extraEnv = {}) {
     BACKGROUNDS_FILE: '',
     TMDB_TOKEN: '',
     TMDB_LIST_ID: '',
+    // Idle connections kept for the whole file, not Node's 5 s: see
+    // KEEP_ALIVE_MS in fakeAccount.js.
+    KEEP_ALIVE_TIMEOUT_MS: String(KEEP_ALIVE_MS),
     ...extraEnv
   };
   let child;
@@ -124,7 +127,19 @@ async function startServer(extraEnv = {}) {
       child.on('exit', (code) => { clearTimeout(timer); reject(new Error(`server exited ${code}:\n${output}`)); });
     });
   }
-  await launch();
+  // A server that didn't start is stopped, and the fake and the scratch
+  // directory with it, before the error goes to the test. Left open, the
+  // fake's listener would keep this test file's process alive after its
+  // tests end, and the whole run would hang instead of saying what failed.
+  try {
+    await launch();
+  } catch (err) {
+    child.removeAllListeners('exit');
+    child.kill();
+    await fake.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    throw err;
+  }
   let db = null;
   const server = {
     base: `http://localhost:${port}`,
@@ -181,7 +196,14 @@ function client(server, who, { mode = 'cookie', origin } = {}) {
     let payload;
     if (body instanceof FormData) payload = body;
     else if (body !== undefined) { h['Content-Type'] = 'application/json'; payload = typeof body === 'string' ? body : JSON.stringify(body); }
-    const res = await fetch(server.base + url, { method, headers: h, body: payload, redirect: 'manual' });
+    let res;
+    try {
+      res = await fetch(server.base + url, { method, headers: h, body: payload, redirect: 'manual' });
+    } catch (err) {
+      // fetch's own message is just "fetch failed": say which request, and why.
+      const why = err.cause ? err.cause.code || err.cause.message : '';
+      throw new Error(`${method} ${url}: ${err.message}${why ? ` (${why})` : ''}`, { cause: err });
+    }
     const text = await res.text();
     let data = null;
     try { data = JSON.parse(text); } catch (e) {}

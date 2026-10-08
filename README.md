@@ -121,7 +121,10 @@ cover all of it except notifications, which belong to the apps.
   (`test/fakeAccount.js`). `npm test` runs them all. `pages.test.js` holds
   the pages to the same rules, as someone signed out, an unverified
   account, a guest, someone waitlisted, someone removed, a co-host and
-  the creator.
+  the creator. The test servers keep idle connections open for the whole
+  file (`KEEP_ALIVE_TIMEOUT_MS` on the server; unset, it's Node's 5 s), so
+  a process starved of CPU in a parallel run can't drop a request at the
+  keep-alive deadline (`test/harness.test.js`).
 
 `GET /healthz` answers `{"ok":true}`, and `GET /favicon.ico` answers an
 empty 204.

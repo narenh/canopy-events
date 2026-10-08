@@ -2888,3 +2888,66 @@ settings), this is what was built. The rest:
   Suggested first (frequent, recent co-attendees); lists with "Invite
   all"; "Invite everyone from…" a past event; a selection tray with
   "Invite N"; people already on the event greyed with their status.
+
+## Flaky tests
+
+- **The symptom:** about one full run in 3 to 5 (on a busy machine)
+  reported one failure and a few tests short (279 or 282 of 285): a
+  parent test failing before its subtests started. Twice a run hung on
+  `pages.test.js` or `wall.test.js` instead.
+- **The cause: a keep-alive race.** Node closes an idle keep-alive
+  connection after 5 s. A test server that's busy or starved of CPU
+  across that deadline, while a request waits unread on an idle
+  connection, closes the connection under it (its timers run before it
+  reads). The client gets ECONNRESET. Each test file runs the fake
+  account service in its own process, many files at once, so a starved
+  test process dropped the server's `/api/session` call. The server
+  then answered 503 `accounts_unreachable` (or a test's own fetch to
+  the server failed). In a file's setup (`makeEvent`, the `/me` calls
+  in `cohosts.test.js`) that fails the parent test before its subtests
+  run.
+- **Fix:** the fake account service and fake TMDB keep idle
+  connections for 10 minutes, and so does the server under test,
+  through a new `KEEP_ALIVE_TIMEOUT_MS` the harness sets. Unset, as in
+  production, the server keeps Node's 5 s, as before. · Retrying would
+  only have hidden it. · Reverse: drop the setting in `server.js` and
+  the `keepAliveTimeout` lines in the fakes.
+- **The hangs:** when `startServer()` failed (the server exited, or
+  didn't say "listening" in 10 s), the fake account service it had
+  started stayed open, and that kept the test file's process alive
+  after its tests, so the run hung instead of failing. That's the
+  likely source of the `pages.test.js` and `wall.test.js` hangs; their
+  output wasn't kept, so it isn't proven. `startServer()`
+  now stops the child, closes the fake and removes the scratch
+  directory before rethrowing. A fetch that fails through the harness
+  now names the request and the cause (`ECONNRESET`), not just "fetch
+  failed".
+- **How it was found:** 25 plain runs and 36 runs with three suites at
+  once (load average up to 74 on 10 cores) never failed. Pausing this
+  worktree's test-file and server processes at random (SIGSTOP and
+  SIGCONT, 0.3 to 3 s) brought it out. Before the fix, 4 of 11 such
+  runs failed with ECONNRESET, giving a 503 in `calendar.test.js`
+  ("settings: the API") and the `cohosts.test.js` setup, and "fetch
+  failed" in `pages.test.js`. After it, 0 of 8 did. Then 30 plain
+  runs in a row: 288 of 288 each time (285, plus the 3 new ones).
+  `test/harness.test.js` reproduces the race itself: it keeps the
+  fake's process busy past 5 s while a request waits. With the fake on
+  Node's default it fails 4 times in 5; with the fix it passes.
+- **Ruled out:** the port picked by `freePort()` being taken before the
+  server binds it. macOS hands out TCP ports in sequence
+  (`net.inet.tcp.randomize_ports: 0`), and even during a run the
+  counter takes about 11 minutes to come round, so a freed port can't
+  come back in the second before the server binds it. Also ruled out:
+  scratch `DATA_DIR` names (`mkdtemp`, unique) and the fakes' ports
+  (`listen(0)`).
+- **Left as is:** `heic.test.js` "the server keeps answering while it
+  converts a HEIC" is timing-based by design (every `/healthz` under
+  half the upload's time), so a server paused for seconds fails it. It
+  hasn't failed in unpaused runs.
+- **Not changed, worth knowing:** the same race can happen wherever
+  events talks straight to the account service, which is Express on
+  Node's 5 s keep-alive (locally, say). A starved account service could
+  drop a session check: a 503, unless the token is in events' stale
+  cache. In production events reaches it through Cloudflare and
+  Coolify's proxy, so the connection it reuses is the proxy's, with the
+  proxy's idle timeout.

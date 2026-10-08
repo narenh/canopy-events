@@ -217,7 +217,7 @@ function apiRoutes() {
 }
 
 if (require.main === module) {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`canopy-events listening on port ${PORT}`);
     // Covers from before there were sizes get theirs, in the background
     // (lib/coverBackfill.js).
@@ -225,6 +225,13 @@ if (require.main === module) {
     // The curated backgrounds, loaded in the background.
     backgrounds.start();
   });
+  // How long an idle keep-alive connection stays open: Node's own 5 s
+  // unless KEEP_ALIVE_TIMEOUT_MS says otherwise. The tests set it long
+  // (test/harness.js): a server that's busy, or starved of CPU, across that
+  // deadline while a request waits unread on an idle connection closes the
+  // connection under it, and the client gets ECONNRESET.
+  const keepAliveMs = Number(process.env.KEEP_ALIVE_TIMEOUT_MS);
+  if (Number.isSafeInteger(keepAliveMs) && keepAliveMs > 0) server.keepAliveTimeout = keepAliveMs;
 }
 
 module.exports = { app, apiRoutes };
