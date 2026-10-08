@@ -1,0 +1,147 @@
+// The database file: made at the current schema version, in WAL mode,
+// refused when it's from a version this code doesn't know, and copied
+// into dated snapshots with only the newest 14 kept. Plus event ids.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const Database = require('better-sqlite3');
+const { init, open, prepareSchema, snapshot, SCHEMA_VERSION, SNAPSHOTS_KEPT } = require('../lib/db');
+const { newEventId, EVENT_ID_RE } = require('../lib/ids');
+
+function scratch() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'canopy-events-db-test-'));
+}
+
+test('a new database is made at the current version, in WAL mode', (t) => {
+  const dir = scratch();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const store = init({ file: path.join(dir, 'events.db'), snapshots: false });
+  assert.equal(SCHEMA_VERSION, 1);
+  assert.equal(store.db.pragma('user_version', { simple: true }), 1);
+  assert.equal(store.db.pragma('journal_mode', { simple: true }), 'wal');
+  // Room for what comes next, without reshaping anything.
+  const cols = (table) => store.db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all().map((c) => c.name);
+  for (const c of ['guests_allowed', 'capacity', 'cover_image_at']) assert.ok(cols('events').includes(c), c);
+  assert.ok(cols('rsvps').includes('guests'));
+  assert.ok(cols('hosts').includes('role'));
+  store.db.close();
+  // Opening it again is fine.
+  init({ file: path.join(dir, 'events.db'), snapshots: false }).db.close();
+});
+
+test('a database from an unknown schema version is refused, not opened', (t) => {
+  const dir = scratch();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'events.db');
+  init({ file, snapshots: false }).db.close();
+  const db = new Database(file);
+  db.pragma('user_version = 2');
+  db.close();
+  assert.throws(() => init({ file, snapshots: false }), /schema version 2/);
+
+  // A file with tables but no version at all is someone else's database.
+  const other = path.join(dir, 'other.db');
+  const o = new Database(other);
+  o.exec('CREATE TABLE events (id TEXT)');
+  o.close();
+  assert.throws(() => init({ file: other, snapshots: false }), /schema version 0/);
+});
+
+// Tables, their columns (name, type, not null, default, key) and indexes:
+// what has to match between an upgraded file and a new one.
+function shape(db) {
+  const out = {};
+  for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all()) {
+    out[name] = {
+      columns: db.prepare(`SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info('${name}') ORDER BY name`).all(),
+      indexes: db.prepare(`SELECT name, "unique", partial FROM pragma_index_list('${name}') ORDER BY name`).all()
+    };
+  }
+  return out;
+}
+
+test('a version 1 file, as first shipped, is brought up to the same shape as a new one', (t) => {
+  const dir = scratch();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'events.db');
+  const old = new Database(file);
+  old.exec(fs.readFileSync(path.join(__dirname, 'fixtures', 'schema-v1.sql'), 'utf8'));
+  old.pragma('user_version = 1');
+  old.prepare("INSERT INTO events (id, title, starts_at, over_at, time_zone, created_at, updated_at) VALUES ('AAAAAAAAAAAA', 'Kept', 1, 2, 'UTC', 1, 1)").run();
+  old.close();
+
+  const upgraded = init({ file, snapshots: false });
+  const fresh = init({ file: path.join(dir, 'fresh.db'), snapshots: false });
+  assert.equal(upgraded.db.pragma('user_version', { simple: true }), SCHEMA_VERSION);
+  assert.deepEqual(shape(upgraded.db), shape(fresh.db));
+  assert.equal(upgraded.getEvent('AAAAAAAAAAAA').title, 'Kept');
+  upgraded.db.close();
+  fresh.db.close();
+});
+
+test('upgrades run one step at a time, and a failed step changes nothing', (t) => {
+  const dir = scratch();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'events.db');
+  init({ file, snapshots: false }).db.close();
+  const upgrades = {
+    1(db) { db.exec('ALTER TABLE events ADD COLUMN two TEXT'); },
+    2(db) { db.exec('ALTER TABLE events ADD COLUMN three TEXT'); }
+  };
+  const cols = (db) => db.prepare("SELECT name FROM pragma_table_info('events')").all().map((c) => c.name);
+
+  // A step that throws: the file stays at version 1, without its column.
+  let db = open(file);
+  assert.throws(() => prepareSchema(db, file, { version: 3, upgrades: { ...upgrades, 2() { throw new Error('boom'); } } }), /boom/);
+  assert.equal(db.pragma('user_version', { simple: true }), 1);
+  assert.ok(!cols(db).includes('two'));
+  // A missing step is an error, not a skip.
+  assert.throws(() => prepareSchema(db, file, { version: 3, upgrades: { 1: upgrades[1] } }), /no upgrade from schema version 2/);
+  assert.equal(db.pragma('user_version', { simple: true }), 1);
+  // Both steps: version 3, both columns.
+  prepareSchema(db, file, { version: 3, upgrades });
+  assert.equal(db.pragma('user_version', { simple: true }), 3);
+  assert.ok(cols(db).includes('two') && cols(db).includes('three'));
+  db.close();
+  // And the code at version 1 won't open it now.
+  db = open(file);
+  assert.throws(() => prepareSchema(db, file), /schema version 3/);
+  db.close();
+});
+
+test('snapshots: one a day, newest 14 kept', async (t) => {
+  const dir = scratch();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const store = init({ file: path.join(dir, 'events.db'), snapshots: false });
+  const snaps = path.join(dir, 'backups', 'sqlite');
+  fs.mkdirSync(snaps, { recursive: true });
+  for (let d = 1; d <= 20; d++) fs.writeFileSync(path.join(snaps, `events-2020-01-${String(d).padStart(2, '0')}.db`), '');
+  fs.writeFileSync(path.join(snaps, 'not-a-snapshot.txt'), '');
+  await snapshot(store.db, snaps);
+  const left = fs.readdirSync(snaps).filter((f) => f.startsWith('events-')).sort();
+  assert.equal(left.length, SNAPSHOTS_KEPT);
+  assert.equal(left[left.length - 1], `events-${new Date().toISOString().slice(0, 10)}.db`);
+  assert.ok(fs.existsSync(path.join(snaps, 'not-a-snapshot.txt')), 'other files are left alone');
+  // The snapshot is a real, openable copy.
+  const copy = new Database(path.join(snaps, left[left.length - 1]), { readonly: true });
+  assert.equal(copy.pragma('user_version', { simple: true }), SCHEMA_VERSION);
+  copy.close();
+  store.db.close();
+});
+
+test('event ids: 12 characters of base62, and different every time', () => {
+  const seen = new Set();
+  for (let i = 0; i < 5000; i++) {
+    const id = newEventId();
+    assert.match(id, EVENT_ID_RE);
+    seen.add(id);
+  }
+  assert.equal(seen.size, 5000);
+  // Every character of the alphabet turns up (no byte-to-character bias
+  // that leaves some out).
+  const chars = new Set([...Array.from(seen).join('')]);
+  assert.equal(chars.size, 62);
+});
