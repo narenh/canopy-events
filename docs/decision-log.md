@@ -206,3 +206,117 @@ Format: decision · why · how to reverse.
   `UC3Y84QJ83.com.canopysf.CanopyEvents`) to the canopysf.com site, with
   a `Content-Type: application/json` header rule. Fill in assetlinks
   when the Android app exists.
+
+
+## Events web
+
+- **The pages are clients of the API**, even on the server: each page
+  asks this server's own `/api/v1` over loopback, as the visitor (their
+  cookie, their host), and draws the answer. · One copy of the
+  visibility and never-leak rules, and API changes being built in
+  parallel (plus-ones, waitlist, moderation) reach the pages with no
+  second copy to forget. Costs one local request per list; the session
+  lookup is cached. · `apiGet` in routes/pages.js could call lib/views
+  and the store directly.
+- Pages are drawn on the server **and** redrawn in the browser by the
+  same file, `public/ui.js`, which runs in Node and in the page. Each
+  page carries the API answers it was drawn from as JSON, so its script
+  starts there without asking again. · Instant on a phone, link previews
+  and no-JS readers get the content, tests can read the HTML, and the
+  two can't drift. · Draw only in the browser from the embedded JSON.
+- Server-side additions are `routes/pages.js`, `lib/render.js`,
+  `views/*` and `public/*`, plus four lines in `server.js` (mount the
+  pages; an HTML "nothing here" for other browser GETs). Nothing in the
+  API, `routes/` or `lib/` otherwise changed. · Clean merges. · n/a
+- Link previews (Open Graph and Twitter): the title (prefixed
+  "Cancelled:" when it is), and "<date>, <time> <zone> · <place name>".
+  Never the address and never the description (the host's own words can
+  say anything, an address included). `twitter:card` is `summary` until
+  there's an image. · The spec: title, date, place name. ·
+  `eventMeta()` in lib/render.js.
+- The cover image hook is `UI.coverUrl(event)`, reading
+  `event.coverImageUrl`. That field name is a guess; whoever adds covers
+  points it at the real one, and the page and the preview both follow. ·
+  n/a · public/ui.js.
+- Every page is `noindex, nofollow` (meta tag and `X-Robots-Tag`), and
+  `Cache-Control: no-store`. · Events are link-only; pages say who's
+  going. Previews ignore robots tags. · routes/pages.js, lib/render.js.
+- **Time zone labels**: an event's times are always in its zone, and
+  labelled ("Times are Los Angeles time (PDT)" on the event, "PDT" after
+  the time in lists) when the viewer's clock reads differently at that
+  moment, not when the zone names differ (Phoenix and Los Angeles in
+  summer get no label). The browser tells the server its zone in a `tz`
+  cookie (a year, `SameSite=Lax`), so only the very first page is drawn
+  with labels everywhere and then redrawn. · The spec asks for a label
+  when it differs. · `sameClock()` in public/ui.js; drop the cookie in
+  public/events.js.
+- Home shows **invitations first**, then hosting, coming up, past (the
+  spec lists hosting first). Empty lists are left out. · Invitations are
+  the one list asking for something. · `HOME_LISTS` in public/ui.js.
+- An invitation on the home page offers **Going** and **Can't go** only;
+  "Maybe" is on the event page. · "Accept/decline right there". ·
+  `invitationCard()` in public/ui.js.
+- Inviting friends is **its own page**, `/e/<id>/invite`, not a sheet
+  over the event. · A long list with a search box scrolls better on a
+  phone as a page, and the back button works. · n/a
+- The invite page loads all your friends (100 drawn by the server, then
+  up to 10 more pages of 100 in the browser) so the search box filters
+  everyone, client-side. It reads up to 2,000 of the guest list to mark
+  who's already on it. · No search endpoint, and friends lists are
+  small. · constants in routes/pages.js and views/invite.html.
+- `/new` for an unverified person is a page saying to confirm the email,
+  with the button, rather than a redirect to the account service. Editing
+  is for hosts and isn't gated on being verified, the same as the API's
+  PATCH. · They see why. · routes/pages.js.
+- **Validation messages**: which field comes from the API's `reason`;
+  the words come from copy.js for the reasons it lists (so every sentence
+  stays in copy.js), and are the API's own `error` sentence otherwise.
+  · The API's sentences are written for developers ("startsAt is a date
+  and time with a time zone offset…"). · `COPY.editor.errors`.
+- The editor uses `datetime-local` fields and a time zone list (every
+  zone the browser knows, the browser's own chosen for a new event). A
+  typed time is read on the chosen zone's clock; changing the zone keeps
+  the clock time. The start is empty for a new event rather than
+  guessed. An emptied end time clears it. · Native pickers on phones; no
+  library. · public/ui.js `fromLocalInput`.
+- Descriptions are plain text with their line breaks; links aren't made
+  clickable. · Simplest safe thing. · `details()` in public/ui.js.
+- An address gets an "Open in Maps" link to Apple Maps
+  (`maps.apple.com/?q=`), which opens Maps on an iPhone and Apple's web
+  map elsewhere. · One link for every phone. · `details()`.
+- Names: full names on the guest list, hosts and friends; `shortName`
+  ("Ben O") in the small friends-going chips. · n/a · public/ui.js.
+- The guest list shows 50 at a time, grouped going / maybe / waitlisted
+  / can't go / (hosts) invited, with "show more". Counts in the event
+  card include "N invited" for hosts only. · n/a · public/ui.js.
+- Hosts can **bring back** a cancelled event (the API allows it). Once
+  an event is over, invite and cancel are hidden; edit stays. ·
+  `hostSection()` in public/ui.js.
+- Signed out, a cancelled or past event shows its state and a small
+  sign-in link, not the big RSVP. · Nothing to answer. ·
+  `signedOutSection()`.
+- Share uses the phone's share sheet where there is one, otherwise copies
+  the link. Cancelling and bringing back ask with `confirm()`, as the
+  account pages do. · n/a · views/event.html.
+- The header, signed out, has a "Sign in" button; sign out is a link at
+  the foot of every page rather than in the header. · The header is full
+  at 375px. · lib/render.js.
+- `color-scheme: dark` is added to the copied tokens. · Native date
+  pickers and the time zone list's pop-up otherwise draw light (a
+  `<select>` list was white on white). · public/events.css.
+- The viewport tag is the account service's, `maximum-scale=1,
+  user-scalable=no`, kept for the same look and no zoom-on-focus. It
+  stops pinch zoom on Android (iOS ignores it). · Matching. · each view.
+- A page's embedded data holds the visitor as `{id, firstName,
+  emailVerified}` only, never their own contact details, and the page
+  tests hold every page to having nobody's (the visitor's included). ·
+  The pages never show them. · `meView()` in routes/pages.js.
+- A photo that won't load (signed out, the account service won't serve
+  it) becomes initials. Photos are fetched with no referrer. · n/a ·
+  public/events.js.
+- The wording is "Confirm your email", as on the account service's
+  profile, not "verify". · One word for one thing across Canopy. ·
+  public/copy.js.
+- Visual checks used a scratch fake account service with photos and
+  seeded events (not committed), not the real account service. ·
+  Passkeys can't be made from the test browser. · n/a

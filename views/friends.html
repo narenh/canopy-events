@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>__PAGE_TITLE__</title>
+<meta name="theme-color" content="#03120c">
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/events.css">
+</head>
+<!-- Your friends (/friends): people you've been to an event with, most
+     events in common first, from GET /api/v1/me/friends. -->
+<body class="mesh-bg">
+<!-- PAGE:HEADER -->
+<main class="wrap">
+  <!-- PAGE:BANNER -->
+  <div id="main" class="stack"><!-- PAGE:MAIN --></div>
+</main>
+<!-- PAGE:FOOTER -->
+<script type="application/json" id="pageData">__PAGE_DATA__</script>
+<script src="/copy.js"></script>
+<script src="/ui.js"></script>
+<script src="/events.js"></script>
+<script>
+applyCopy();
+
+const data = pageData();
+
+onActions({
+  // The next page, added to the end.
+  more: (btn) => busy(btn, null, async () => {
+    const { res, data: d } = await api('GET', '/me/friends?limit=50&cursor=' + encodeURIComponent(data.nextCursor));
+    if (!res.ok) return;
+    document.getElementById('friendList').insertAdjacentHTML('beforeend', UI.friendRows(d.friends));
+    data.nextCursor = d.nextCursor;
+    if (!d.nextCursor) btn.remove();
+  })
+});
+</script>
+</body>
+</html>
