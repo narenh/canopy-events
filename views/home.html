@@ -79,6 +79,31 @@ async function reload(name){
   if (res.ok) data.lists[name] = d;
 }
 
+// The calendar button: its popover is the Calendar card. It opens under
+// the button with focus inside it; Escape, a tap anywhere else, or the
+// button again shuts it, and focus goes back to the button.
+const calBtn = document.getElementById('calendarBtn');
+const calPop = document.getElementById('calendarPopover');
+if (calBtn && calPop){
+  const shut = (focus) => {
+    if (calPop.hidden) return;
+    calPop.hidden = true;
+    calBtn.setAttribute('aria-expanded', 'false');
+    if (focus) calBtn.focus();
+  };
+  calBtn.addEventListener('click', () => {
+    if (!calPop.hidden) return shut(true);
+    calPop.hidden = false;
+    calBtn.setAttribute('aria-expanded', 'true');
+    const first = calPop.querySelector('a[href], button, input');
+    if (first) first.focus();
+  });
+  document.addEventListener('click', (e) => {
+    if (!calPop.hidden && !e.target.closest('#calendarPopover') && !e.target.closest('#calendarBtn')) shut(false);
+  }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !calPop.hidden){ e.preventDefault(); shut(true); } });
+}
+
 // The Calendar card's switch: invitations in your Canopy calendar or not
 // (PATCH /api/v1/me/settings). If it doesn't save, it flips back.
 const invitesSwitch = document.getElementById('calendarInvites');

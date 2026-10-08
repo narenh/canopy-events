@@ -1021,3 +1021,28 @@ textarea.address-input{min-height:0;margin-top:8px;}
 
 /* A heading inside a home tab's list (Invited's "Declined"). */
 .home-panel .list-heading{color:var(--on-bg);font-size:var(--fs-small);font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin:22px 4px 10px;}
+
+/* Phones: a list row's picture is a square filling the card's left edge,
+   top to bottom, cropped from the middle of the cover; the card's own
+   rounded corners round it (no inset, border or corners of its own). An
+   invitation's card does the same for its event row, with the answers
+   below at full width. */
+@media (max-width: 699px) {
+  .event-row.card, .invite-card{overflow:hidden;}
+  .event-row.card{padding:0;}
+  .invite-card .event-row{padding:0;}
+  .event-row.card .thumb, .invite-card .event-row .thumb{
+    align-self:stretch;width:108px;min-height:108px;aspect-ratio:auto;border:none;border-radius:0;
+  }
+  .event-row.card .info, .invite-card .event-row .info{padding:12px 12px 12px 0;}
+  .invite-card .reply{padding-top:12px;}
+}
+
+/* Your events' header: the calendar button (its popover is the Calendar
+   card) and "+ New event". The header sits above the sticky tabs and the
+   list, so the open popover is painted over them. */
+.home-top{position:relative;z-index:25;}
+.home-actions{display:flex;align-items:center;gap:10px;}
+.popover{position:absolute;right:0;top:calc(100% + 8px);z-index:30;width:min(340px, calc(100vw - 32px));}
+.popover[hidden]{display:none;}
+.popover .calendar-card{background:var(--theme-card-solid, #03200b);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 14px 40px rgba(0,0,0,.45);margin:0;}

@@ -586,7 +586,9 @@
   //   The editor's preview is the same hero, so it asks for 'hero' too.
   const COVER_DRAWN = {
     hero: ['680px', '100vw'],
-    thumb: ['168px', '116px']
+    // Phones: a 108px square, cropped from a 3:2 cover by its height, so
+    // the photo is drawn 162px wide.
+    thumb: ['168px', '162px']
   };
 
   // `sizes` for a cover drawn at `place`. The frame is filled
@@ -1599,7 +1601,7 @@
   // calendarInvites }, calendarUrl }.
   function calendarCard(d) {
     const on = !!(d.settings && d.settings.calendarInvites);
-    let h = '<section class="card calendar-card" id="calendar" data-section="calendar"><h2 class="card-heading">' + tx('home.calendarHeading') + '</h2>';
+    let h = '<section class="card calendar-card" id="calendar" data-section="calendar"><h2 class="card-heading" id="calendarHeading">' + tx('home.calendarHeading') + '</h2>';
     h += '<p>' + tx('home.calendarHint') + '</p>';
     const url = safeUrl(d.calendarUrl);
     if (url) h += '<a class="button secondary" href="' + esc(url) + '">' + tx('home.calendarAdd') + '</a>';
@@ -1902,6 +1904,10 @@
 
   const ICON_CAMERA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.2 3a2 2 0 0 0-1.7.9L6.6 5.3H5a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V8.3a3 3 0 0 0-3-3h-1.6l-.9-1.4A2 2 0 0 0 14.8 3zM12 8.2a4.6 4.6 0 1 1 0 9.2 4.6 4.6 0 0 1 0-9.2zm0 2a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2z"/></svg>';
   // A picture: a frame, a sun and two hills (the classic image-file icon).
+  // A calendar: a page with two rings and a grid of days.
+  const ICON_CALENDAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/>'
+    + '<path d="M3.5 10h17" stroke="currentColor" stroke-width="2"/><path d="M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+    + '<rect x="7" y="13" width="3" height="3" rx=".6" fill="currentColor"/><rect x="14" y="13" width="3" height="3" rx=".6" fill="currentColor"/></svg>';
   const ICON_PICTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>'
     + '<circle cx="8.5" cy="9.5" r="1.9" fill="currentColor"/><path fill="currentColor" d="M4 18.5l5.2-5.6 3.3 3.4 3.2-4.1L20 18.5z"/></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
@@ -2225,7 +2231,7 @@
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     backgroundGroups, backgroundSheet, tmdbCredit,
     eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
-    eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
+    eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, ICON_CALENDAR, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, inviteRow, invitePage, lookupResult, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, HOME_LOADS, HOME_TABS, MAX_GUESTS_ALLOWED
   };
 });

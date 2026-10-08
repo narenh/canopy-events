@@ -2713,6 +2713,29 @@ with hosting blue. The rest:
   withdrawn). Declined events aren't on All. · routes/pages.js loads
   `/me/events/declined` with the other lists (UI.HOME_LOADS).
 
+## Backgrounds from TMDB (in progress, feat/backgrounds)
+
+- **(You)** Hosts can pick a cover from a curated set of TMDB backdrops.
+  **Only the picker fetches from TMDB.** Choosing one saves it as an
+  ordinary uploaded cover (our copy, through the normal cover pipeline),
+  so event pages, link previews, apps and the calendar never depend on
+  TMDB. No images are in the repo.
+- Assumed: curation is a TMDB list you maintain (`TMDB_LIST_ID`), with
+  the token in `TMDB_TOKEN` on the server only. The feature is off until
+  both are set. Textless backdrops are preferred. TMDB's attribution goes
+  in the picker and on a small credits line. Search is left for later.
+- **(You)** On phones, a list row's picture fills the card's left edge,
+  top to bottom, as a 108px square cropped from the middle of the cover
+  (rounded only by the card's own corners). A taller row (a two-line
+  title) stretches it a little taller rather than leaving a gap. Desktop
+  keeps the inset 3:2 thumbnail. Invitation cards do the same. The
+  srcset hint asks for 162px (a 3:2 crop is drawn wider than its square).
+- **(You)** The Calendar card moved from the bottom of the home page
+  into a popover, opened by a calendar icon button next to "+ New event"
+  (shown to unverified people too). It's a dialog (it holds a link and a
+  switch): Escape or a tap outside closes it and focus returns to the
+  button.
+
 ## Backgrounds from TMDB
 
 On `feat/backgrounds`. **(You)** asked for a curated background picker
@@ -2724,7 +2747,9 @@ editor; TMDB's attribution. Then: **(You)** the set is mainly a
 hand-picked manifest of exact images, `config/backgrounds.json`, with
 the list optional after it; and the first 23 picks (Mean Girls 9, The
 Devil Wears Prada 7, The Wizard of Oz 1, Wicked 5, Schitt's Creek 1),
-kept even where they have text on them. The rest:
+kept even where they have text on them. Where this differs from the
+"in progress" note above (the feature being off without both TMDB
+settings), this is what was built. The rest:
 
 - **The manifest needs no token.** Its entries are exact file paths on
   TMDB's public image CDN; nothing asks TMDB's API about them (thumbnail,

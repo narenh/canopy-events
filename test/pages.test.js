@@ -363,7 +363,7 @@ test('pages', async (t) => {
       return { body: r.body, data: pageData(r.text) };
     };
     // The panel, up to the Calendar card under it.
-    const shown = (body) => body.slice(body.indexOf('id="homePanel"'), body.indexOf('id="calendar"'));
+    const shown = (body) => body.slice(body.indexOf('id="homePanel"'), body.indexOf('id="pageData"'));
     // A host's event: All and Hosting; not Invited or Past.
     let r = await tabOf(ana, '/');
     assert.equal(r.data.tab, 'all');
@@ -402,7 +402,7 @@ test('pages', async (t) => {
   await t.test('home tabs: Invited also shows the events you declined, under Declined, with Going to change your mind', async () => {
     const e = (await ana.post('/api/v1/events', { title: 'Declined dinner', startsAt: new Date(Date.now() + 5 * 86400000).toISOString(), timeZone: 'UTC', guestListVisibility: 'everyone' })).data.event;
     await dee.put(`/api/v1/events/${e.id}/rsvp`, { status: 'not_going' });
-    const panel = (body) => body.slice(body.indexOf('id="homePanel"'), body.indexOf('id="calendar"'));
+    const panel = (body) => body.slice(body.indexOf('id="homePanel"'), body.indexOf('id="pageData"'));
     const invited = panel((await page(server, dee, '/?tab=invited')).body);
     assert.ok(invited.includes('id="declinedHeading"'), 'a Declined heading');
     const declined = invited.slice(invited.indexOf('id="list-declined"'));
@@ -426,8 +426,11 @@ test('pages', async (t) => {
     assert.deepEqual(tabs.filter((x) => x.selected === 'true').map((x) => x.name), ['hosting'], 'one selected');
     assert.deepEqual(tabs.filter((x) => x.tabindex === '0').map((x) => x.name), ['hosting'], 'roving tabindex');
     assert.match(body, /<div class="home-panel" id="homePanel" role="tabpanel" aria-labelledby="tab-hosting" tabindex="0">/);
-    // The Calendar card stays below the tabs.
-    assert.ok(body.indexOf('id="homePanel"') < body.indexOf('id="calendar"'));
+    // The Calendar card is a popover from the calendar button in the
+    // header, shut until asked for: above the tabs, not in the list.
+    assert.match(body, /<button type="button" class="icon-btn" id="calendarBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="calendarPopover"/);
+    assert.match(body, /<div class="popover" id="calendarPopover" role="dialog" aria-labelledby="calendarHeading" hidden><section class="card calendar-card" id="calendar"/);
+    assert.ok(body.indexOf('id="calendarPopover"') < body.indexOf('id="homePanel"'));
   });
 
   await t.test('home, unverified: no new event, and a line saying to confirm the email to host', async () => {
@@ -1143,7 +1146,7 @@ test('pages: the features, as everyone who might look', async (t) => {
 
   await t.test('home: a cover is the list row\'s 3:2 thumbnail; no cover, the generated one', async () => {
     const hosting = section((await page(server, ana, '/?tab=hosting')).body, 'list-hosting');
-    assert.ok(hosting.includes(`<span class="thumb">${img('cover', '(min-width: 700px) 200px, 138px', ' loading="lazy"')}`), hosting);
+    assert.ok(hosting.includes(`<span class="thumb">${img('cover', '(min-width: 700px) 200px, 193px', ' loading="lazy"')}`), hosting);
     assert.match(hosting, /<span class="thumb"><span class="cover-art" style="--c0:#[0-9a-f]{6};--c1:#[0-9a-f]{6};/);
     assert.ok(section((await page(server, fay, '/?tab=hosting')).body, 'list-hosting').includes('Garden party'));
   });
