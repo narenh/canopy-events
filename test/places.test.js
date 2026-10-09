@@ -44,10 +44,16 @@ test('the JWT Apple trades: ES256 over the header and claims, signed with the ke
   assert.equal(verifyJwt(jwt, makeKey().publicKey), null);
 });
 
-test('the key reads as Coolify gives it: real line breaks, "\\n" escapes, or a bare body', () => {
+test('the key reads as Coolify gives it: real line breaks, "\\n" escapes (once or twice), quoted, or a bare body', () => {
   const { pem } = makeKey();
   assert.ok(readPrivateKey(pem));
   assert.ok(readPrivateKey(pem.trim().replace(/\n/g, '\\n')));
+  // Escaped twice (\\n, what Coolify stored once in production), with
+  // CRLFs, quotes around it, or spaces at the ends of lines.
+  assert.ok(readPrivateKey(pem.trim().replace(/\n/g, '\\\\n')));
+  assert.ok(readPrivateKey(pem.replace(/\n/g, '\r\n')));
+  assert.ok(readPrivateKey('"' + pem.trim().replace(/\n/g, '\\n') + '"'));
+  assert.ok(readPrivateKey(pem.split('\n').map((l) => '  ' + l + ' ').join('\n')));
   const body = pem.replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, '');
   assert.ok(readPrivateKey(body));
   assert.equal(readPrivateKey('not a key'), null);
