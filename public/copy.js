@@ -378,6 +378,8 @@ const COPY = {
     verifyHeading: 'Confirm your email first',
     verifyHint: 'To make events, confirm your email. It takes a minute: we email you a code.',
     notHost: 'Only a host can edit this event.',
+    // /new?from=<id> (Duplicate, in the host's menu) for someone who isn't.
+    duplicateNotHost: 'Only a host can duplicate this event.',
     // By the API's `reason`. The API's own sentence is shown for any
     // reason not listed here.
     errors: {
@@ -391,6 +393,10 @@ const COPY = {
       bad_capacity: 'Capacity is a whole number from 1 to 10,000, or empty for no limit.',
       bad_theme_hue: 'Pick a color on the slider.',
       bad_theme_grayscale: 'Pick a color on the slider.',
+      // A duplicate's cover, copied on Save: the original's was taken off
+      // meanwhile, or it's gone.
+      no_cover: "The original event's cover was removed. Remove it here, or pick another.",
+      bad_cover_from: "The original event was deleted, and its cover with it. Remove the cover here, or pick another.",
       // The details, shown under the row they're about.
       bad_detail_url: "That doesn't look like a web link. Paste the whole address.",
       bad_detail_phone: "That doesn't look like a phone number.",

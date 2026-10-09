@@ -1213,10 +1213,14 @@
     // Lists (any host, each with their own): put them on, take them off,
     // and a big QR code for the door when there are any on it.
     const lists = e.hostLists || [];
+    // Duplicate: a new event like this one, in the editor (/new?from=),
+    // for any host who may make events.
+    const duplicate = !!(d.me && d.me.emailVerified);
     if (creator) {
       items.push(['cohosts', 'Co-hosts…', '']);
       items.push(['lists', 'Lists…', '']);
       if (lists.length) items.push(['show-list-qr', 'Show list QR', '']);
+      if (duplicate) items.push(['duplicate', 'Duplicate', '']);
       if (open) items.push(['new-link', 'Make a new link…', '']);
       if (phase === 'cancelled') items.push(['restore', 'Bring back event', '']);
       else if (open) items.push(['cancel', 'Cancel event', '']);
@@ -1224,6 +1228,7 @@
     } else {
       items.push(['lists', 'Lists…', '']);
       if (lists.length) items.push(['show-list-qr', 'Show list QR', '']);
+      if (duplicate) items.push(['duplicate', 'Duplicate', '']);
       items.push(['step-down', 'Step down as co-host', '']);
     }
     h += '<div class="edit-row"><a class="button secondary" href="/e/' + esc(e.id) + '/edit">Edit</a>'
@@ -2737,12 +2742,14 @@
   }
 
   // The form for making an event (d.event null) or editing one.
-  // d.backgrounds is the curated backgrounds (none: no picker). `o` is {
-  // zone (a new event's: the viewer's), viewerZone (for the zone menu's
-  // nearby list) }.
+  // d.draft, making one, is a duplicate's start (GET /api/v1/events/{id}/
+  // duplicate-draft): its fields filled in, with no date or times, and
+  // otherwise exactly the new-event form. d.backgrounds is the curated
+  // backgrounds (none: no picker). `o` is { zone (a new event's: the
+  // viewer's), viewerZone (for the zone menu's nearby list) }.
   function editorForm(d, o) {
     o = o || {};
-    const e = d.event || {};
+    const e = d.event || d.draft || {};
     const zone = e.timeZone || o.zone || 'UTC';
     const vis = e.guestListVisibility || 'everyone';
     // No autofill anywhere in the editor (contacts, addresses, emails,

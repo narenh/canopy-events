@@ -124,6 +124,11 @@ details to anyone else:
   account service's own rules.
 - **Unverified accounts can RSVP, post on the wall and be invited.** They
   **can't create events or be co-hosts.**
+- **Duplicate (the owner, 2026-10-08)**: in the host's ⋯ menu, a new
+  event with everything the same except the date and times, which start
+  empty. Guests, invitations, co-hosts, the wall and lists aren't copied;
+  the cover is, as its own files. See the decision log's "Duplicating an
+  event".
 - Times are stored as UTC instants plus the event's IANA time zone.
 
 ## v1 scope, in build order

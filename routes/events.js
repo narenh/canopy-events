@@ -13,7 +13,7 @@ const coverStore = require('../lib/coverStore');
 const { handle, fail, loadEvent } = require('../lib/api');
 const { guessLimits } = require('../lib/limits');
 const { cleanEventInput } = require('../lib/eventInput');
-const { newEventId } = require('../lib/ids');
+const { newEventId, EVENT_ID_RE } = require('../lib/ids');
 const { isHost } = require('../lib/rules');
 const { eventView } = require('../lib/views');
 
@@ -35,17 +35,73 @@ module.exports = function eventsRoutes(ctx) {
   }
 
   // Verified people only: a quick account proves its email first.
+  //
+  // `coverFrom` (an event's id, from a duplicate draft below) starts the
+  // new event with a copy of that event's cover: its own files and its own
+  // key, so the two never share one. Only from an event the caller hosts
+  // that has a cover; checked before anything is made, so a refusal
+  // leaves nothing behind.
   router.post('/events', auth.requireVerified, handle(async (req, res) => {
     if (createLimits.blocked(req, req.person.id)) {
       return fail(res, 429, 'rate_limited', "that's a lot of events for one day -- try again tomorrow");
     }
     const { fields, error } = cleanEventInput(req.body, null);
     if (error) return refuse(res, error);
+    const coverFrom = req.body && req.body.coverFrom;
+    let source = null;
+    if (coverFrom !== undefined && coverFrom !== null) {
+      source = typeof coverFrom === 'string' && EVENT_ID_RE.test(coverFrom) ? store.getEventByLink(coverFrom) : null;
+      if (!source) return fail(res, 400, 'bad_cover_from', "coverFrom is the id of an event you host, and there's no event at that one");
+      if (!isHost(store.hostRole(source.id, req.person.id))) return fail(res, 403, 'hosts_only', "only a host of that event can copy its cover");
+      if (!source.coverKey || !coverStore.pathFor(source.id)) return fail(res, 400, 'no_cover', "that event has no cover to copy any more");
+    }
     let id = newEventId();
     while (store.isEventIdTaken(id)) id = newEventId();
-    const event = store.createEvent(id, req.person.id, fields);
+    // The files first: if copying them fails, there's no event either.
+    if (source) coverStore.copy(source.id, id, (source.coverSizes || []).slice(0, -1).map((s) => s.width));
+    let event = store.createEvent(id, req.person.id, fields);
+    if (source) {
+      let key = newEventId();
+      while (store.getEventByCoverKey(key)) key = newEventId();
+      event = store.setCover(id, key, { hue: source.coverHue, grayscale: source.coverGrayscale, sizes: source.coverSizes });
+    }
     createLimits.hit(req, req.person.id);
     res.status(201).json({ event: await eventView(ctx, req, event, { friendsGoing: true }) });
+  }));
+
+  // Duplicating an event: what a copy of it starts with, for the editor
+  // to show (nothing is made until the host saves, with POST /events).
+  // Everything about the event itself, except when: an event can't exist
+  // without a start, so the date and times are the host's to pick. Not
+  // its people (guests, invitations, co-hosts), its wall or its lists:
+  // attaching a list invites everyone on it, so `lists` names the
+  // caller's own lists that were on it, for the host to attach again
+  // themselves. The cover is copied on save (`coverFrom`). Any host who
+  // may make events.
+  router.get('/events/:id/duplicate-draft', auth.requireVerified, withEvent, handle(async (req, res) => {
+    if (!isHost(req.role)) return fail(res, 403, 'hosts_only', 'only a host can duplicate this event');
+    const e = await eventView(ctx, req, req.event, { friendsGoing: true });
+    const draft = {
+      title: e.title,
+      description: e.description,
+      timeZone: e.timeZone,
+      locationName: e.locationName,
+      locationAddress: e.locationAddress,
+      details: e.details.map((d) => ({ type: d.type, label: d.label, value: d.value })),
+      guestListVisibility: e.guestListVisibility,
+      guestsAllowed: e.guestsAllowed,
+      capacity: e.capacity,
+      themeHue: e.themeHue,
+      themeGrayscale: e.themeGrayscale,
+      accentHue: e.accentHue,
+      coverFrom: e.coverImageUrl ? e.id : null,
+      coverImageUrl: e.coverImageUrl,
+      coverImages: e.coverImages,
+      coverHue: e.coverHue,
+      coverGrayscale: e.coverGrayscale,
+      lists: (e.hostLists || []).filter((l) => l.isYours).map((l) => ({ id: l.id, name: l.name }))
+    };
+    res.json({ draft });
   }));
 
   // Anyone with the link, signed in or not (lib/views.js says what a

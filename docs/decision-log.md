@@ -3433,6 +3433,106 @@ the inviter (in progress)" above). The rest:
   ticks nobody. Its first choice ("Everyone") undoes it; typing searches
   within it. It sits under the search box, above lists.
 
+## Duplicating an event
+
+On `feat/duplicate`. **(You)** asked for Duplicate in the host's ⋯ menu:
+a new event with everything the same except the date and time, which
+start empty, and no invite list. The rest:
+
+- **Two API calls, no new kind of event: `GET /api/v1/events/{id}/
+  duplicate-draft`, then `POST /api/v1/events` with `coverFrom`.** The
+  draft is the original's fields in `POST`'s own shape (send it back with
+  a `startsAt`), so what a copy carries is decided once, on the server,
+  for the web and the iOS app alike; `coverFrom` is the one thing a plain
+  `POST` couldn't do. The web's `/new?from=<id>` asks for the draft like
+  any page asks the API (routes/pages.js), so test/boundary.test.js
+  holds. Nothing is made until Save, so cancelling (leaving the page)
+  leaves nothing behind. · A draft endpoint alone can't copy the cover
+  (that has to happen on save); `coverFrom` alone leaves each client to
+  decide what's copied. · Drop the draft and have clients map `GET
+  /events/{id}` themselves.
+- **Who: any host, creator or co-host, who may make events (verified).**
+  Anyone else on the event, or not on it, gets 403 `hosts_only`, as for
+  every other host-only thing about an event the caller can already see
+  by its link (404 is for a wrong link). An unverified account gets 403
+  `email_unverified` first, as `POST /events` does, even one that's
+  somehow a host. The one duplicating is the new event's creator. · As
+  the brief said. · The check in routes/events.js.
+- **Copied:** title, description, place and address, time zone, every
+  detail (the private ones too: hosts see them), guest list visibility,
+  plus-ones, capacity, the color (`themeHue`, `themeGrayscale`,
+  `accentHue`), and the cover with its matched hue and grey flag. **Not
+  copied:** the date and times (none in the draft at all, not even null,
+  so nothing sends an old one back by mistake), guests, invitations and
+  answers, the wall, co-hosts and lists. Its status is a new event's
+  (active). · As the brief said.
+- **Co-hosts aren't copied.** Making someone a co-host tells them and is
+  the creator's call per event; a co-host duplicating becomes the
+  creator, and copying hosts would make the original creator a co-host
+  of an event they didn't make. "Co-hosts…" is one menu away. · Copy
+  them, notifying each, if you'd rather.
+- **Lists aren't attached, but the copy offers them.** Attaching a list
+  invites everyone on it, so it stays the host's own tap. For the weekly
+  Drag Race case: `draft.lists` names the caller's own lists that were
+  on the original (`[{id, name}]`; a co-host's lists aren't theirs to
+  attach), and after saving a copy with any, the web opens the new event
+  with **Lists…** showing (`/e/<id>?lists=1`, like `?invite=1`), each
+  list one "Add" away (which still asks first, saying it invites
+  people). No banner or note in the editor (no help text). · Attaching
+  them on save would invite everyone without a confirmation; nothing at
+  all would make the weekly host hunt for the menu every week. · Take
+  `?lists=1` off the editor's redirect in views/editor.html.
+- **The cover is copied server side, as its own files, on save.** `POST
+  /events` with `coverFrom` (the original's id) copies the stored full
+  size and each narrower copy to the new event's names
+  (lib/coverStore.js `copy`, temp name then rename like a save) and
+  gives it a new random key, the original's sizes and matched hue. So
+  deleting or replacing either event's cover never touches the other, and
+  the two URLs are different. The files are copied before the event is
+  made: if copying fails, the request fails with nothing made, and any
+  files already copied are removed. Not re-encoded (already clean, no
+  EXIF) and not counted against the upload limit (no image work; making
+  events is already limited to 20 a day). A cover from before sizes is
+  copied at full size alone, and the backfill makes its sizes like any
+  other. · As the brief suggested. · n/a
+- **`coverFrom` refusals, checked before anything is made:** 403
+  `hosts_only` (not a host of that event), 400 `bad_cover_from` (not an
+  event id, or no event there: deleted meanwhile), 400 `no_cover` (it
+  has none now: another host took it off). The editor shows them under
+  the cover ("The original event's cover was removed. Remove it here, or
+  pick another."). · Quietly making the copy without a cover would leave
+  the host thinking it had one. · Make `no_cover` a quiet skip in
+  routes/events.js.
+- **The editor stays the new-event editor.** `d.draft` fills the same
+  form (`public/ui.js` `editorForm`); the heading is still "New Event",
+  the button "Create event", no Back, no banner: it's a copy only
+  through what's filled in. The original's cover shows as the hero;
+  taking it off, picking a photo or picking a background drops
+  `coverFrom` (and the new one uploads after Save, as for any new
+  event). The draft's time zone is kept rather than replaced by the
+  browser's (the one line changed in the editor's date/time code), and
+  the color, accent and "Match photo" start from the draft. The page is
+  drawn in the copy's color from the start. · As the brief said.
+- **No schema change.** Everything a copy needs is the existing columns
+  and `setCover`. · n/a
+- **Menu order:** after Lists… and Show list QR, before the creator's
+  Make a new link…, Cancel and Delete (and a co-host's Step down), so the
+  destructive ones stay last. Shown in every phase, past and cancelled
+  included: a past event is the usual thing to copy. · n/a
+- **Tests** (test/duplicate.test.js): the draft's fields exactly, every
+  detail, no time fields, the cover and lists; the same draft for an app
+  and (without lists) a co-host; 403 `hosts_only` for a guest and an
+  outsider, 401 signed out, 403 `email_unverified` for a quick account
+  and an unverified host, 404 for a wrong id, and the same refusals on
+  `POST` with `coverFrom`, making nothing; a saved copy with everything
+  but its people, wall and lists, nobody invited, the original
+  untouched; the copy's cover files independent of the original's
+  (removing the original's cover, then deleting the original); every
+  `coverFrom` refusal; the menu item for the creator and a co-host only,
+  and `/new?from=` drawing the filled-in new-event form with empty date
+  and times, 403/404/302 otherwise. test/leaks.test.js walks the draft
+  as every caller. Checked by hand at 375 px and on desktop.
+
 ## Date and time picker
 
 - **(You)** A new event gets a 7 PM start (on the event's clock) as soon
@@ -3509,3 +3609,8 @@ the inviter (in progress)" above). The rest:
   earlier, so it threw after setting the end. It now opens the end's
   popover with a mouse or trackpad and only focuses the end field on a
   touch screen (no system picker is forced open there, as before).
+- A duplicate (`/new?from=<id>`, which landed on main alongside this)
+  is a new event with an empty date and times, so it gets the 7 PM
+  default too when its day is picked; it keeps the original's time zone
+  (main's `if (!prefill && here)`), and "today" and past days are
+  counted on that zone's clock.

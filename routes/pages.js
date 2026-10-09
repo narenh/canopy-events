@@ -267,8 +267,30 @@ module.exports = function pagesRoutes(ctx) {
         button: { href: canopy.verifyUrl(req, render.hereUrl(req)), label: t('common.verifyButton') }
       });
     }
-    const data = { me: meView(req.person), event: null, backgrounds: await backgroundsFor(req) };
-    render.page(req, res, 'editor.html', { title: t('editor.newHeading'), main: UI.editorForm(data, { zone: render.viewerZone(req), viewerZone: render.viewerZone(req) }), data });
+    // ?from=<id>: a duplicate (the host ⋯ menu's Duplicate). Still a new
+    // event, started from the API's draft of that one: everything but the
+    // date and times. Nothing exists until it's saved.
+    let draft = null;
+    if (req.query.from !== undefined) {
+      const from = String(req.query.from);
+      const r = EVENT_ID_RE.test(from) ? await apiGet(req, `/events/${from}/duplicate-draft`) : { status: 404 };
+      if (r.status === 404) {
+        return render.message(req, res, 404, { heading: t('event.notFoundHeading'), text: t('event.notFound'), button: { href: '/', label: t('common.yourEvents') } });
+      }
+      if (r.status === 403) {
+        const ev = want(await apiGet(req, `/events/${from}`)).event;
+        return hostsOnly(req, res, ev, 'editor.duplicateNotHost');
+      }
+      draft = want(r).draft;
+    }
+    const data = { me: meView(req.person), event: null, draft, backgrounds: await backgroundsFor(req) };
+    render.page(req, res, 'editor.html', {
+      title: t('editor.newHeading'),
+      main: UI.editorForm(data, { zone: render.viewerZone(req), viewerZone: render.viewerZone(req) }),
+      data,
+      theme: draft ? UI.themeKeyOf(draft) : undefined,
+      accent: draft ? UI.accentKeyOf(draft) : undefined
+    });
   }));
 
   router.get('/e/:id/edit', attach, signedIn, pageRoute(async (req, res) => {
