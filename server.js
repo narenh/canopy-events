@@ -11,6 +11,7 @@ const { createPush } = require('./lib/push');
 const { createNotifier } = require('./lib/notify');
 const { createBackgrounds, settingsFrom: backgroundSettings } = require('./lib/backgrounds');
 const { measureThumb } = require('./lib/coverImage');
+const { createPlaces, settingsFrom: placesSettings } = require('./lib/places');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -116,7 +117,12 @@ const notify = createNotifier({ store, push: createPush({ store }) });
 // set. The manifest is checked here, at startup; loading starts once the
 // server is listening.
 const backgrounds = createBackgrounds({ ...backgroundSettings(process.env), measure: measureThumb });
-const ctx = { store, canopy, auth, notify, backgrounds };
+// Places, for the Location field (lib/places.js): Apple Maps, off unless
+// APPLE_MAPS_TEAM_ID, APPLE_MAPS_KEY_ID and APPLE_MAPS_PRIVATE_KEY are
+// all set. Off, the field is plain text.
+const places = createPlaces(placesSettings(process.env));
+if (!places.enabled) console.log('[canopy-events] Apple Maps not set up (APPLE_MAPS_TEAM_ID, APPLE_MAPS_KEY_ID, APPLE_MAPS_PRIVATE_KEY): no place suggestions; the Location field is plain text.');
+const ctx = { store, canopy, auth, notify, backgrounds, places };
 const docsRouter = require('./routes/docs')();
 const apiRouters = [
   require('./routes/events'),
@@ -131,6 +137,7 @@ const apiRouters = [
   require('./routes/friends'),
   require('./routes/lists'),
   require('./routes/guestMenu'),
+  require('./routes/places'),
   require('./routes/me')
 ].map((make) => make(ctx));
 

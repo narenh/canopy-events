@@ -3,7 +3,8 @@
 // catches what it should, then calls every endpoint as a host, a guest,
 // an unverified guest and someone signed out, with every kind of person
 // on the event, and holds each person in each answer to exactly the five
-// public fields.
+// public fields, and the event's pin (coordinates, Apple's place id) to
+// those who see its address.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -55,6 +56,10 @@ test('every endpoint, every caller: other people are the five public fields and 
   // (nobody's account number), so every answer about it carries them.
   const e = await makeEvent(ana, {
     guestListVisibility: 'responded',
+    // A pin, as private as the address.
+    latitude: 37.7937121,
+    longitude: -122.3951234,
+    applePlaceId: 'I7C250D2CDCB364A',
     details: [
       { type: 'link', label: 'Tickets', value: 'https://tickets.example.com/x' },
       { type: 'info', value: 'Doors at 7' },
@@ -77,7 +82,9 @@ test('every endpoint, every caller: other people are the five public fields and 
   await ana.post(`/api/v1/events/${e.id}/cohosts`, { personId: P.cy.id });
   await ben.post(`/api/v1/events/${e.id}/wall`, { text: 'See you all there' });
   await gus.post(`/api/v1/events/${e.id}/wall`, { text: 'Gone soon' });
-  await ana.patch(`/api/v1/events/${e.id}`, { locationName: 'Upstairs' });
+  // A new place name, and its pin with it (a new place without one would
+  // drop the pin).
+  await ana.patch(`/api/v1/events/${e.id}`, { locationName: 'Upstairs', latitude: 37.7937121, longitude: -122.3951234, applePlaceId: 'I7C250D2CDCB364A' });
   server.fake.deleted.add(P.gus.id);
 
   const answers = [];
@@ -152,6 +159,16 @@ test('every endpoint, every caller: other people are the five public fields and 
     assert.ok(!JSON.stringify(r.data).includes('firstName'), `${p.name}'s calendar has nobody in it`);
   }
   assert.ok(answers.some((a) => a.url.startsWith('/api/calendar/') && a.r.data.entries.length >= 2), 'there were entries to walk');
+
+  // Where the event is on a map never reaches anyone signed out: not its
+  // coordinates or Apple's id for it, in any answer, under any name (the
+  // harness's noHiddenLocation holds every event in every answer to it
+  // too). Those who see the address do get it.
+  const pinned = (r) => /I7C250D2CDCB364A|37\.793712|-122\.395123/.test(r.text);
+  const nobody = answers.filter((a) => a.who === 'nobody');
+  assert.ok(nobody.length > 20);
+  for (const { url, r } of nobody) assert.ok(!pinned(r), `signed out, ${url} has the pin`);
+  assert.ok(answers.some((a) => a.who === 'ben' && a.url === `/api/v1/events/${e.id}` && pinned(a.r)), 'a guest sees it');
 
   // Every person-shaped object in every answer: anything with a firstName.
   let checked = 0;

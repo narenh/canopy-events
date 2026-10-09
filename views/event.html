@@ -70,7 +70,7 @@ function draw(){
   const box = document.getElementById('wallText');
   const typed = box ? box.value : '';
   const focused = !!box && document.activeElement === box;
-  main.innerHTML = UI.eventPage(data, { viewerZone: zone });
+  main.innerHTML = UI.eventPage(data, { viewerZone: zone, maps: UI.mapsApp(navigator.userAgent) });
   const again = document.getElementById('wallText');
   if (again && typed) again.value = typed;
   if (again && focused) again.focus();

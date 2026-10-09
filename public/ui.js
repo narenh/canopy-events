@@ -466,6 +466,10 @@
   const ICON = {
     when: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1V3a1 1 0 0 1 1-1zM4 10v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-9zm1-4a1 1 0 0 0-1 1v1h16V7a1 1 0 0 0-1-1z"/></svg>',
     where: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a8 8 0 0 1 8 8c0 5.4-6.2 11.2-7.3 12.1a1 1 0 0 1-1.4 0C10.2 21.2 4 15.4 4 10a8 8 0 0 1 8-8zm0 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>',
+    // The Location field's rows: a street address (a house), and what was
+    // typed, as it is (a pencil). A named place has the pin (`where`).
+    address: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11.3 2.7a1 1 0 0 1 1.4 0l8.6 8.1a1 1 0 0 1-.7 1.7H19V20a1 1 0 0 1-1 1h-4v-5h-4v5H6a1 1 0 0 1-1-1v-7.5H3.4a1 1 0 0 1-.7-1.7z"/></svg>',
+    typed: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.6 3.6a2 2 0 0 1 2.8 0l2 2a2 2 0 0 1 0 2.8L9.2 19.6a1 1 0 0 1-.5.3l-4.5 1a1 1 0 0 1-1.2-1.2l1-4.5a1 1 0 0 1 .3-.5zM14.2 7.8 6.3 15.7l-.6 2.6 2.6-.6 7.9-7.9z"/></svg>',
     // Three dots on the box's centre line (the "⋯" character sits on the
     // text baseline, low and to one side, and its size follows the font).
     more: '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2.1" fill="currentColor"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/><circle cx="19" cy="12" r="2.1" fill="currentColor"/></svg>'
@@ -1036,7 +1040,11 @@
     if (e.locationName || e.locationAddress || e.locationAddressHidden) {
       h += '<div class="meta where">' + ICON.where + '<div class="what">';
       if (e.locationName) h += '<span class="place">' + esc(e.locationName) + '</span>';
-      if (e.locationAddress) {
+      const directions = directionsUrl(e, o.maps);
+      if (e.locationAddress && directions) {
+        // A pin: the address is the way there, in the viewer's maps.
+        h += '<a class="sub address directions" href="' + esc(directions) + '" target="_blank" rel="noopener noreferrer">' + esc(e.locationAddress) + '</a>';
+      } else if (e.locationAddress) {
         h += '<span class="sub address">' + esc(e.locationAddress) + '</span>'
           + '<span class="sub"><a href="https://maps.apple.com/?q=' + esc(encodeURIComponent(e.locationAddress)) + '" target="_blank" rel="noopener noreferrer">'
           + tx('event.openMap') + '</a></span>';
@@ -2925,11 +2933,109 @@
       + '</div><div class="error" id="detailsError" role="alert"></div></div>';
   }
 
+  // ---------------- Where ----------------
+
+  // Which maps a viewer's directions open in: Apple Maps on an iPhone,
+  // iPad or Mac (an iPad's Safari says "Macintosh"), Google Maps on
+  // anything else. From the User-Agent: the server's request's when it
+  // draws the page, the browser's own when it draws it again.
+  function mapsApp(userAgent) {
+    return /iPhone|iPad|iPod|Macintosh|Mac OS X/.test(String(userAgent || '')) ? 'apple' : 'google';
+  }
+
+  // Directions to an event with a pin (latitude and longitude, which only
+  // people who see the address get), in `app`'s maps; null without one.
+  // Apple's opens the place (its name, or the address) at the pin, with
+  // Directions a tap away; Google's goes straight to directions.
+  function directionsUrl(e, app) {
+    if (!e || typeof e.latitude !== 'number' || typeof e.longitude !== 'number') return null;
+    const ll = e.latitude + ',' + e.longitude;
+    if (app === 'google') return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(ll);
+    const q = e.locationName || e.locationAddress || '';
+    return 'https://maps.apple.com/?' + (q ? 'q=' + encodeURIComponent(q) + '&' : '') + 'll=' + encodeURIComponent(ll);
+  }
+
+  // What the Location field starts with, from an event (or a duplicate's
+  // draft): the text in the field and the muted line under it. A place
+  // with an address reads as one picked from the map (its name, the
+  // address under it); an address alone, or a name alone, is the field's
+  // text. Nothing is changed until the host types.
+  function locationStart(e) {
+    e = e || {};
+    const name = e.locationName || '';
+    const address = e.locationAddress || '';
+    if (name && address) return { text: name, line: address };
+    return { text: name || address, line: '' };
+  }
+
+  // What a pick from the map is saved as. A named place: its name (shown
+  // to everyone) and its address (signed-in guests). A street address:
+  // the address only, so it's never public.
+  function locationFromPlace(p) {
+    return {
+      locationName: p.kind === 'address' ? null : p.name,
+      locationAddress: p.address || (p.kind === 'address' ? p.name : null) || null,
+      latitude: typeof p.lat === 'number' ? p.lat : null,
+      longitude: typeof p.lng === 'number' ? p.lng : null,
+      applePlaceId: p.applePlaceId || null
+    };
+  }
+
+  // What typed text is saved as, picked with Use "…" or just left typed:
+  // the address, private, with no name and no pin. It may well be
+  // someone's home, and only a pick from the map says it's a place
+  // anyone can know about.
+  function locationFromText(text) {
+    const v = String(text || '').trim().replace(/\s+/g, ' ');
+    return { locationName: null, locationAddress: v || null, latitude: null, longitude: null, applePlaceId: null };
+  }
+
+  // The Location field's suggestions, as listbox options: always first,
+  // Use "<what's typed>" (as it is, no map), then Apple's, each its name
+  // and, muted, its address, with the pin for a named place and a house
+  // for an address. `active` is the highlighted row's index (-1: none).
+  function placeOptions(typed, results, active) {
+    const row = (i, icon, cls, inner) => '<li role="option" id="locationOpt-' + i + '" class="place-opt' + cls + '" data-index="' + i + '" aria-selected="' + (i === active ? 'true' : 'false') + '">'
+      + '<span class="place-opt-icon">' + icon + '</span><span class="place-opt-text">' + inner + '</span></li>';
+    let h = row(0, ICON.typed, ' place-use', '<span class="place-opt-name">' + tx('editor.locationUse', { text: String(typed || '').trim() }) + '</span>');
+    (results || []).forEach((r, i) => {
+      h += row(i + 1, r.kind === 'address' ? ICON.address : ICON.where, ' place-' + (r.kind === 'address' ? 'address' : 'poi'),
+        '<span class="place-opt-name">' + esc(r.name) + '</span>' + (r.address ? '<span class="place-opt-address">' + esc(r.address) + '</span>' : ''));
+    });
+    return h;
+  }
+
+  // The Location field: one box for a place or an address. With places on
+  // (`places`: Apple Maps is set up and the host may use it), a combobox
+  // whose listbox is placeOptions; off, a plain field. What's saved is in
+  // the hidden fields (views/editor.html fills them).
+  function locationField(e, places) {
+    e = e || {};
+    const start = locationStart(e);
+    const val = (v) => esc(v == null ? '' : v);
+    let h = '<div class="meta where">' + ICON.where + '<div class="what location-what">'
+      + '<label class="sr-only" for="location">' + tx('editor.location') + '</label>'
+      + '<div class="combo"><input type="text" id="location" class="soft place-input" maxlength="500" placeholder="' + tx('editor.locationPlaceholder') + '" value="' + esc(start.text) + '"'
+      + (places ? ' role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="locationList" aria-haspopup="listbox"' : '') + '>'
+      + (places ? '<ul class="place-list" id="locationList" role="listbox" aria-label="' + tx('editor.locationSuggestions') + '" hidden></ul>' : '')
+      + '</div>'
+      + '<div class="place-picked" id="locationPicked"' + (start.line ? '' : ' hidden') + '><span class="place-picked-line" id="locationLine">' + esc(start.line) + '</span>'
+      + '<button type="button" class="place-clear" id="locationClear" aria-label="' + tx('editor.locationClear') + '" title="' + tx('editor.locationClear') + '">×</button></div>'
+      + '<input type="hidden" id="locationName" value="' + val(e.locationName) + '">'
+      + '<input type="hidden" id="locationAddress" value="' + val(e.locationAddress) + '">'
+      + '<input type="hidden" id="latitude" value="' + val(e.latitude) + '">'
+      + '<input type="hidden" id="longitude" value="' + val(e.longitude) + '">'
+      + '<input type="hidden" id="applePlaceId" value="' + val(e.applePlaceId) + '">'
+      + '<div class="error" id="locationError" role="alert"></div></div></div>';
+    return h;
+  }
+
   // The form for making an event (d.event null) or editing one.
   // d.draft, making one, is a duplicate's start (GET /api/v1/events/{id}/
   // duplicate-draft): its fields filled in, with no date or times, and
   // otherwise exactly the new-event form. d.backgrounds is the curated
-  // backgrounds (none: no picker). `o` is { zone (a new event's: the
+  // backgrounds (none: no picker). d.places: the Location field suggests
+  // places (Apple Maps is set up, and the host may ask it). `o` is { zone (a new event's: the
   // viewer's), viewerZone (for the zone menu's nearby list) }.
   function editorForm(d, o) {
     o = o || {};
@@ -2950,13 +3056,7 @@
       + '<div class="error" id="titleError" role="alert"></div>'
       + whenEditor(e, zone, o.viewerZone) + '</div>';
     h += '<div class="details-card">';
-    h += '<div class="meta where">' + ICON.where + '<div class="what">'
-      + '<label class="sr-only" for="locationName">' + tx('editor.locationName') + '</label>'
-      + '<input type="text" id="locationName" class="soft place-input" maxlength="200" placeholder="' + tx('editor.locationNamePlaceholder') + '" value="' + esc(e.locationName || '') + '">'
-      + '<div class="error" id="locationNameError" role="alert"></div>'
-      + '<label class="sr-only" for="locationAddress">' + tx('editor.locationAddress') + '</label>'
-      + '<textarea id="locationAddress" class="soft address-input" maxlength="500" rows="2" placeholder="' + tx('editor.locationAddressPlaceholder') + '">' + esc(e.locationAddress || '') + '</textarea>'
-      + '<div class="error" id="locationAddressError" role="alert"></div></div></div>';
+    h += locationField(e, !!d.places);
     h += '<div class="description-edit"><label class="sr-only" for="description">' + tx('editor.description') + '</label>'
       + '<textarea id="description" class="soft" maxlength="5000" rows="4" placeholder="' + tx('editor.descriptionPlaceholder') + '">' + esc(e.description || '') + '</textarea>'
       + '<div class="error" id="descriptionError" role="alert"></div></div>';
@@ -2998,7 +3098,7 @@
     startTimeFor, DEFAULT_START, addDays, addMonths, monthGrid, calendarMove, parseClock, timeSlots, pickedWords, whenPopover, calendarMonth, monthWords, timeOptions,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     backgroundGroups, backgroundSheet, tmdbCredit,
-    eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
+    eventPage, details, mapsApp, directionsUrl, locationStart, locationFromPlace, locationFromText, placeOptions, locationField, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
     listQr, listCount, ownListRow, listMemberRows, listMembersResults, listSheetBody, listSheet, joinedOn, listsSection, membershipsSection, listLinkPage, joinListSection, eventListsBlock, listQrSheet,
     sheetShell, pickerBody, saveListForm, guestsSheet, guestTabs, guestTabsOf, guestResults, guestSheetRow,
     eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, ICON_CALENDAR, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, lookupKindOf, foldName, inviteOrder, invitePickRow, inviteResults, inviteTray, inviteSheet, inviteListRow, listPickable, SUGGESTED_SHOWN, cohostRow, cohostPage,

@@ -3808,3 +3808,126 @@ attendees". The rest:
   event."), Escape back and focus on the row, the guests sheet (tabs,
   Remove with its line, Invite into the invite sheet), Save as list to a
   new list, and ?guests=1 opening the sheet.
+
+## Location
+
+- **(You)** Apple Maps for suggestions; freeform allowed; `Use "<typed>"`
+  as the first row; place and address collapsed into one field.
+- **Typed text is private: it's saved as `locationAddress`, with no
+  `locationName`, pin or place id.** Someone signed out sees no location
+  at all ("The address shows once you sign in."). · People type home
+  addresses ("742 Evergreen Terrace", "Ana's, 12 Oak St apt 3"), and
+  nothing can tell a typed venue name from a typed address reliably;
+  only a pick from the map says a place is one anyone may know about.
+  The cost: a typed "Dolores Park" isn't in link previews. · To make
+  typed text public, `UI.locationFromText` would put it in
+  `locationName` instead.
+- **A picked street address (`kind: address`) is saved as the address
+  only, never as `locationName`**, even though the field shows its
+  street line as the name while picking. · Its "name" is the street
+  address. · `UI.locationFromPlace`.
+- **The server drops a `locationName` that's the address's first line**
+  (case and spaces aside), on a write that sends either. · The same
+  rule for the apps: an iOS build sending an address pick as both
+  would make the street address public. It only triggers when the two
+  say the same thing, so nothing is lost. · `cleanCoordinates` in
+  lib/eventInput.js.
+- **New fields: `latitude`, `longitude`, `applePlaceId`** (the brief's
+  names, not `locationLatitude`…), private exactly like the address:
+  the same `insider` rule in lib/views.js. `locationAddressHidden` is
+  now true when there's an address **or a pin** the viewer can't see.
+  Coordinates are both or neither, kept to 6 decimals; the place id is
+  `[A-Za-z0-9._:-]{1,128}`. Schema version 18 (three nullable columns,
+  CHECKs on the ranges and both-or-neither); nothing migrated.
+- **A changed place or address without a pin clears the pin and the
+  place id**; another edit leaves them. · An app from before pins
+  editing the address mustn't leave the old pin pointing elsewhere. A
+  pin with no place or address is refused (`bad_coordinates`); clearing
+  both clears the pin too. · lib/eventInput.js.
+- **The wall's `place_changed`, notifications and the calendar feed
+  don't carry the pin.** · Not needed; fewer places to leak. Changing
+  only the pin isn't a "place changed".
+- **The harness checks every answer**: an event with
+  `locationAddressHidden: true` has no pin (`noHiddenLocation`), and no
+  answer carries an Apple token or key. The leak test's event has a pin,
+  and no signed-out answer contains it.
+- **Apple's suggestions have no place id; the completion URL is the
+  id.** Ours is its `completionUrl` (a `/v1/search?q=…&metadata=…`),
+  base64url. `GET /api/v1/places/{id}` checks it decodes to exactly
+  `/v1/search` with `q` (and `metadata`), rebuilds the query from those
+  alone (plus `lang`), and asks Apple, so an id can't send the server
+  anywhere else. Apple's `/v1/place/{id}` needs a place id the
+  suggestions don't have. · lib/places.js `completionFrom`.
+- **`kind` is worked out, not given**: Apple's autocomplete results say
+  nothing about type, so a result whose first line is its street
+  address (`fullThoroughfare`, or number and street) is `address`; the
+  place, once resolved, also counts as one when its name is its first
+  address line. Results without a `location` ("Museum, Search Nearby")
+  are searches, not places, and are left out. No `resultTypeFilter` is
+  sent (its documented casing is inconsistent; a wrong value would
+  turn every request into an error).
+- **The JWT includes `scope: "server_api"`** (the brief said not
+  needed): Apple's current "Creating and using tokens with Maps Server
+  API" lists it in the payload. No `origin` (server use). `iat`/`exp` in
+  seconds, 30 minutes, signed fresh for each trade. · lib/places.js
+  `signJwt`.
+- **The access token** is kept until a minute before it runs out, and
+  traded again on a 401 (once, then the call is retried once). One
+  trade at a time. · lib/places.js `accessToken`.
+- **Who may ask: verified people** (who can host). Unverified: 403, and
+  the field is plain text for them (the editor doesn't offer
+  suggestions to an unverified host editing). 120 calls a minute per
+  person, suggestions and places together. A daily ceiling of 20,000
+  Apple calls (Apple's quota is 25,000 a team, shared with MapKit JS),
+  past which places say unavailable until the next day.
+- **Places off** (a setting missing, or a key that doesn't read):
+  autocomplete answers 200 `{enabled: false, results: []}`; a place is
+  502 `places_unavailable`. Apple down or erroring: 502
+  `places_unavailable`, and the field is typed text. Logs say Apple's
+  status, never the query or the person.
+- **Bias**: `searchLocation` only, from `near` or `PLACES_DEFAULT_NEAR`
+  (San Francisco), rounded to 2 decimals (~1 km) for privacy and the
+  cache. The web editor sends no `near` (it doesn't ask for the
+  browser's location: a permission prompt to type a place is too much).
+  · Add `navigator.geolocation` later if the default is wrong for many.
+- **Cache**: suggestions 10 minutes by folded text, near and language;
+  places an hour; 2,000 each, oldest out.
+- **Editor**: one Location field, placeholder "Place or address", no
+  help text. With places on it's an ARIA 1.2 combobox
+  (`aria-expanded`, `aria-controls`, `aria-activedescendant`, a
+  listbox of options): arrows move, Enter picks (Use "…" when nothing's
+  highlighted), Escape closes, a tap picks without the field losing
+  focus. Suggestions show from 2 characters, asked 200 ms after typing
+  stops; the last ones stay until the next arrive (no flicker). A pick
+  shows the name in the field and the full address muted under it with
+  ×; editing the text lets the pick go (back to typed text; the old
+  address is dropped, not offered again). While the list is open the
+  Save bar drops beneath it, as under the zone menu. Untouched, the
+  field saves what the event had.
+- **An existing event** with a place and an address opens as a pick
+  (name, address under it); an address alone or a name alone is the
+  field's text. Saved untouched, nothing changes (a name-only event's
+  name stays public); once edited, it's typed text, so private.
+- **Directions**: with a pin, the address itself links to directions:
+  Apple Maps (`maps.apple.com/?q=<name>&ll=<lat,lng>`) for an
+  iPhone/iPad/Mac User-Agent, Google Maps
+  (`google.com/maps/dir/?api=1&destination=<lat,lng>`) otherwise. One
+  link, no "Apple Maps · Google Maps" choice. The server draws it by the
+  request's User-Agent, the browser again by its own. Without a pin, as
+  before: the address and "Open in Maps". No static map.
+- **Tests**: test/places.test.js (the JWT's header, claims and
+  signature against the fake's public key; the key in its three
+  forms; off without settings; token kept, renewed early and on a 401;
+  suggestions: mapping, 8 at most, searches and repeats left out, the
+  San Francisco bias and `near`, Accept-Language, the cache, who may
+  ask, 120 a minute, Apple down and erroring, the logs; a place, ids
+  that aren't suggestions going nowhere; places off; an event's pin
+  made, edited, cleared, refused, private to signed-out and removed
+  callers and the signed-out page; the street-address name dropped;
+  typed text private; directions per platform; the editor's markup and
+  the pure functions), test/fakeAppleMaps.js, test/leaks.test.js,
+  test/duplicate.test.js (the pin carried to a duplicate),
+  test/pages.test.js. Checked in the desktop pane at 800 px and 375 px
+  against the fake Apple: typing, arrow keys and Enter, a tap, editing
+  after a pick, Escape, saving untouched (pin kept), saving typed text
+  (private), directions on the event page.

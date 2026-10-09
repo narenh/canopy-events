@@ -24,7 +24,7 @@ const DETAILS = [
 ];
 
 // The fields a draft carries, by name, in the order the API sends them.
-const DRAFT_FIELDS = ['title', 'description', 'timeZone', 'locationName', 'locationAddress', 'details', 'guestListVisibility', 'guestsAllowed',
+const DRAFT_FIELDS = ['title', 'description', 'timeZone', 'locationName', 'locationAddress', 'latitude', 'longitude', 'applePlaceId', 'details', 'guestListVisibility', 'guestsAllowed',
   'capacity', 'themeHue', 'themeGrayscale', 'accentHue', 'coverFrom', 'coverImageUrl', 'coverImages', 'coverHue', 'coverGrayscale', 'lists'];
 
 // GET a page as `who`, with no contact details anywhere in it.
@@ -58,6 +58,9 @@ test('duplicating an event', async (t) => {
     timeZone: 'America/New_York',
     locationName: "Ana's place",
     locationAddress: '1 Market St\nApt 4',
+    latitude: 37.794,
+    longitude: -122.3951,
+    applePlaceId: 'I5B8A0D4E1F2C3B7A',
     details: DETAILS,
     guestListVisibility: 'responded',
     guestsAllowed: 2,
@@ -88,12 +91,12 @@ test('duplicating an event', async (t) => {
     assert.deepEqual(
       {
         title: draft.title, description: draft.description, timeZone: draft.timeZone, locationName: draft.locationName,
-        locationAddress: draft.locationAddress, guestListVisibility: draft.guestListVisibility, guestsAllowed: draft.guestsAllowed,
+        locationAddress: draft.locationAddress, latitude: draft.latitude, longitude: draft.longitude, applePlaceId: draft.applePlaceId, guestListVisibility: draft.guestListVisibility, guestsAllowed: draft.guestsAllowed,
         capacity: draft.capacity, themeHue: draft.themeHue, themeGrayscale: draft.themeGrayscale, accentHue: draft.accentHue
       },
       {
         title: 'Drag Race night', description: 'Snacks provided.\nBring a friend.', timeZone: 'America/New_York', locationName: "Ana's place",
-        locationAddress: '1 Market St\nApt 4', guestListVisibility: 'responded', guestsAllowed: 2, capacity: 30, themeHue: null,
+        locationAddress: '1 Market St\nApt 4', latitude: 37.794, longitude: -122.3951, applePlaceId: 'I5B8A0D4E1F2C3B7A', guestListVisibility: 'responded', guestsAllowed: 2, capacity: 30, themeHue: null,
         themeGrayscale: true, accentHue: 300
       }
     );
@@ -152,7 +155,7 @@ test('duplicating an event', async (t) => {
     assert.notEqual(copy.id, src.id);
     assert.equal(copy.startsAt, startsAt);
     assert.equal(copy.endsAt, null);
-    for (const k of ['title', 'description', 'timeZone', 'locationName', 'locationAddress', 'details', 'guestListVisibility', 'guestsAllowed',
+    for (const k of ['title', 'description', 'timeZone', 'locationName', 'locationAddress', 'latitude', 'longitude', 'applePlaceId', 'details', 'guestListVisibility', 'guestsAllowed',
       'capacity', 'themeHue', 'themeGrayscale', 'accentHue', 'coverHue', 'coverGrayscale']) {
       assert.deepEqual(copy[k], source[k], k);
     }

@@ -474,6 +474,8 @@ a{color:var(--accent-text);font-weight:var(--link-weight, inherit);text-decorati
 .meta .what .sub{display:block;color:var(--muted);font-size:var(--fs-small);font-weight:400;margin-top:3px;}
 .meta .what .sub a{display:inline-block;padding:6px 0;}
 .meta .what .address{white-space:pre-line;}
+/* With a pin, the address is the way there. */
+.meta .what a.directions{color:var(--accent-text);text-decoration:underline;text-underline-offset:3px;padding:3px 0;}
 .hosted-by{display:flex;align-items:center;gap:12px;margin:4px 0 0;font-size:var(--fs-small);}
 .hosted-by .faces{display:flex;}
 .hosted-by .faces .avatar + .avatar{margin-left:-10px;}
@@ -929,7 +931,36 @@ body.sheet-open{overflow:hidden;}
 .details-card .soft:focus{border-style:solid;border-color:var(--accent);outline:none;}
 .details-card .meta .what .error:not(:empty){margin:6px 0 0;}
 .place-input{font-weight:600;}
-textarea.address-input{min-height:0;margin-top:8px;}
+/* The Location field: one box, and with places on, its suggestions in
+   a solid list under it, as wide as the field (so inside the screen at
+   any width). Each row: an icon (the typed text's pencil, a place's pin,
+   an address's house), the name, and the address muted under it. */
+.location-what{position:relative;}
+.combo{position:relative;}
+.place-list{
+  position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:25;margin:0;padding:6px;list-style:none;
+  max-height:min(60vh, 420px);overflow-y:auto;overscroll-behavior:contain;
+  background:var(--theme-card-solid, #03200b);border:1px solid var(--glass-edge);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.45);
+  font-weight:400;
+}
+.place-list[hidden]{display:none;}
+.place-opt{display:flex;align-items:flex-start;gap:12px;min-height:var(--tap);padding:10px 12px;border-radius:10px;cursor:pointer;color:var(--text);}
+.place-opt[aria-selected="true"], .place-opt:hover{background:var(--secondary);}
+.place-opt-icon{flex:0 0 auto;display:inline-flex;margin-top:1px;color:var(--accent);}
+.place-opt-icon svg{width:20px;height:20px;margin:0;}
+.place-use .place-opt-icon{color:var(--muted);}
+.place-opt-text{display:flex;flex-direction:column;min-width:0;}
+.place-opt-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.place-opt-address{font-size:var(--fs-small);color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+/* A pick's address, small and muted under the field, and × to clear. */
+.place-picked{display:flex;align-items:flex-start;gap:8px;margin:6px 2px 0;font-size:var(--fs-small);font-weight:400;color:var(--muted);}
+.place-picked[hidden]{display:none;}
+.place-picked-line{flex:1;min-width:0;padding-top:4px;}
+.place-clear{
+  position:relative;flex:0 0 auto;width:28px;height:28px;padding:0;border-radius:50%;border:none;
+  background:var(--secondary);color:var(--text);font-size:18px;line-height:28px;text-align:center;
+}
+.place-clear::after{content:"";position:absolute;inset:-8px;}
 .description-edit textarea{min-height:120px;}
 /* The details under the description: a row per detail (its icon, its
    fields, a × to take it off), then a chip per type to add one, in a row

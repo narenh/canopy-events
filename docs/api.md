@@ -134,8 +134,9 @@ else's.
 `POST /api/v1/events` makes one (verified people only, 20 a day). You're
 its creator and only host. Required: `title`, `startsAt`, `timeZone`.
 Optional: `description`, `endsAt` (after `startsAt`), `locationName`,
-`locationAddress`, `guestListVisibility` (`everyone`, the default, or
-`responded`).
+`locationAddress`, `latitude`, `longitude` and `applePlaceId` (see
+"Where: the location" below), `guestListVisibility` (`everyone`, the
+default, or `responded`).
 
 `PATCH /api/v1/events/{id}` edits it (hosts only: the creator and any
 co-hosts). Send only what changes; `null` or `""` clears an optional
@@ -172,6 +173,9 @@ or a "sign in to answer" screen can show the event:
   `locationAddressHidden` is true when there is one. Link previews are
   fetched and kept by machines, and a home address shouldn't sit in their
   caches;
+- **not** where it is on a map, for the same reason: `latitude`,
+  `longitude` and `applePlaceId` are null (and `locationAddressHidden` is
+  true when there's a pin, even with no address);
 - **not** the `parking`, `accommodation` or `phone` details, for the
   address's reason (they can hold an address, a door code or a number):
   `details` has only the others, and `hiddenDetails` counts the ones left
@@ -182,6 +186,97 @@ or a "sign in to answer" screen can show the event:
 Signed in (even unverified), you get the address, every detail, `viewer`
 (your part in it) and `friendsGoing`. Someone a host removed gets what
 someone signed out gets.
+
+### Where: the location
+
+An event's location is five fields:
+
+| Field | What | Who sees it |
+|---|---|---|
+| `locationName` | a named place: "Dolores Park", "Zeitgeist" | everyone with the link, link previews too |
+| `locationAddress` | the address, or a place typed by hand | signed-in guests (not someone removed) |
+| `latitude`, `longitude` | where it is on a map, in degrees (both, or neither) | as the address |
+| `applePlaceId` | Apple Maps' id for the place | as the address |
+
+The web editor has one **Location** field. As the host types (2
+characters or more), it suggests places from Apple Maps; the first
+suggestion is always `Use "<what they typed>"`, as it is. What each
+choice is saved as, and what an app should send for the same:
+
+- **A named place** (`kind: poi`): `locationName` its name,
+  `locationAddress` its address, and its `latitude`, `longitude` and
+  `applePlaceId`.
+- **A street address** (`kind: address`): `locationAddress` only, with
+  `locationName` null, plus the pin. A street address is never public.
+  (A `locationName` that's the same as the address's first line is
+  dropped by the server for that reason.)
+- **Typed by hand** (`Use "…"`, or Apple Maps not set up): the text as
+  `locationAddress`, with `locationName`, the pin and the id null. Typed
+  text may well be someone's home address, so it's private: someone
+  signed out sees no location at all, and "sign in to see the address".
+
+Sending `locationName` or `locationAddress` changed, without the pin, clears
+the pin and `applePlaceId` (they were for the old place). Sending only
+other fields leaves them as they are. Refusals: `bad_coordinates` (half a
+pair, out of range, not numbers, or a pin with no name or address) and
+`bad_apple_place_id`.
+
+**On iOS**, use MapKit for the suggestions and the place, not this
+server: an `MKLocalSearchCompleter` (`resultTypes = [.pointOfInterest,
+.address]`) as the host types, then an `MKLocalSearch` with the picked
+completion for the `MKMapItem`. Send:
+
+```json
+{
+  "locationName": "Dolores Park",
+  "locationAddress": "19th St & Dolores St, San Francisco, CA 94114, United States",
+  "latitude": 37.759773,
+  "longitude": -122.427063,
+  "applePlaceId": "I5B8A0D4E1F2C3B7A"
+}
+```
+
+- `locationName`: `mapItem.name` for a point of interest
+  (`mapItem.pointOfInterestCategory != nil`, or the completion's
+  subtitle is the address); **null** when the pick is an address (its
+  name is the street address).
+- `locationAddress`: the placemark's address, one line (iOS 26's
+  `mapItem.address?.fullAddress`, or `CNPostalAddressFormatter` on
+  `placemark.postalAddress`, lines joined with ", ").
+- `latitude`, `longitude`: `mapItem.location.coordinate` (or
+  `placemark.coordinate`); 6 decimals is plenty.
+- `applePlaceId`: `mapItem.identifier?.rawValue` (iOS 18+), or null.
+- Typed text, not picked: `locationAddress` only, everything else null.
+
+**Places from the server** (the web, or an app without MapKit):
+
+```bash
+curl -s "$BASE/api/v1/places/autocomplete?q=dolores&near=37.77,-122.42" \
+  -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en-US"
+# -> {"enabled": true, "results": [
+#      {"id": "L3YxL3Nl…", "name": "Dolores Park", "address": "19th St & Dolores St, San Francisco, CA 94114, United States", "kind": "poi"},
+#      {"id": "L3YxL3Nl…", "name": "1 Dolores St", "address": "San Francisco, CA 94103, United States", "kind": "address"}]}
+
+curl -s "$BASE/api/v1/places/L3YxL3Nl…" -H "Authorization: Bearer $TOKEN"
+# -> {"place": {"name": "Dolores Park", "address": "19th St & Dolores St, San Francisco, CA 94114, United States",
+#     "addressLines": ["19th St & Dolores St", "San Francisco, CA 94114", "United States"],
+#     "lat": 37.759773, "lng": -122.427063, "applePlaceId": "I5B8A0D4E1F2C3B7A", "kind": "poi"}}
+```
+
+Both are for people who can host (verified). Autocomplete gives at most 8,
+from 2 characters; `near` ("lat,lng") favors places near it (otherwise the
+server's default, San Francisco), and `Accept-Language` sets the language.
+`enabled: false` means places are off on this server (no Apple Maps key):
+the field is plain text. **A 502 `places_unavailable`** means Apple
+couldn't be asked: let the host type it. 120 calls a minute per person,
+the two together (429 `rate_limited`). A place's `id` is opaque; 404
+`place_not_found` for one that isn't a suggestion's.
+
+**On the event page**, with a pin, the address is a link to directions:
+Apple Maps on an iPhone, iPad or Mac
+(`https://maps.apple.com/?q=<name>&ll=<lat>,<lng>`), Google Maps
+elsewhere (`https://www.google.com/maps/dir/?api=1&destination=<lat>,<lng>`).
+Without one, the address and "Open in Maps", as before.
 
 ### Event details
 
@@ -1208,7 +1303,7 @@ expect:
 
 | Status | `reason` | What to do |
 |---|---|---|
-| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_name`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`, `bad_details`, `too_many_details`, `bad_detail`, `bad_detail_type`, `bad_detail_label`, `bad_detail_value`, `bad_detail_url`, `bad_detail_phone`, `detail_too_long` (with `index`), `bad_image`, `bad_background`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
+| 400 | `bad_json`, `bad_title`, `bad_starts_at`, `bad_ends_at`, `ends_before_start`, `bad_time_zone`, `bad_guest_list_visibility`, `bad_description`, `bad_location_name`, `bad_location_address`, `bad_coordinates`, `bad_apple_place_id`, `bad_near`, `bad_query`, `bad_status`, `bad_guests`, `too_many_guests`, `bad_guests_allowed`, `bad_person_ids`, `bad_person_id`, `bad_name`, `bad_text`, `bad_capacity`, `bad_theme_hue`, `bad_theme_grayscale`, `bad_accent_hue`, `accent_needs_grayscale`, `bad_details`, `too_many_details`, `bad_detail`, `bad_detail_type`, `bad_detail_label`, `bad_detail_value`, `bad_detail_url`, `bad_detail_phone`, `detail_too_long` (with `index`), `bad_image`, `bad_background`, `bad_ids`, `bad_platform`, `bad_token`, `one_of`, `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_request` | fix the request; most are form errors to show (`bad_request`: the request couldn't be read at all, like a URL with a broken `%` escape) |
 | 401 | `sign_in_required` | sign in (`signIn`) or quick-sign-up (`quickSignUp`) |
 | 403 | `email_unverified` | with `verify`: send them there. Without: the person they picked to co-host isn't known to be verified |
 | 403 | `hosts_only` | hide the control: `viewer.canEdit` says who's a host |
@@ -1221,12 +1316,14 @@ expect:
 | 404 | `event_not_found`, `not_invited`, `person_not_found`, `not_cohost`, `entry_not_found`, `not_removed`, `not_found` | the link is wrong, or it's gone (or the host made a new one) |
 | 404 | `friend_link_not_found`, `not_a_friend` | the friend link is wrong or was reset; they weren't in your list |
 | 404 | `list_not_found`, `list_link_not_found`, `not_a_member` | not a list of yours (or gone); the list link is wrong or was reset; they (or you) aren't on it |
+| 404 | `place_not_found` | that place id isn't a suggestion's, or Apple no longer finds it |
 | 409 | `event_cancelled`, `event_over`, `host_cannot_rsvp`, `already_responded`, `is_creator`, `too_many_cohosts`, `no_room`, `removed`, `is_host`, `not_on_event` | redraw from the event |
 | 409 | `is_you`, `own_link` | adding yourself, or saying yes to your own friend link |
 | 409 | `own_list`, `list_full`, `too_many_lists` | joining your own list; a list at 1,000 people; more than 50 lists, or more than 10 on one event |
 | 413 | `too_large` | the body is over 100 KB (an image, 15 MB) |
 | 429 | `rate_limited` | try again later |
 | 502 | `background_unreachable` | TMDB didn't give the background just now; retry in a minute |
+| 502 | `places_unavailable` | Apple Maps couldn't be asked (or isn't set up): let the host type the place |
 | 503 | `accounts_unreachable` | Canopy Accounts is down; retry in a minute |
 | 500 | `server_error` | our bug; retry once, then tell us |
 
@@ -1245,6 +1342,7 @@ expect:
 | Joining lists (every try counts) | 200 a day | 500 a day | 5,000 a day |
 | Adding people to your lists (each person added counts one; 100 in one request) | 300 a day | 600 a day | 5,000 a day |
 | List links that find nothing | | 60 an hour | |
+| Place suggestions and places (together) | 120 a minute | | |
 
 Text fields are capped: title 120 characters (longer is cut), description
 5,000, place name 200, address 500. A request body is at most 100 KB.

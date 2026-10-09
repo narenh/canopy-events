@@ -66,8 +66,8 @@ new MutationObserver((changes) => changes.forEach((c) => c.addedNodes.forEach((n
 // words are copy.js's for the reasons it knows, otherwise the API's own.
 const FIELD_FOR = {
   bad_title: 'title', bad_description: 'description', bad_starts_at: 'startsAt', bad_ends_at: 'endsAt',
-  ends_before_start: 'endsAt', bad_time_zone: 'timeZone', bad_location_name: 'locationName',
-  bad_location_address: 'locationAddress', bad_guest_list_visibility: 'guestListVisibility',
+  ends_before_start: 'endsAt', bad_time_zone: 'timeZone', bad_location_name: 'location',
+  bad_location_address: 'location', bad_coordinates: 'location', bad_apple_place_id: 'location', bad_guest_list_visibility: 'guestListVisibility',
   bad_guests_allowed: 'guestsAllowed', bad_capacity: 'capacity', bad_theme_hue: 'themeHue', bad_theme_grayscale: 'themeHue', bad_accent_hue: 'accentHue', accent_needs_grayscale: 'accentHue',
   bad_details: 'details', too_many_details: 'details', bad_cover_from: 'cover', no_cover: 'cover'
 };
@@ -1045,6 +1045,178 @@ if (data.coverError){
   $('coverError').textContent = t('editor.coverNotSaved') + ' ' + (COPY.editor.coverErrors[data.coverError] || t('common.failed'));
 }
 
+// ---------------- Where ----------------
+//
+// One field, a place or an address (public/ui.js locationField). With
+// places on, typing 2 or more characters opens suggestions: first, always,
+// Use "<what's typed>", then Apple Maps' (GET /api/v1/places/autocomplete,
+// a moment after typing stops). Picking one of Apple's asks for the whole
+// place (GET /api/v1/places/{id}) and puts its name in the field and its
+// address under it, with a × to clear; what's saved is in the hidden
+// fields. Typing again goes back to typed text: the pick is let go. Typed
+// text (picked with Use "…", or just left) is saved as the address only,
+// private (UI.locationFromText). Places off, or Apple unreachable: no
+// suggestions, and the field is typed text.
+//
+// It starts as the event has it (`kept`): saving without touching it
+// sends what was there.
+const loc = $('location');
+const locList = $('locationList');
+const locPicked = $('locationPicked');
+const LOC_FIELDS = { locationName: $('locationName'), locationAddress: $('locationAddress'), latitude: $('latitude'), longitude: $('longitude'), applePlaceId: $('applePlaceId') };
+let locMode = 'kept';
+let locResults = [];
+let locActive = -1;
+let locSeq = 0;
+let locTimer = null;
+
+function setLocFields(v){
+  Object.keys(LOC_FIELDS).forEach((k) => { LOC_FIELDS[k].value = v[k] == null ? '' : String(v[k]); });
+}
+// What the field saves as.
+function locationToSend(){
+  if (locMode === 'typed') return UI.locationFromText(loc.value);
+  const f = LOC_FIELDS;
+  const num = (el) => (el.value === '' ? null : Number(el.value));
+  return {
+    locationName: f.locationName.value || null,
+    locationAddress: f.locationAddress.value || null,
+    latitude: num(f.latitude),
+    longitude: num(f.longitude),
+    applePlaceId: f.applePlaceId.value || null
+  };
+}
+function showPicked(line){
+  $('locationLine').textContent = line || '';
+  locPicked.hidden = !line;
+}
+function toTyped(){
+  if (locMode === 'typed') return;
+  locMode = 'typed';
+  setLocFields({});
+  showPicked('');
+}
+function closeLocList(){
+  if (!locList) return;
+  if (!locList.hidden) form.classList.remove('menu-open');
+  locList.hidden = true;
+  locList.innerHTML = '';
+  loc.setAttribute('aria-expanded', 'false');
+  loc.removeAttribute('aria-activedescendant');
+  locActive = -1;
+}
+function locOptions(){
+  return locList ? Array.from(locList.querySelectorAll('[role=option]')) : [];
+}
+function setLocActive(i){
+  const opts = locOptions();
+  locActive = opts.length ? Math.max(-1, Math.min(i, opts.length - 1)) : -1;
+  opts.forEach((o, n) => o.setAttribute('aria-selected', n === locActive ? 'true' : 'false'));
+  if (locActive >= 0){
+    loc.setAttribute('aria-activedescendant', opts[locActive].id);
+    opts[locActive].scrollIntoView({ block: 'nearest' });
+  } else loc.removeAttribute('aria-activedescendant');
+}
+function drawLocList(){
+  if (!locList) return;
+  const q = loc.value.trim();
+  if (locMode !== 'typed' || q.length < 2){ closeLocList(); return; }
+  locList.innerHTML = UI.placeOptions(q, locResults, locActive);
+  locList.hidden = false;
+  // The Save bar drops beneath the list, as under the zone menu.
+  form.classList.add('menu-open');
+  loc.setAttribute('aria-expanded', 'true');
+  setLocActive(locActive);
+}
+async function fetchPlaces(){
+  const q = loc.value.trim();
+  const seq = ++locSeq;
+  let results = [];
+  try{
+    const { res, data: d } = await api('GET', '/places/autocomplete?q=' + encodeURIComponent(q), undefined, { stay: true });
+    if (res.ok && d && Array.isArray(d.results)) results = d.results;
+  }catch(e){}
+  // Only the answer to what's in the field now.
+  if (seq !== locSeq || locMode !== 'typed' || loc.value.trim() !== q) return;
+  locResults = results;
+  if (document.activeElement === loc) drawLocList();
+}
+async function pickLoc(i){
+  if (i === 0){
+    // Use "…": the text as it is.
+    closeLocList();
+    return;
+  }
+  const r = locResults[i - 1];
+  if (!r) return;
+  closeLocList();
+  locMode = 'picked';
+  loc.value = r.name;
+  showPicked(r.address);
+  // What's known so far, in case the whole place can't be had: the name
+  // (for a named place) and the address, with no pin.
+  setLocFields(UI.locationFromPlace({ name: r.name, address: r.kind === 'address' ? [r.name, r.address].filter(Boolean).join(', ') : r.address, kind: r.kind }));
+  const seq = ++locSeq;
+  try{
+    const { res, data: d } = await api('GET', '/places/' + encodeURIComponent(r.id), undefined, { stay: true });
+    if (seq !== locSeq || locMode !== 'picked' || !res.ok || !d.place) return;
+    const place = d.place;
+    setLocFields(UI.locationFromPlace(place));
+    showPicked(place.address);
+  }catch(e){}
+}
+
+if (UI.locationStart(prefill).line) locPicked.hidden = false;
+loc.addEventListener('input', () => {
+  toTyped();
+  // The last suggestions stay until the next ones come (no flicker
+  // between keys); none under 2 characters.
+  if (loc.value.trim().length < 2) locResults = [];
+  locActive = -1;
+  drawLocList();
+  clearTimeout(locTimer);
+  if (locList && loc.value.trim().length >= 2) locTimer = setTimeout(fetchPlaces, 200);
+});
+loc.addEventListener('keydown', (e) => {
+  const open = locList && !locList.hidden;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    if (!open){
+      if (locList && locMode === 'typed' && loc.value.trim().length >= 2){ drawLocList(); e.preventDefault(); }
+      return;
+    }
+    e.preventDefault();
+    const n = locOptions().length;
+    setLocActive(e.key === 'ArrowDown' ? (locActive + 1) % n : (locActive <= 0 ? n - 1 : locActive - 1));
+  } else if (e.key === 'Enter' && open){
+    // Picks the highlighted row (Use "…" when none is), rather than
+    // saving the form.
+    e.preventDefault();
+    pickLoc(Math.max(0, locActive));
+  } else if (e.key === 'Escape' && open){
+    e.preventDefault();
+    closeLocList();
+  }
+});
+loc.addEventListener('blur', () => { setTimeout(() => { if (document.activeElement !== loc) closeLocList(); }, 150); });
+if (locList){
+  // A tap or click on a row picks it, and the field keeps its focus (and
+  // a phone its keyboard) until then.
+  locList.addEventListener('pointerdown', (e) => e.preventDefault());
+  locList.addEventListener('mousedown', (e) => e.preventDefault());
+  locList.addEventListener('click', (e) => {
+    const opt = e.target.closest('[role=option]');
+    if (opt) pickLoc(Number(opt.getAttribute('data-index')));
+  });
+}
+$('locationClear').addEventListener('click', () => {
+  locMode = 'typed';
+  loc.value = '';
+  setLocFields({});
+  showPicked('');
+  closeLocList();
+  loc.focus();
+});
+
 // ---------------- Saving ----------------
 
 form.addEventListener('submit', (e) => {
@@ -1066,8 +1238,7 @@ form.addEventListener('submit', (e) => {
     // says so, under the date.
     startsAt: startDate.value && startTime.value ? UI.fromLocalInput(startDate.value + 'T' + startTime.value, zone) : '',
     timeZone: zone,
-    locationName: $('locationName').value,
-    locationAddress: $('locationAddress').value,
+    ...locationToSend(),
     guestListVisibility: (form.querySelector('input[name=guestListVisibility]:checked') || {}).value,
     guestsAllowed: Number($('guestsAllowed').value),
     // Empty is no limit. Anything else goes as typed; the API says if

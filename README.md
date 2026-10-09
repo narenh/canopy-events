@@ -95,6 +95,8 @@ cover all of it except notifications, which belong to the apps.
   - `backgrounds.js` is the curated backgrounds from TMDB (see
     "Backgrounds"): `config/backgrounds.json` and, optionally, a TMDB
     list, cached in memory and refreshed daily.
+  - `places.js` is Apple Maps (see "Places"): signing in to the Maps
+    Server API, and the Location field's suggestions and places.
   - `people.js` is **the only place a person is turned into JSON**:
     `publicPerson` (the five public fields, copied by name), the former
     member, and `ownPerson` for `/me`.
@@ -271,6 +273,8 @@ visibility rules, pagination, errors and limits, with curl examples.
 | `DELETE /api/v1/events/{id}/wall/{entryId}` | delete a post (its author) or any entry (hosts) |
 | `PUT`, `DELETE /api/v1/events/{id}/cover` | upload or remove the cover image (hosts) |
 | `GET /api/v1/backgrounds` | the curated backgrounds from TMDB (signed in) |
+| `GET /api/v1/places/autocomplete?q=` | Apple Maps' suggestions as a host types a location (verified people) |
+| `GET /api/v1/places/{placeId}` | one of them, whole: name, address, coordinates, Apple's place id (verified people) |
 | `PUT /api/v1/events/{id}/cover/background` | make one of them the cover, as an upload does (hosts) |
 | `GET /covers/<key>.jpg`, `/covers/<key>-<width>.jpg` | a cover image at full size, or a narrower copy; public (for link previews) |
 | `GET /api/v1/me/notifications`, `/unread` | your inbox, and its unread count |
@@ -692,6 +696,9 @@ runs as `NODE_ENV=production`, port 3000, `DATA_DIR=/app/data`.
    - `TMDB_TOKEN` and `TMDB_LIST_ID` (optional): a TMDB list of films
      and shows whose backdrops join the curated backgrounds. See
      "Backgrounds". `config/backgrounds.json` works without them.
+   - `APPLE_MAPS_TEAM_ID`, `APPLE_MAPS_KEY_ID` and
+     `APPLE_MAPS_PRIVATE_KEY` (optional): place suggestions in the
+     editor's Location field. See "Places".
    - `PUBLIC_URL` and `CANOPY_DOMAIN`: leave unset. They default to
      `https://events.canopysf.com` and `canopysf.com`.
    - Leave `PORT` and `DATA_DIR` alone. The Dockerfile sets them.
@@ -768,6 +775,51 @@ backgrounds.
 
 `TMDB_API_BASE` and `TMDB_IMAGE_BASE` point it at a fake TMDB, for the
 tests (`test/fakeTmdb.js`); they're ignored in production.
+
+## Places
+
+The editor's **Location** field suggests places from Apple Maps as the
+host types (the Maps Server API, asked by the server: lib/places.js,
+routes/places.js; docs/api.md "Where: the location" says what's saved and
+who sees it). Without the three settings below it's a plain field, and
+nothing errors.
+
+**Setting it up**, in the Apple Developer account (developer.apple.com/account):
+
+1. **A Maps ID** (done: `maps.com.canopysf.CanopyEvents`). Certificates,
+   Identifiers & Profiles > Identifiers > **+** > **Maps IDs**, a
+   description, and an identifier starting `maps.`.
+2. **A key.** Certificates, Identifiers & Profiles > **Keys** > **+**.
+   Name it (e.g. "Canopy Events Maps"), tick **MapKit JS** (the Maps
+   Server API is signed with the same key), click **Configure** beside
+   it and choose the Maps ID `maps.com.canopysf.CanopyEvents`, Save,
+   Continue, **Register**. **Download** the `.p8` file (it can only be
+   downloaded once) and note the **Key ID** shown.
+3. **The Team ID**: **Membership** (Membership details) in the sidebar.
+
+Then in Coolify's environment variables:
+
+| Variable | Value |
+|---|---|
+| `APPLE_MAPS_TEAM_ID` | the 10-character Team ID |
+| `APPLE_MAPS_KEY_ID` | the key's 10-character Key ID |
+| `APPLE_MAPS_PRIVATE_KEY` | the whole `.p8` file, `-----BEGIN PRIVATE KEY-----` to `-----END PRIVATE KEY-----`. One line is fine: paste it with `\n` where the line breaks were (`awk 'NF {printf "%s\\n", $0}' AuthKey_XXXXXXXXXX.p8` prints it that way) |
+| `PLACES_DEFAULT_NEAR` (optional) | `lat,lng` to favor places near when the host's location isn't known; San Francisco (`37.7749,-122.4194`) by default |
+
+The log says at startup when places are off, and when the key doesn't
+read. The key never leaves the server: it signs a short JWT (ES256,
+`iss` the team, `scope` `server_api`), which Apple trades at `/v1/token`
+for a 30-minute access token, kept in memory and traded again a minute
+before it runs out or when Apple says it's no good.
+
+Apple allows 25,000 calls a day per team, shared with MapKit JS. Each
+host's typing is asked a moment after they stop, from 2 characters, the
+same question within 10 minutes is answered from memory, each person
+gets 120 a minute, and past 20,000 calls in a day the field quietly goes
+back to plain text until the next day.
+
+`APPLE_MAPS_URL` points it at a fake Apple, for the tests
+(`test/fakeAppleMaps.js`).
 
 ## Storage & backups
 

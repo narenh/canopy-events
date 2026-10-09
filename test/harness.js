@@ -97,6 +97,26 @@ const CHECKS = [
   // TMDB's token (the fake's, test/fakeTmdb.js) is never in an answer.
   function noTmdbToken(r) {
     if (r.text.includes(TMDB_TOKEN)) throw new Error(`the TMDB token is in ${r.method} ${r.url}`);
+  },
+  // Where an event is on a map is as private as its address: any event
+  // in any answer whose address is held back (signed out, or removed:
+  // locationAddressHidden, which a pin alone also sets) has no
+  // coordinates or Apple place id either.
+  function noHiddenLocation(r) {
+    const walk = (v, where) => {
+      if (Array.isArray(v)) return v.forEach((x, i) => walk(x, `${where}[${i}]`));
+      if (!v || typeof v !== 'object') return;
+      if (v.locationAddressHidden === true && (v.latitude != null || v.longitude != null || v.applePlaceId != null)) {
+        throw new Error(`${where} in ${r.method} ${r.url} hides the address but not the pin`);
+      }
+      Object.entries(v).forEach(([k, x]) => walk(x, `${where}.${k}`));
+    };
+    walk(r.data, '$');
+  },
+  // Apple Maps' access tokens and key (the fake's, test/fakeAppleMaps.js)
+  // are never in an answer either.
+  function noAppleSecrets(r) {
+    if (/apple_access_|PRIVATE KEY|TEAM123456|KEY7890ABC/.test(r.text)) throw new Error(`an Apple Maps secret is in ${r.method} ${r.url}`);
   }
 ];
 
@@ -129,6 +149,12 @@ async function startServer(extraEnv = {}) {
     BACKGROUNDS_FILE: '',
     TMDB_TOKEN: '',
     TMDB_LIST_ID: '',
+    // No Apple Maps unless a test asks (test/places.test.js and its fake):
+    // never the real one.
+    APPLE_MAPS_TEAM_ID: '',
+    APPLE_MAPS_KEY_ID: '',
+    APPLE_MAPS_PRIVATE_KEY: '',
+    APPLE_MAPS_URL: '',
     // Idle connections kept for the whole file, not Node's 5 s: see
     // KEEP_ALIVE_MS in fakeAccount.js.
     KEEP_ALIVE_TIMEOUT_MS: String(KEEP_ALIVE_MS),

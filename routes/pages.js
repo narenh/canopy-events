@@ -43,7 +43,7 @@ const PAST_SHOWN = 10;
 const ACCOUNT_BASE = String(process.env.CANOPY_ACCOUNT_URL || '').replace(/\/+$/, '');
 
 module.exports = function pagesRoutes(ctx) {
-  const { canopy } = ctx;
+  const { canopy, places } = ctx;
   const render = createRender({ canopy, accountUrl: process.env.CANOPY_ACCOUNT_URL });
   const router = express.Router();
 
@@ -252,7 +252,7 @@ module.exports = function pagesRoutes(ctx) {
       accent: UI.accentKeyOf(event),
       title: event.title,
       meta: render.eventMeta(event),
-      main: UI.eventPage(data, { viewerZone: render.viewerZone(req) }),
+      main: UI.eventPage(data, { viewerZone: render.viewerZone(req), maps: UI.mapsApp(req.get('user-agent')) }),
       data
     });
   }));
@@ -285,7 +285,7 @@ module.exports = function pagesRoutes(ctx) {
       }
       draft = want(r).draft;
     }
-    const data = { me: meView(req.person), event: null, draft, backgrounds: await backgroundsFor(req) };
+    const data = { me: meView(req.person), event: null, draft, backgrounds: await backgroundsFor(req), places: places.enabled };
     render.page(req, res, 'editor.html', {
       title: t('editor.newHeading'),
       main: UI.editorForm(data, { zone: render.viewerZone(req), viewerZone: render.viewerZone(req) }),
@@ -302,7 +302,9 @@ module.exports = function pagesRoutes(ctx) {
     // ?coverError=<reason>: a new event was made, and its cover didn't
     // upload (views/editor.html sends them here to try again).
     const coverError = /^[a-z_]{1,40}$/.test(String(req.query.coverError || '')) ? req.query.coverError : null;
-    const data = { me: meView(req.person), event, coverError, backgrounds: await backgroundsFor(req) };
+    // Place suggestions are for people who may make events (verified),
+    // like the API's: anyone else's Location field is plain text.
+    const data = { me: meView(req.person), event, coverError, backgrounds: await backgroundsFor(req), places: places.enabled && isVerified(req.person) };
     render.page(req, res, 'editor.html', { title: t('editor.editHeading'), main: UI.editorForm(data, { viewerZone: render.viewerZone(req) }), data, theme: UI.themeKeyOf(event), accent: UI.accentKeyOf(event) });
   }));
 

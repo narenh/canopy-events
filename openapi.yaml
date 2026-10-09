@@ -55,6 +55,8 @@ tags:
     description: "A guest's own controls on an event: mute it, leave it, and opt out of a host's invitations."
   - name: Backgrounds
     description: Curated film and TV backdrops from TMDB a host can choose as a cover.
+  - name: Places
+    description: Finding where an event is, with Apple Maps, for the editor's Location field.
   - name: Docs
     description: This document.
   - name: Site to site
@@ -1035,6 +1037,85 @@ paths:
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/places/autocomplete:
+    get:
+      tags: [Places]
+      operationId: autocompletePlaces
+      summary: Suggestions for a place as it's typed
+      description: |
+        Apple Maps' suggestions for `q`, for the editor's Location field:
+        at most 8, named places and addresses. People who can host only
+        (verified; 403 `email_unverified` otherwise). Ask from 2
+        characters, a moment after typing stops; shorter is no results.
+        `Accept-Language` sets the language of the names and addresses.
+
+        `enabled` false (and no results) means places are off on this
+        server: the field is plain text. A 502 `places_unavailable` means
+        Apple couldn't be asked just now: let the host type it. 120 calls
+        a minute per person, this and getPlace together (429
+        `rate_limited`).
+
+        Pick one with getPlace (its `id`), for the coordinates and the
+        whole address. On iOS, MKLocalSearchCompleter and MKLocalSearch do
+        the same without this.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, maxLength: 200 }
+          description: What's typed so far.
+        - name: near
+          in: query
+          required: false
+          schema: { type: string }
+          description: '"lat,lng" to favor places near (the host''s location, or the event''s). Without it, the server''s default (San Francisco unless set). Only two decimals (about 1 km) are used. 400 `bad_near` for anything else.'
+      responses:
+        '200':
+          description: The suggestions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaceSuggestions' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/PlacesUnavailable' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/places/{placeId}:
+    parameters:
+      - name: placeId
+        in: path
+        required: true
+        schema: { type: string }
+        description: A suggestion's `id`, from autocompletePlaces.
+    get:
+      tags: [Places]
+      operationId: getPlace
+      summary: A suggestion, whole
+      description: |
+        The place a suggestion stands for: its name, address, coordinates
+        and Apple Maps' id, to send with the event. `kind: poi`: the name
+        as `locationName`, the address as `locationAddress`. `kind:
+        address`: the address as `locationAddress` only, with
+        `locationName` null, so the street address stays private.
+        Verified people only, and counted with autocompletePlaces. 404
+        `place_not_found` for an id that isn't a suggestion's, or one
+        Apple no longer finds; 502 `places_unavailable` when Apple can't
+        be asked (or places are off).
+      responses:
+        '200':
+          description: The place.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaceEnvelope' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/PlacesUnavailable' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/me:
@@ -2169,6 +2250,11 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+    PlacesUnavailable:
+      description: Apple Maps couldn't be asked just now, or places are off (`places_unavailable`). Let the host type the place.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     BackgroundUnreachable:
       description: TMDB's image CDN couldn't give the background just now (`background_unreachable`). Try again in a minute.
       content:
@@ -2176,6 +2262,56 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+    PlaceSuggestion:
+      type: object
+      additionalProperties: false
+      required: [id, name, address, kind]
+      properties:
+        id: { type: string, description: For getPlace. Opaque. }
+        name: { type: string, description: "The first line: a place's name, or for an address the street address itself." }
+        address: { type: string, description: The second line, muted (may be empty). }
+        kind: { type: string, enum: [poi, address], description: 'poi: a named place. address: a street address, which is never public.' }
+    PlaceSuggestions:
+      type: object
+      additionalProperties: false
+      required: [enabled, results]
+      properties:
+        enabled: { type: boolean, description: False when places are off on this server (no results, ever). }
+        results:
+          type: array
+          maxItems: 8
+          items: { $ref: '#/components/schemas/PlaceSuggestion' }
+      example:
+        enabled: true
+        results:
+          - { id: L3YxL3NlYXJjaD9xPURvbG9yZXMlMjBQYXJr, name: Dolores Park, address: '19th St & Dolores St, San Francisco, CA 94114, United States', kind: poi }
+          - { id: L3YxL3NlYXJjaD9xPTElMjBNYXJrZXQlMjBTdA, name: 1 Market St, address: 'San Francisco, CA 94105, United States', kind: address }
+    Place:
+      type: object
+      additionalProperties: false
+      required: [name, address, addressLines, lat, lng, applePlaceId, kind]
+      properties:
+        name: { type: string }
+        address: { type: string, description: 'addressLines joined with ", ": what to send as locationAddress.' }
+        addressLines: { type: array, items: { type: string }, description: The address as its country writes it, a line each. }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+        applePlaceId: { type: [string, 'null'], description: "Apple Maps' id for it, when Apple gives one." }
+        kind: { type: string, enum: [poi, address] }
+      example:
+        name: Dolores Park
+        address: '19th St & Dolores St, San Francisco, CA 94114, United States'
+        addressLines: ['19th St & Dolores St', 'San Francisco, CA 94114', United States]
+        lat: 37.759773
+        lng: -122.427063
+        applePlaceId: I5B8A0D4E1F2C3B7A
+        kind: poi
+    PlaceEnvelope:
+      type: object
+      additionalProperties: false
+      required: [place]
+      properties:
+        place: { $ref: '#/components/schemas/Place' }
     Backgrounds:
       type: object
       additionalProperties: false
@@ -2479,7 +2615,7 @@ components:
       type: object
       additionalProperties: false
       required: [id, url, title, description, startsAt, endsAt, timeZone, locationName, locationAddress,
-                 locationAddressHidden, details, hiddenDetails, guestListVisibility, guestsAllowed, capacity, spotsLeft, coverImageUrl,
+                 latitude, longitude, applePlaceId, locationAddressHidden, details, hiddenDetails, guestListVisibility, guestsAllowed, capacity, spotsLeft, coverImageUrl,
                  coverImages, themeHue, themeGrayscale, accentHue, coverHue, coverGrayscale, status, cancelledAt, createdAt, updatedAt,
                  hosts, counts, viewer]
       properties:
@@ -2492,7 +2628,10 @@ components:
         timeZone: { type: string, description: 'IANA, e.g. America/Los_Angeles: show times in it.' }
         locationName: { type: [string, 'null'] }
         locationAddress: { type: [string, 'null'], description: Null when signed out (see locationAddressHidden). }
-        locationAddressHidden: { type: boolean, description: True when there's an address you'll see once signed in. }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90, description: "Where it is on a map, in degrees. Private like the address: null when signed out. Null with no pin (a place typed by hand, or an event from before)." }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180, description: With latitude, always. }
+        applePlaceId: { type: [string, 'null'], description: "Apple Maps' id for the place, when it was picked from Apple's suggestions. Private like the address." }
+        locationAddressHidden: { type: boolean, description: "True when there's an address (or a pin) you'll see once signed in." }
         details:
           type: array
           maxItems: 10
@@ -2618,6 +2757,9 @@ components:
         timeZone: America/Los_Angeles
         locationName: "Ana's place"
         locationAddress: 1 Market St, San Francisco
+        latitude: 37.794
+        longitude: -122.3951
+        applePlaceId: null
         locationAddressHidden: false
         details:
           - { type: link, label: Playlist, value: 'https://open.spotify.com/playlist/37i9dQZF1DX4WYpdgoIcn6', href: 'https://open.spotify.com/playlist/37i9dQZF1DX4WYpdgoIcn6' }
@@ -2864,8 +3006,11 @@ components:
         startsAt: { type: string, format: date-time, description: 'With Z or an offset: "2026-10-31T19:30:00-07:00".' }
         endsAt: { type: [string, 'null'], format: date-time, description: After startsAt. Without one, the event counts as over 6 hours after it starts. }
         timeZone: { type: string, description: 'An IANA time zone, e.g. America/Los_Angeles.' }
-        locationName: { type: [string, 'null'], maxLength: 200 }
-        locationAddress: { type: [string, 'null'], maxLength: 500 }
+        locationName: { type: [string, 'null'], maxLength: 200, description: "The place's name, shown to everyone with the link (link previews too). Only for a named place (a bar, a park): never a street address. A name that is the address's first line is dropped." }
+        locationAddress: { type: [string, 'null'], maxLength: 500, description: "The address, for signed-in guests only. A place typed by hand (not picked from a map) goes here, with locationName null: it may be someone's home." }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90, description: "Where it is on a map (a place or address picked from Apple Maps). With longitude, always: both or neither. Private, like the address. Left out on a change to the place or address, it's cleared." }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        applePlaceId: { type: [string, 'null'], pattern: '^[A-Za-z0-9._:-]{1,128}$', description: "Apple Maps' id for the place (on iOS, the MKMapItem's identifier; applePlaceId from getPlace). Private, like the address. Left out on a change to the place or address, it's cleared." }
         guestListVisibility: { type: string, enum: [everyone, responded], default: everyone }
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, default: 0, description: Plus-ones each answer may bring. }
         capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, default: null, description: 'The most people going, plus-ones included. null: no cap.' }
@@ -2889,7 +3034,7 @@ components:
         and your own lists that were on it.
       type: object
       additionalProperties: false
-      required: [title, description, timeZone, locationName, locationAddress, details, guestListVisibility, guestsAllowed, capacity,
+      required: [title, description, timeZone, locationName, locationAddress, latitude, longitude, applePlaceId, details, guestListVisibility, guestsAllowed, capacity,
                  themeHue, themeGrayscale, accentHue, coverFrom, coverImageUrl, coverImages, coverHue, coverGrayscale, lists]
       properties:
         title: { type: string }
@@ -2897,6 +3042,9 @@ components:
         timeZone: { type: string }
         locationName: { type: [string, 'null'] }
         locationAddress: { type: [string, 'null'] }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        applePlaceId: { type: [string, 'null'] }
         details:
           type: array
           maxItems: 10
@@ -2941,6 +3089,9 @@ components:
         timeZone: America/Los_Angeles
         locationName: "Ana's place"
         locationAddress: 1 Market St, San Francisco
+        latitude: null
+        longitude: null
+        applePlaceId: null
         details:
           - { type: dress_code, label: null, value: Fierce }
         guestListVisibility: everyone
@@ -2977,6 +3128,9 @@ components:
         timeZone: { type: string }
         locationName: { type: [string, 'null'], maxLength: 200 }
         locationAddress: { type: [string, 'null'], maxLength: 500 }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90, description: "Where it is on a map (a place or address picked from Apple Maps). With longitude, always: both or neither. Private, like the address. Left out on a change to the place or address, it's cleared." }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        applePlaceId: { type: [string, 'null'], pattern: '^[A-Za-z0-9._:-]{1,128}$', description: "Apple Maps' id for the place (on iOS, the MKMapItem's identifier; applePlaceId from getPlace). Private, like the address. Left out on a change to the place or address, it's cleared." }
         guestListVisibility: { type: string, enum: [everyone, responded] }
         guestsAllowed: { type: integer, minimum: 0, maximum: 10, description: Lowering it keeps answers that bring more (see guestsOverLimit). }
         capacity: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: "null clears it. Raising it promotes from the waitlist; lowering it bumps nobody." }

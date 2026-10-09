@@ -481,7 +481,7 @@ test('pages', async (t) => {
     const pacific = { Cookie: `canopy_session=${P.ana.token}; tz=America/Los_Angeles` };
     const fresh = await page(server, ana, '/new', pacific);
     assert.equal(fresh.status, 200);
-    for (const id of ['title', 'description', 'startDate', 'startTime', 'endsAt', 'timeZone', 'locationName', 'locationAddress', 'guestsAllowed', 'capacity', 'themeHue']) {
+    for (const id of ['title', 'description', 'startDate', 'startTime', 'endsAt', 'timeZone', 'location', 'locationName', 'locationAddress', 'latitude', 'longitude', 'applePlaceId', 'guestsAllowed', 'capacity', 'themeHue']) {
       assert.ok(fresh.body.includes(`id="${id}"`), id);
     }
     // It looks like the event: the card, its hero (no cover: the
@@ -502,7 +502,10 @@ test('pages', async (t) => {
       assert.ok(!fresh.body.includes(gone), gone);
     }
     assert.ok(form.includes('>Everyone with the link<') && form.includes('>Only people who&#39;ve answered<'));
-    assert.ok(form.includes('placeholder="Address (only signed-in guests see it)"'));
+    // One Location field, its hint in the placeholder; places are off on
+    // this server (no Apple Maps key), so it's a plain field.
+    assert.ok(form.includes('placeholder="Place or address"'));
+    assert.ok(!form.includes('role="combobox"') && !form.includes('id="locationList"'));
     // The time zone: its friendly name, small, with "Change" and its menu
     // (the six zones near Pacific, Pacific ticked and marked as yours,
     // then the rest). The value sent is the IANA id.

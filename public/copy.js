@@ -329,10 +329,13 @@ const COPY = {
     zoneClose: 'Close',
     zoneNoMatch: 'No time zones match.',
     // Where, and what it's about.
-    locationName: 'Place',
-    locationNamePlaceholder: 'Add a place',
-    locationAddress: 'Address',
-    locationAddressPlaceholder: 'Address (only signed-in guests see it)',
+    // One field for a place or an address. Its suggestions (Apple Maps)
+    // start with what's typed, as it is: {text}.
+    location: 'Location',
+    locationPlaceholder: 'Place or address',
+    locationUse: 'Use “{text}”',
+    locationSuggestions: 'Places',
+    locationClear: 'Clear location',
     description: 'Description',
     descriptionPlaceholder: "What's happening, what to bring, anything people should know",
     // The details under the description: the chips' group, and each row's
