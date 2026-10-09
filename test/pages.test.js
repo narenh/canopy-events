@@ -37,6 +37,18 @@ function pageData(html) {
   return JSON.parse(m[1]);
 }
 
+// The guest list's sheet as `who` would see it: drawn by public/ui.js
+// from what the API gives them (as views/event.html does), with every
+// tab's people one after another.
+async function guestSheet(who, eventId) {
+  const e = (await who.get(`/api/v1/events/${eventId}`)).data.event;
+  const g = (await who.get(`/api/v1/events/${eventId}/guests?limit=100`)).data;
+  const isHost = !!(e.viewer && e.viewer.canEdit);
+  const removed = isHost ? (await who.get(`/api/v1/events/${eventId}/guests?status=removed&limit=100`)).data.guests : [];
+  const st = { event: e, isHost, guests: g.guests, removed, tab: null, query: '', loading: false, canInvite: true };
+  return UI.guestsSheet(st) + UI.guestTabsOf(st).map((tab) => UI.guestResults({ ...st, tab })).join('');
+}
+
 // One <section id="..."> of a page, up to the next section.
 function section(html, id) {
   const start = html.indexOf(`id="${id}"`);
@@ -198,7 +210,9 @@ test('pages', async (t) => {
     assert.ok(rsvp.includes('data-status="maybe" aria-pressed="false"'));
     assert.ok(!rsvp.includes('data-action="withdraw"') && !rsvp.includes('Take back my answer'), 'an answer changes, never goes');
     assert.equal(section(html, 'host'), null, 'no host tools');
-    const guests = section(html, 'guests');
+    // The whole list: in the sheet, or without the script at ?guests=1.
+    assert.ok(!section(html, 'guests').includes('id="allGuests"'), 'not on the page itself');
+    const guests = section((await page(server, ben, `/e/${party.id}?guests=1`)).body, 'guests');
     assert.ok(guests.includes('Going · 1') && guests.includes('Ben Okafor'));
     assert.ok(guests.includes('Maybe · 1') && guests.includes('Cy Park'));
     assert.ok(!guests.includes('Dee Ruiz'), 'only hosts see who is invited and hasn\'t answered');
@@ -227,6 +241,13 @@ test('pages', async (t) => {
     assert.ok(guests.includes('The host shows who&#39;s coming to people who&#39;ve answered.'));
     assert.ok(!html.includes('Ben Okafor') && !html.includes('Ben O<'), 'no names anywhere');
     assert.ok(section(html, 'rsvp').includes('>RSVP<'));
+    // Nor at ?guests=1 (the list without the script), nor in the sheet,
+    // which is drawn from the same answer; signed out, the same.
+    for (const who of [dee, null]) {
+      const all = (await page(server, who, `/e/${quiet.id}?guests=1`)).body;
+      assert.ok(!all.includes('Ben Okafor') && !all.includes('id="allGuests"') && !all.includes('open-guests'), String(who && who.person.name));
+    }
+    assert.ok(!(await guestSheet(dee, quiet.id)).includes('Ben Okafor'));
   });
 
   await t.test('the host: share, invite, edit and cancel, and everyone on the list', async () => {
@@ -236,10 +257,14 @@ test('pages', async (t) => {
     assert.ok(host.includes('data-action="open-invite"') && host.includes(`href="/e/${party.id}/edit"`));
     assert.ok(host.includes('data-action="cancel"') && host.includes('data-action="share"'));
     assert.equal(section(html, 'rsvp'), null, 'hosts don\'t answer');
-    const guests = section(html, 'guests');
+    const guests = section((await page(server, ana, `/e/${party.id}?guests=1`)).body, 'guests');
     assert.ok(guests.includes("Invited, hasn&#39;t answered · 1") && guests.includes('Dee Ruiz'), guests);
     assert.ok(section(html, 'guests').includes('1 Going · 1 Maybe'));
-    assert.ok(section(html, 'guests').includes('<details class="view-all" id="viewAll"><summary class="pill-btn">'), 'View all, shut');
+    // View all: the sheet, or (a link) the list under the faces without the script.
+    assert.ok(section(html, 'guests').includes(`<a class="pill-btn view-all-btn" id="viewAllBtn" href="/e/${party.id}?guests=1#guests" data-action="open-guests" aria-haspopup="dialog">View all</a>`));
+    assert.ok(!section(html, 'guests').includes('Dee Ruiz') && !section(html, 'guests').includes('id="allGuests"'), 'only the faces and counts on the page');
+    const sheet = await guestSheet(ana, party.id);
+    assert.ok(sheet.includes('id="guestTab-invited"') && sheet.includes('Dee Ruiz'));
     // No help text under "Hosting": the heading, then the buttons.
     assert.match(host, /<h3>Hosting<\/h3><div class="host-actions">/);
     // ⋯ is a drawn icon (three dots on the centre line), read out as "More".
@@ -928,12 +953,18 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.ok(rsvp.includes('data-status="going" aria-pressed="true"'));
     assert.ok(rsvp.includes('<output id="guestCount" aria-live="polite">1</output>'));
     assert.ok(!rsvp.includes('It&#39;s full.'), 'already going');
-    const guests = section(r.body, 'guests');
+    const guests = section((await page(server, ben, `/e/${party.id}?guests=1`)).body, 'guests');
     assert.ok(guests.includes('Going · 1 +1 guest') && guests.includes('Ben Okafor'), guests);
     assert.match(guests, /Ben Okafor<\/div><div class="sub">\+1 guest</);
     assert.ok(guests.includes('Waitlist · 1') && guests.includes('Cy Park'));
     assert.ok(!guests.includes('Dee Ruiz'), 'the removed are only for hosts');
     assert.ok(!guests.includes('data-action="remove-guest"') && !guests.includes('removedGroup'));
+    // The sheet: his plus-one, the waitlist tab, no host tools, no removed.
+    const sheet = await guestSheet(ben, party.id);
+    assert.match(sheet, /Ben Okafor<\/div><div class="sub">\+1 guest</);
+    assert.ok(sheet.includes('id="guestTab-waitlisted"') && sheet.includes('Cy Park'));
+    assert.ok(!sheet.includes('Dee Ruiz') && !sheet.includes('guestTab-removed') && !sheet.includes('guestTab-invited'));
+    assert.ok(!sheet.includes('data-action="remove-guest"') && !sheet.includes('data-action="undo-remove"') && !sheet.includes('data-action="guests-invite"'));
     const wall = section(r.body, 'wall');
     assert.ok(wall.includes('<strong>Ben Okafor</strong> is going.'), wall);
     assert.ok(wall.includes('<strong>Ana Lima</strong> changed the place to <strong>The garden</strong>.'));
@@ -982,9 +1013,10 @@ test('pages: the features, as everyone who might look', async (t) => {
     assert.deepEqual([...host.matchAll(/role="menuitem"[^>]*data-action="([^"]+)"/g)].map((m) => m[1]), ['lists', 'duplicate', 'step-down'], "a co-host's menu: their lists, duplicate, step down, nothing creator-only");
     assert.ok(!host.includes("delete-event"));
     assert.equal(section(r.body, 'rsvp'), null);
-    const guests = section(r.body, 'guests');
+    const guests = await guestSheet(fay, party.id);
     assert.ok(guests.includes(`data-action="remove-guest" data-person="${P.ben.id}" data-name="Ben Okafor"`), guests);
-    assert.match(guests, /id="removedGroup"[\s\S]*Removed · 1[\s\S]*Dee Ruiz[\s\S]*data-action="undo-remove"/);
+    assert.match(guests, /id="guestTab-removed"[^>]*>Removed <span class="tag off">1<\/span>[\s\S]*Dee Ruiz<\/div><\/div><button type="button" class="small-btn secondary" data-action="undo-remove"/);
+    assert.ok(guests.includes('data-action="guests-invite"'), 'and Invite');
     const wall = section(r.body, 'wall');
     assert.equal((wall.match(/data-action="delete-entry"/g) || []).length, (wall.match(/class="wall-entry/g) || []).length, 'hosts delete anything');
     assert.deepEqual(pageData(r.text).removed, (await fay.get(`/api/v1/events/${party.id}/guests?status=removed&limit=50`)).data);
@@ -1013,7 +1045,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     const opened = UI.hostSection(pageData(r.text).event, 'upcoming', { showCohosts: true });
     assert.match(opened, /Co-hosts · 1[\s\S]*Fay Tran[\s\S]*data-action="remove-cohost" data-person="[^"]+" data-name="Fay Tran"/);
     assert.ok(opened.includes(`href="/e/${party.id}/cohosts">Add co-host</a>`));
-    assert.ok(section(r.body, 'guests').includes('Dee Ruiz'));
+    assert.ok((await guestSheet(ana, party.id)).includes('Dee Ruiz'));
     // A new link: the page's data is the event under it, and the old one
     // is gone.
     const relinked = await makeEvent(ana, { title: 'Relinked' });
@@ -1073,7 +1105,7 @@ test('pages: the features, as everyone who might look', async (t) => {
     const rsvp = section((await page(server, ben, `/e/${e.id}`)).body, 'rsvp');
     assert.ok(rsvp.includes('The host now allows 1 guests each, and you&#39;re down for 2.'), rsvp);
     assert.ok(rsvp.includes('<output id="guestCount" aria-live="polite">2</output>'));
-    assert.ok(section((await page(server, ana, `/e/${e.id}`)).body, 'guests').includes('+2 guests · more than now allowed'));
+    assert.ok((await guestSheet(ana, e.id)).includes('+2 guests · more than now allowed'));
   });
 
   await t.test('a wall the host shows only to people who\'ve answered', async () => {

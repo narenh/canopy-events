@@ -578,7 +578,8 @@ a{color:var(--accent-text);font-weight:var(--link-weight, inherit);text-decorati
    right, then one row of big round faces, evenly spaced and never
    overlapping (the page's script picks how many fit: --slots). */
 .attend{position:relative;}
-.attend-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-right:110px;}
+.attend-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.attend-titles{min-width:0;}
 .attend-head h2{font-size:var(--fs-h2);font-weight:800;margin:0;}
 .attend-sum{font-size:var(--fs-small);color:var(--muted);margin:4px 0 0;}
 .attend-note{font-size:var(--fs-small);margin:14px 0 0;}
@@ -595,8 +596,8 @@ a{color:var(--accent-text);font-weight:var(--link-weight, inherit);text-decorati
   font-size:20px;font-weight:800;color:var(--text);letter-spacing:-.01em;
 }
 /* "View all": a translucent capsule, level with the heading. It opens the
-   whole list under the row (a <details>, so it works without the script;
-   the page keeps it open across redraws). */
+   guest list in a sheet (without the script, it's a link to the page with
+   the list under the row). */
 .pill-btn{
   display:inline-flex;align-items:center;justify-content:center;min-height:var(--tap);padding:0 18px;border-radius:999px;
   background:var(--secondary);border:1px solid var(--field-line);color:var(--text);
@@ -604,9 +605,7 @@ a{color:var(--accent-text);font-weight:var(--link-weight, inherit);text-decorati
 }
 .pill-btn::-webkit-details-marker{display:none;}
 .pill-btn:focus-visible{outline:2px solid var(--text);outline-offset:2px;}
-.view-all > summary{position:absolute;top:var(--pad);right:20px;}
-.view-all .when-open, .view-all[open] .when-closed{display:none;}
-.view-all[open] .when-open{display:inline;}
+a.pill-btn{text-decoration:none;flex:0 0 auto;}
 .all-guests{margin-top:16px;padding-top:4px;border-top:1px solid var(--line);}
 
 /* ---------------- Capacity and plus-ones ---------------- */
@@ -1151,25 +1150,38 @@ textarea.address-input{min-height:0;margin-top:8px;}
 .declined-card .reply.reply-select{padding:0;}
 .answer-select{margin:0;}
 
-/* Lists, on the friends page: each of yours a block of its own (its
-   name and count, the link, Share / Copy link / QR, then Rename, Reset
-   link and Delete as quiet links, and who's on it, folded). */
+/* Lists, on the friends page: each of yours a row (its name and how many
+   are on it, and a chevron), lighting up edge to edge across the card,
+   that opens the list's sheet. */
 .lists{list-style:none;margin:0 0 4px;padding:0;}
-.list-item{padding:16px 0;border-top:1px solid var(--line);}
-.list-item:first-child{border-top:none;padding-top:4px;}
-.list-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
-.list-head .who{flex:1;min-width:0;}
-.list-head .name{font-size:var(--fs-body);font-weight:700;overflow-wrap:anywhere;}
-.list-head .sub{font-size:var(--fs-small);color:var(--muted);}
-.list-item .link-field{margin-bottom:10px;}
-.list-item .qr{margin:4px auto 14px;}
+.list-item{border-top:1px solid var(--line);}
+.list-item:first-child{border-top:none;}
+.list-open{
+  display:flex;align-items:center;gap:12px;width:calc(100% + 40px);margin:0 -20px;padding:10px 20px;min-height:64px;
+  background:none;border:none;border-radius:0;color:var(--text);text-align:left;font:inherit;cursor:pointer;
+  transition:background-color .12s ease;
+}
+.list-open:hover, .list-open:focus-visible{background:var(--secondary);}
+.list-open:focus-visible{outline:2px solid var(--text);outline-offset:-2px;}
+.list-open .who{flex:1;min-width:0;display:flex;flex-direction:column;}
+.list-open .name{font-size:var(--fs-body);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.list-open .sub{font-size:var(--fs-small);color:var(--muted);font-weight:400;}
+.list-open .chev{display:inline-flex;color:var(--muted);}
+.list-open .chev svg{width:20px;height:20px;}
+/* A list's sheet: its link, Share / Copy / QR, the quiet Rename, Reset
+   link and Delete, then its people under "People · 14" with Add people. */
+.list-panel #listBody{padding-top:14px;}
+.list-panel .link-field{margin-bottom:10px;}
+.list-panel .qr{margin:4px auto 14px;}
 .qr img{display:block;width:100%;height:auto;}
-.list-tools{display:flex;flex-wrap:wrap;gap:6px 18px;margin:12px 0 0;}
+.list-tools{display:flex;flex-wrap:wrap;gap:6px 18px;margin:8px 0 0;}
 .list-tools .link-btn{min-height:var(--tap);font-size:var(--fs-small);}
 .danger-link{color:var(--danger) !important;}
-.list-members{margin-top:4px;}
-.list-members summary{cursor:pointer;min-height:var(--tap);display:flex;align-items:center;font-size:var(--fs-small);font-weight:700;color:var(--muted);}
-.list-members summary:focus-visible{outline:2px solid var(--text);outline-offset:2px;border-radius:6px;}
+.list-panel .notice:not(:empty), .list-panel .error:not(:empty){margin:6px 0 4px;}
+.people-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 8px;padding-top:14px;border-top:1px solid var(--line);}
+.people-head .group-heading{margin:0;}
+.people-head .small-btn{width:auto;}
+#memberSearch{margin:0 0 4px;}
 .rename-form{margin-bottom:10px;}
 .rename-form button{padding:12px 14px;}
 #createList{margin-top:14px;}
@@ -1181,8 +1193,9 @@ textarea.address-input{min-height:0;margin-top:8px;}
 .event-lists .lookup-row{margin-top:8px;}
 .event-lists .people{margin-bottom:6px;}
 
-/* A sheet over the page (the list QR codes; the invite sheet): solid,
-   full height on a phone, a centred panel from 700px. */
+/* A sheet over the page (the list QR codes, the invite sheet, a list,
+   the guest list): solid, full height on a phone, a centred panel from
+   700px. The heading takes the room between a back button and ×. */
 .sheet-panel{
   position:fixed;z-index:31;display:flex;flex-direction:column;
   left:max(8px, env(safe-area-inset-left));right:max(8px, env(safe-area-inset-right));
@@ -1190,6 +1203,14 @@ textarea.address-input{min-height:0;margin-top:8px;}
   background:var(--theme-card-solid, #03200b);border:1px solid var(--glass-edge);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.5);
 }
 .sheet-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px 16px 16px;}
+.sheet-panel .bg-head h2{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sheet-panel .bg-head .back-btn{margin-left:-6px;}
+.bg-head .back-btn svg{width:20px;height:20px;}
+/* People in a sheet who aren't picked (a list's, the guest list): rows
+   that light up edge to edge, like the picker's. */
+.people.rows .person{margin:0 -16px;padding:10px 16px;transition:background-color .12s ease;}
+.people.rows .person:hover, .people.rows .person:focus-within{background:var(--secondary);}
+.people.rows .person .tag{flex:0 0 auto;}
 /* The QR codes for the door: as wide as the sheet allows, up to 420px. */
 .door-qr{text-align:center;padding:8px 0 18px;}
 .door-qr + .door-qr{border-top:1px solid var(--line);padding-top:18px;}
@@ -1233,6 +1254,28 @@ textarea.address-input{min-height:0;margin-top:8px;}
 .tray-face{width:auto;padding:0;background:none;border:none;border-radius:50%;flex:0 0 auto;}
 .tray-face .avatar.small{width:36px;height:36px;}
 .invite-tray #inviteSend{width:auto;flex:0 0 auto;min-width:112px;}
+.invite-tray .save-list-btn{flex:0 0 auto;min-height:var(--tap);font-size:var(--fs-small);white-space:nowrap;}
+.invite-tray .save-list-btn:disabled{opacity:.45;}
+/* "Save as list": the list to save to (or a new one, named), then Cancel
+   and Save, in the tray's place. */
+.save-list{flex:1;display:flex;flex-wrap:wrap;gap:8px;}
+.save-list select, .save-list input{margin:0;flex:1 1 160px;min-width:0;}
+.save-list-buttons{display:flex;gap:8px;flex:1 1 100%;justify-content:flex-end;}
+.save-list-buttons button{width:auto;}
+/* The guest list's sheet: a row of tabs under the search box, one per
+   status there's anyone in, each with its count in that status's color;
+   then the chosen one's count and plus-ones, and its people. */
+.guest-tabs{display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px 2px;}
+.guest-tab{
+  flex:0 0 auto;width:auto;min-height:var(--tap);display:inline-flex;align-items:center;gap:8px;padding:0 12px 0 14px;border-radius:999px;
+  background:var(--secondary);border:1px solid var(--field-line);color:var(--text);font-size:var(--fs-small);font-weight:700;white-space:nowrap;
+}
+.guest-tab[aria-selected="true"]{background:var(--text);color:var(--bg);border-color:var(--text);}
+.guest-tab .tag{font-size:12px;padding:2px 7px;letter-spacing:0;}
+.guest-tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.guest-sum{margin:12px 0 4px;color:var(--muted);}
+.guests-panel #guestsInvite{width:100%;}
+.sheet-msgs .notice:not(:empty), .sheet-msgs .error:not(:empty){margin:8px 16px 12px;}
 /* The editor's .pick outlines itself while focused inside; a list of
    people to pick from shows focus on the row or the control instead. */
 .people.pick:focus-within{outline:none;}

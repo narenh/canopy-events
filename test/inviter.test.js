@@ -154,3 +154,69 @@ test('the invite sheet on a host\'s page: the Invite button opens it; guests hav
   const guest = (await ben.get(`/e/${e.id}`, { headers: { Accept: 'text/html' } })).text;
   assert.ok(!guest.slice(guest.indexOf('<body'), guest.indexOf('id="pageData"')).includes('data-action="open-invite"'));
 });
+
+test('the list picker: people on the list greyed "On list", never pickable, and "Add <n>"', () => {
+  const st = state({ kind: 'list', onList: { s2: 'on_list', x1: 'on_list' }, selected: ['s1'] });
+  const row = (id) => UI.invitePickRow(st, id);
+  assert.match(row('s2'), /class="person pick-row on-list"><div class="pick-label">.*Ines Moreau.*<span class="tag off">On list<\/span><\/div><\/li>/);
+  for (const id of ['s2', 'x1']) assert.ok(!row(id).includes('type="checkbox"'), id);
+  assert.match(row('s1'), /<input type="checkbox" class="pick-box" value="s1" checked aria-label="Zoe Price">/);
+  // Suggested leaves out who's on it, as the invite sheet leaves out who's on the event.
+  assert.ok(!UI.inviteOrder(st).suggested.includes('s2'));
+  // The tray: "Add 3", or "Add", off, at 0; no "Save as list" here.
+  assert.match(UI.inviteTray({ ...st, selected: [] }), /<button type="button" id="inviteSend" data-action="add-to-list" disabled>Add<\/button>/);
+  const tray = UI.inviteTray({ ...st, selected: ['s1', 'm1', 's3'] });
+  assert.ok(tray.includes('data-action="add-to-list">Add 3</button>') && !tray.includes('save-as-list'));
+  // Another list's people: "Add all <n>", or "All on it".
+  assert.ok(UI.inviteListRow(st, st.lists[0]).includes('>Add all 2</button>'));
+  assert.ok(UI.inviteListRow({ ...st, onList: { m1: 'on_list', s1: 'on_list', s2: 'on_list' } }, st.lists[0]).includes('<span class="tag off">All on it</span>'));
+  // In the list's sheet: a back button to the list, its name in the heading, and the picker.
+  const sheet = UI.listSheet({ list: { id: 'L9', name: 'Book club', code: 'C', url: 'u', memberCount: 2 }, mode: 'add', picker: st });
+  assert.match(sheet, /role="dialog" aria-modal="true" aria-labelledby="listHeading"><div class="bg-head"><button type="button" class="round-btn back-btn" data-action="list-back" aria-label="Back to Book club">/);
+  assert.ok(sheet.includes('<h2 id="listHeading">Add to Book club</h2>'));
+  assert.ok(sheet.includes('id="inviteSearch" placeholder="Name, phone or @username"') && sheet.includes('Filter by past event') && sheet.includes('>Add 1</button>'));
+});
+
+test('the invite sheet: "Save as list" beside Invite, and its form', () => {
+  const st = state({ canSave: true });
+  assert.match(UI.inviteTray(st), /data-action="save-as-list" disabled>Save as list<\/button><button type="button" id="inviteSend" data-action="send-invites" disabled>Invite<\/button>/);
+  assert.ok(!UI.inviteTray({ ...st, selected: ['s1'] }).includes('save-as-list" disabled'));
+  // Open: a new list (named) or one of yours, then Cancel and "Save 2".
+  const form = UI.inviteTray({ ...st, selected: ['s1', 's3'], saving: true });
+  assert.ok(form.includes('<select id="saveListTo"><option value="">New list</option><option value="L1">Drag Race</option></select>'));
+  assert.ok(form.includes('id="saveListName" maxlength="60" placeholder="Name a new list"'));
+  assert.ok(form.includes('data-action="cancel-save-list">Cancel</button><button type="submit" id="saveListBtn">Save 2</button>'));
+  assert.ok(!UI.inviteTray({ ...st, selected: ['s1'], saving: true, saveTo: 'L1' }).includes('saveListName'), 'an existing list needs no name');
+  // Without anyone picked, it's the tray again.
+  assert.ok(UI.inviteTray({ ...st, selected: [], saving: true }).includes('id="inviteSend"'));
+});
+
+test('the guest list sheet: tabs for who there is, in their colors, search, and hosts\' tools only for hosts', () => {
+  const p = (id, f, l) => ({ id, firstName: f, lastName: l, shortName: f, photoUrl: null });
+  const g = (person, status, guests = 0) => ({ person, status, guests, guestsOverLimit: false, respondedAt: null });
+  const guests = [g(p('a', 'Ana', 'Lima'), 'going', 2), g(p('b', 'Ben', 'Okafor'), 'maybe'), g(p('c', 'Cy', 'Park'), 'invited'), g(p('d', 'Dee', 'Ruiz'), 'waitlisted')];
+  const event = { counts: { going: 1, maybe: 1, notGoing: 0, invited: 1, waitlisted: 1, guests: { going: 2 } } };
+  const host = { event, isHost: true, guests, removed: [g(p('e', 'Eve', 'Sato'), 'removed')], query: '', canInvite: true };
+  assert.deepEqual(UI.guestTabsOf(host), ['going', 'maybe', 'invited', 'waitlisted', 'removed'], "no Can't Go tab: nobody");
+  const tabs = UI.guestTabs(host);
+  assert.match(tabs, /role="tablist"/);
+  assert.match(tabs, /id="guestTab-going" aria-selected="true"[^>]*>Going <span class="tag status-going">1<\/span>/);
+  assert.match(tabs, /id="guestTab-waitlisted" aria-selected="false"[^>]*tabindex="-1">Waitlist <span class="tag status-waitlisted">1<\/span>/);
+  const going = UI.guestResults(host);
+  assert.ok(going.includes('1 Going · +2 guests') && going.includes('Ana Lima') && !going.includes('Ben Okafor'));
+  assert.ok(going.includes('data-action="remove-guest" data-person="a"'));
+  assert.ok(UI.guestResults({ ...host, tab: 'removed' }).includes('data-action="undo-remove" data-person="e"'));
+  // Searching: across every tab, with each one's status.
+  const found = UI.guestResults({ ...host, query: 'ok' });
+  assert.ok(found.includes('Ben Okafor') && found.includes('class="tag status-maybe"') && !found.includes('Ana Lima'));
+  assert.ok(UI.guestResults({ ...host, query: 'zzz' }).includes('No one by that name.'));
+  assert.ok(UI.guestsSheet(host).includes('data-action="guests-invite"'));
+  // A guest: what the API gave them, no Invited or Removed tab, no tools.
+  const guest = { event: { counts: { ...event.counts, invited: null } }, isHost: false, guests: guests.filter((x) => x.status !== 'invited'), removed: [], query: '' };
+  assert.deepEqual(UI.guestTabsOf(guest), ['going', 'maybe', 'waitlisted']);
+  const sheet = UI.guestsSheet(guest) + UI.guestTabsOf(guest).map((tab) => UI.guestResults({ ...guest, tab })).join('');
+  assert.match(sheet, /role="dialog" aria-modal="true" aria-labelledby="guestsHeading"/);
+  assert.ok(sheet.includes('aria-label="Search the guest list by name"'));
+  for (const action of ['remove-guest', 'undo-remove', 'guests-invite']) assert.ok(!sheet.includes(action), action);
+  assert.ok(!sheet.includes('Cy Park'));
+});

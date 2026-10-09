@@ -179,6 +179,8 @@ const COPY = {
     deleteConfirmOne: 'Delete “{title}”? 1 person has said they’re coming. Deleting doesn’t tell them, but cancelling does, and keeps the event for them to see it’s off. Delete anyway? This can’t be undone.',
     // Removing a guest, and undoing it.
     removeGuestConfirm: "Remove {name} from this event? They won't be able to answer, or see the address, the guest list or the updates. You can undo this.",
+    removedGuest: 'Removed {name}.',
+    restoredGuest: '{name} is invited again.',
     // A new link.
     newLinkConfirm: 'Make a new link? The link you have now stops working straight away, for everyone. Everyone on the list keeps their place, but anyone you sent the old link to will need the new one.',
     newLinkMade: "New link made. The old one doesn't work anymore. Share this one:",
@@ -194,8 +196,15 @@ const COPY = {
     maybe: '{count} Maybe',
     waitlist: '{count} Waitlist',
     viewAll: 'View all',
-    hide: 'Hide',
     more: '{count} more'
+  },
+
+  // ---------------- An event's guest list, in a sheet ----------------
+  guests: {
+    heading: 'Guests',
+    tabsLabel: 'Guests by answer',
+    searchLabel: 'Search the guest list by name',
+    noMatch: 'No one by that name.'
   },
 
   // ---------------- The activity wall, on an event ----------------
@@ -551,7 +560,32 @@ const COPY = {
     removeConfirm: "Take {name} off {list}? They won't be told.",
     members: 'People',
     joined: 'Joined {date}',
-    noMembers: 'Share the link or show the QR code, and people who join show up here.',
+    added: 'Added {date}',
+    noMembers: 'Add people, or share the link or QR code: whoever joins shows up here.',
+    noMemberMatch: 'No one on it by that name.',
+    memberSearchLabel: 'Search the people on {name}',
+    linkLabel: '{name} link',
+    // Adding people (the list's sheet).
+    addPeople: 'Add people',
+    addHeading: 'Add to {name}',
+    backTo: 'Back to {name}',
+    addSome: 'Add {count}',
+    addAll: 'Add all {count}',
+    allOnList: 'All on it',
+    onListTag: 'On list',
+    addedSome: 'Added {count} people.',
+    addedOne: 'Added 1 person.',
+    addedNone: 'Everyone you picked is on it already.',
+    invitedThem: 'Invited them to {count} events.',
+    invitedThemOne: 'Invited them to 1 event.',
+    addLimited: "That's a lot of people to add for one day. Try again tomorrow.",
+    // "Save as list", in the invite sheet.
+    saveAsList: 'Save as list',
+    saveToLabel: 'Save to',
+    saveToNew: 'New list',
+    saveSome: 'Save {count}',
+    saved: 'Saved {count} people to {list}.',
+    savedOne: 'Saved 1 person to {list}.',
     copied: 'Link copied.',
     qrLabel: 'QR code for the {name} link',
     // The lists you're on.

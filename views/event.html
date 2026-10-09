@@ -33,8 +33,10 @@
                        that's on the event: "Get invited next time" and
                        Join <list>
        #friends-going  friends going, when there are any
-       #guests         who's coming, by the host's visibility rule; for
-                       hosts, "Remove" on each, and who's been removed
+       #guests         who's coming, by the host's visibility rule: the
+                       counts and a row of faces; "View all" opens the
+                       guest list in a sheet (by answer, searchable; for
+                       hosts, Remove, Undo and Invite)
        #wall           the activity wall: posts and what happened -->
 <body class="mesh-bg">
 <!-- PAGE:HEADER -->
@@ -47,6 +49,7 @@
 <script src="/copy.js"></script>
 <script src="/ui.js"></script>
 <script src="/events.js"></script>
+<script src="/sheets.js"></script>
 <script>
 applyCopy();
 
@@ -138,11 +141,6 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'End'){ e.preventDefault(); items[items.length - 1].focus(); }
   else if (e.key === 'Tab') closeMenu(false);
 });
-
-// "View all" stays open (or shut) when the page is drawn again.
-document.addEventListener('toggle', (e) => {
-  if (e.target && e.target.id === 'viewAll') data.showAll = e.target.open;
-}, true);
 
 function show(id, text){
   const el = document.getElementById(id);
@@ -322,55 +320,8 @@ document.addEventListener('submit', (e) => {
 
 // ---------------- Sheets over the page ----------------
 //
-// "Show list QR" and the invite sheet: drawn into one box at the end of
-// the body (outside #main, so redrawing the page leaves them alone), a
-// dialog with the page behind it shut off. Escape, the close button or a
-// tap on the backdrop closes it; Tab stays inside while it's open; focus
-// goes back to whatever opened it.
-const sheetBox = document.createElement('div');
-sheetBox.id = 'sheetBox';
-document.body.appendChild(sheetBox);
-let sheet = null; // { opener, onClose }
-
-function sheetFocusables(){
-  const panel = sheetBox.querySelector('[role=dialog]');
-  return panel ? Array.from(panel.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex="0"]'))
-    .filter((el) => el.offsetParent !== null || el === document.activeElement) : [];
-}
-function openSheet(html, { opener, onClose, focus } = {}){
-  sheetBox.innerHTML = html;
-  sheet = { opener: opener || document.activeElement, onClose };
-  document.body.classList.add('sheet-open');
-  main.setAttribute('inert', '');
-  const first = (focus && sheetBox.querySelector(focus)) || sheetFocusables()[0];
-  if (first) first.focus({ preventScroll: true });
-}
-function closeSheet(){
-  if (!sheet) return;
-  const { opener, onClose } = sheet;
-  sheet = null;
-  sheetBox.innerHTML = '';
-  document.body.classList.remove('sheet-open');
-  main.removeAttribute('inert');
-  if (onClose) onClose();
-  // The button that opened it may have been drawn again meanwhile.
-  const back = opener && document.body.contains(opener) ? opener
-    : (opener && opener.id ? document.getElementById(opener.id) : null) || document.getElementById('hostMenuBtn');
-  if (back) back.focus();
-}
-sheetBox.addEventListener('click', (e) => {
-  if (e.target.classList && e.target.classList.contains('sheet-backdrop')) closeSheet();
-});
-document.addEventListener('keydown', (e) => {
-  if (!sheet) return;
-  if (e.key === 'Escape'){ e.preventDefault(); closeSheet(); return; }
-  if (e.key !== 'Tab') return;
-  const inside = sheetFocusables();
-  if (!inside.length) return;
-  const i = inside.indexOf(document.activeElement);
-  if (e.shiftKey && i <= 0){ e.preventDefault(); inside[inside.length - 1].focus(); }
-  else if (!e.shiftKey && i === inside.length - 1){ e.preventDefault(); inside[0].focus(); }
-});
+// "Show list QR", the invite sheet and the guest list: public/sheets.js
+// opens and closes them (openSheet, closeSheet) and runs the picker.
 
 // ---------------- Lists ----------------
 //
@@ -460,49 +411,22 @@ onActions({
   'show-list-qr': () => {
     const lists = data.event.hostLists || [];
     if (!lists.length) return;
-    openSheet(UI.listQrSheet(lists), { opener: document.getElementById('hostMenuBtn') });
+    openSheet(UI.listQrSheet(lists), { opener: document.getElementById('hostMenuBtn'), fallback: 'hostMenuBtn' });
   },
   'close-list-qr': () => closeSheet()
 });
 
 // ---------------- The invite sheet ----------------
 //
-// "Invite" opens a sheet over the page (public/ui.js inviteSheet draws
-// it; this keeps its state in `inv.st` and fetches what it needs the first
-// time: your friends, the suggestions, your lists and who's on them, your
-// past events, and everyone already on this one, whose statuses are
-// fetched again each time it opens). Ticking only updates the boxes, the
-// lists' buttons and the tray, so focus never jumps; typing draws the
-// results again under the search box.
-const inv = { st: null, loaded: false, lookupTimer: null, lookups: new Map() };
-
-function invLive(text){
-  const el = document.getElementById('inviteLive');
-  if (el){ el.textContent = ''; setTimeout(() => { el.textContent = text; }, 30); }
-}
-
-// `sub` is the line under their name, as text; a friend's comes as HTML
-// (`subHtml`, from UI.friendSub).
-function addPerson(p, sub, subHtml){
-  if (p && p.id && !inv.st.people[p.id]) inv.st.people[p.id] = { person: p, sub: sub || '', subHtml: subHtml || '' };
-}
-
-// Every page of a list (up to `max` pages of 100): { ok, items, raw } of
-// the first answer.
-async function allPages(path, key, max){
-  let items = [];
-  let cursor = '';
-  let first = null;
-  for (let i = 0; i < max; i++){
-    const { res, data: d } = await api('GET', path + (path.includes('?') ? '&' : '?') + 'limit=100' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''));
-    if (!res.ok) return { ok: false, items, first };
-    if (!first) first = d;
-    items = items.concat(d[key] || []);
-    if (!d.nextCursor) break;
-    cursor = d.nextCursor;
-  }
-  return { ok: true, items, first };
-}
+// "Invite" opens a sheet over the page: the picker (public/sheets.js
+// runs it, public/ui.js inviteSheet draws it), with everyone already on
+// this event greyed (fetched again each time it opens), and "Invite 7".
+// Its tray also has "Save as list": the picked onto a new list, or one
+// of yours, without inviting them here.
+const inv = makePicker({
+  kind: 'invite', me: data.me, loadTaken: loadOnList, skipEvent: data.event.id,
+  canSave: !!(data.me && data.me.emailVerified)
+});
 
 // Who's on this event already: its hosts, everyone invited or with an
 // answer, and the removed, each with their status.
@@ -514,214 +438,96 @@ async function loadOnList(){
   return onList;
 }
 
-async function loadInviter(){
-  const st = inv.st;
-  const [friends, suggested, lists, past, onList] = await Promise.all([
-    allPages('/me/friends', 'friends', 10),
-    api('GET', '/me/friends/suggested?limit=30').then((r) => (r.res.ok ? r.data.friends : [])),
-    api('GET', '/me/lists').then((r) => (r.res.ok ? r.data.lists : [])),
-    api('GET', '/me/events/past?limit=20').then((r) => (r.res.ok ? r.data.events : [])),
-    loadOnList()
-  ]);
-  // Friends first, so their line ("Invitation · 3 events together") wins
-  // over "On Drag Race".
-  suggested.concat(friends.items).forEach((f) => addPerson(f.person, '', UI.friendSub(f, 'invite')));
-  st.suggestedIds = suggested.map((f) => f.person.id);
-  st.lists = await Promise.all(lists.map(async (l) => {
-    const members = await allPages('/me/lists/' + encodeURIComponent(l.id) + '/members', 'members', 10);
-    members.items.forEach((m) => addPerson(m.person, t('invite.fromList', { list: l.name })));
-    return { id: l.id, name: l.name, memberIds: members.items.map((m) => m.person.id) };
-  }));
-  st.past = past.filter((e) => e.id !== data.event.id);
-  st.onList = onList;
-}
-
-function drawInviteResults(){
-  const box = document.getElementById('inviteResults');
-  if (box) box.innerHTML = UI.inviteResults(inv.st);
-}
-function drawInviteTray(){
-  const box = document.getElementById('inviteTray');
-  if (box) box.innerHTML = UI.inviteTray(inv.st);
-}
-
-function pickableId(id){
-  return !inv.st.onList[id] && id !== (data.me && data.me.id);
-}
-
-// Picks or unpicks `ids`; the boxes, the lists' "Invite all" buttons and
-// the tray follow. The order picked is the tray's.
-function setPicked(ids, on){
-  const st = inv.st;
-  const now = new Set(st.selected);
-  ids.forEach((id) => {
-    if (on && pickableId(id) && !now.has(id)){ st.selected.push(id); now.add(id); }
-    if (!on) now.delete(id);
-  });
-  if (!on) st.selected = st.selected.filter((id) => now.has(id));
-  sheetBox.querySelectorAll('.pick-box').forEach((c) => { c.checked = now.has(c.value); });
-  sheetBox.querySelectorAll('.list-row').forEach((row) => {
-    const l = st.lists.find((x) => x.id === row.getAttribute('data-list'));
-    if (!l) return;
-    const focused = row.contains(document.activeElement);
-    row.outerHTML = UI.inviteListRow(st, l);
-    if (focused){ const again = sheetBox.querySelector('.list-row[data-list="' + l.id + '"] button'); if (again) again.focus(); }
-  });
-  drawInviteTray();
-  invLive(t('invite.pickedLive', { count: st.selected.length }));
-}
-
-// Typing: the results again; and for a whole phone number or @username,
-// a lookup once they stop typing (each asked once).
-function inviteTyped(value){
-  const st = inv.st;
-  st.query = value;
-  clearTimeout(inv.lookupTimer);
-  const q = value.trim();
-  const kind = UI.lookupKindOf(q);
-  if (!kind || !data.me || !data.me.emailVerified){ st.lookup = null; drawInviteResults(); return; }
-  const key = kind + ':' + q.toLowerCase();
-  if (inv.lookups.has(key)){ st.lookup = Object.assign({ q }, inv.lookups.get(key)); drawInviteResults(); return; }
-  st.lookup = { q, state: 'loading' };
-  drawInviteResults();
-  inv.lookupTimer = setTimeout(async () => {
-    let found;
-    try{
-      const { res, data: d } = await api('POST', '/people/lookup', { [kind]: q }, { stay: true });
-      if (res.ok){
-        const p = d.person && d.person.id !== data.me.id ? d.person : null;
-        if (p) addPerson(p, t(kind === 'phone' ? 'invite.foundByPhone' : 'invite.foundByInstagram'));
-        found = p ? { state: 'found', person: p } : { state: 'none' };
-      } else {
-        const words = COPY.invite.lookupErrors[d.reason];
-        found = { state: 'error', message: words ? t('invite.lookupErrors.' + d.reason) : sentence(d.error) };
-      }
-    }catch(e){
-      found = { state: 'error', message: t('common.unreachable') };
-    }
-    if (found.state !== 'error') inv.lookups.set(key, found);
-    if (st.query.trim() !== q) return;
-    st.lookup = Object.assign({ q }, found);
-    drawInviteResults();
-    invLive(found.state === 'found' ? fullNameOf(found.person) : found.state === 'none' ? t('invite.lookupNone') : found.message);
-  }, 450);
-}
-
-function fullNameOf(p){
-  return [p.firstName, p.lastName].filter(Boolean).join(' ');
-}
-
-// "Filter by past event": the list narrows to that event's hosts and its
-// going and maybe guests you can see (the guest list's own rule). Nobody
-// is ticked; the first choice ("Everyone") undoes it. Each event's people
-// are fetched once.
-async function filterByEvent(select){
-  const st = inv.st;
-  const id = select.value;
-  const ev = st.past.find((x) => x.id === id);
-  if (!ev){
-    st.from = null;
-    drawInviteResults();
-    refocusFrom();
-    return;
-  }
-  select.disabled = true;
-  let words = '';
-  try{
-    if (!inv.from) inv.from = new Map();
-    let from = inv.from.get(id);
-    if (!from){
-      const base = '/events/' + encodeURIComponent(id) + '/guests?status=';
-      const [going, maybe] = await Promise.all([allPages(base + 'going', 'guests', 5), allPages(base + 'maybe', 'guests', 5)]);
-      // Its hosts too (not on its guest list, but they were there).
-      const hosts = (ev.hosts || []).map((h) => h.person);
-      const people = hosts.concat(going.items.concat(maybe.items).map((g) => g.person)).filter((p) => p.id !== data.me.id);
-      people.forEach((p) => addPerson(p, t('invite.fromEvent', { title: ev.title })));
-      from = { id, title: ev.title, ids: [...new Set(people.map((p) => p.id))], hidden: !(going.first && going.first.guestsVisible !== false) };
-      inv.from.set(id, from);
-    }
-    st.from = from;
-    const n = from.ids.length;
-    words = from.hidden ? t('invite.fromHidden', { title: ev.title })
-      : !n ? t('invite.fromEmpty', { title: ev.title })
-      : n === 1 ? t('invite.fromShowingOne', { title: ev.title }) : t('invite.fromShowing', { count: n, title: ev.title });
-    drawInviteResults();
-  }catch(e){
-    show('inviteNotice', t('common.unreachable'));
-  }
-  refocusFrom();
-  if (words) invLive(words);
-}
-
-function refocusFrom(){
-  const again = document.getElementById('inviteFrom');
-  if (again){ again.disabled = false; again.focus(); }
-}
-
 async function openInvite(opener){
-  if (!inv.st){
-    inv.st = { me: data.me, people: {}, suggestedIds: [], lists: [], past: [], onList: {}, selected: [], query: '', lookup: null, loading: true };
-  } else {
-    inv.st.query = '';
-    inv.st.from = null;
-    inv.st.lookup = null;
-  }
-  openSheet(UI.inviteSheet(data.event, inv.st), { opener, focus: '#inviteSearch' });
-  try{
-    if (!inv.loaded){
-      await loadInviter();
-      inv.loaded = true;
-    } else {
-      inv.st.onList = await loadOnList();
-    }
-  }catch(e){
-    show('inviteError', t(e instanceof AccountsDown ? 'common.accountsDown' : 'common.unreachable'));
-  }
-  inv.st.loading = false;
-  inv.st.selected = inv.st.selected.filter(pickableId);
-  if (!sheet) return;
-  drawInviteResults();
-  drawInviteTray();
+  const st = inv.start();
+  openSheet(UI.inviteSheet(data.event, st), { opener, focus: '#inviteSearch', fallback: 'hostMenuBtn' });
+  await inv.load();
 }
 
-sheetBox.addEventListener('input', (e) => {
-  if (e.target.id === 'inviteSearch' && inv.st) inviteTyped(e.target.value);
+// Adding the picked to a list: up to 100 a request (what the API takes).
+// Answers { added, invitedTo } over all of them, or { refused }.
+async function addToList(listId, ids){
+  let added = 0;
+  let invitedTo = 0;
+  for (let i = 0; i < ids.length; i += 100){
+    const { res, data: d } = await api('POST', '/me/lists/' + encodeURIComponent(listId) + '/members', { personIds: ids.slice(i, i + 100) });
+    if (!res.ok) return { refused: d.reason === 'rate_limited' ? t('lists.addLimited') : listRefusal(d), added, invitedTo };
+    added += d.added.length;
+    invitedTo = Math.max(invitedTo, d.invitedTo);
+  }
+  return { added, invitedTo };
+}
+
+// "Save as list": the form in the tray. A new list is made with the name
+// typed; then the picked are added to it (or to the one chosen). The
+// picks stay, to invite them here too if that's what's next.
+document.addEventListener('submit', (e) => {
+  if (e.target.id !== 'saveListForm') return;
+  e.preventDefault();
+  const st = inv.st;
+  const ids = st.selected.slice();
+  const nameBox = document.getElementById('saveListName');
+  const name = nameBox ? nameBox.value.trim() : '';
+  if (!st.saveTo && !name){ nameBox.focus(); return; }
+  let refused = '';
+  let said = '';
+  busy(document.getElementById('saveListBtn'), document.getElementById('inviteError'), async () => {
+    let list = st.lists.find((l) => l.id === st.saveTo);
+    if (!list){
+      const { res, data: d } = await api('POST', '/me/lists', { name });
+      if (!res.ok){ refused = listRefusal(d); return; }
+      list = { id: d.list.id, name: d.list.name, memberIds: [] };
+      st.lists.push(list);
+    }
+    const r = await addToList(list.id, ids);
+    if (r.refused){ refused = r.refused; return; }
+    ids.forEach((id) => { if (!list.memberIds.includes(id)) list.memberIds.push(id); });
+    said = (ids.length === 1 ? t('lists.savedOne', { list: list.name }) : t('lists.saved', { count: ids.length, list: list.name }))
+      + (r.invitedTo ? ' ' + (r.invitedTo === 1 ? t('lists.invitedThemOne') : t('lists.invitedThem', { count: r.invitedTo })) : '');
+    st.saving = false;
+    st.saveTo = '';
+    inv.drawResults();
+    inv.drawTray();
+  }).then(() => {
+    if (refused){ show('inviteError', refused); return; }
+    if (said){
+      show('inviteNotice', said);
+      const btn = document.getElementById('inviteSend');
+      if (btn) btn.focus();
+    }
+  });
 });
 sheetBox.addEventListener('change', (e) => {
-  if (!inv.st) return;
-  if (e.target.classList.contains('pick-box')) setPicked([e.target.value], e.target.checked);
-  else if (e.target.id === 'inviteFrom') filterByEvent(e.target);
-});
-// Enter in the search box doesn't send anything; it's a filter.
-sheetBox.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.target.id === 'inviteSearch') e.preventDefault();
+  if (e.target.id !== 'saveListTo' || !inv.st) return;
+  inv.st.saveTo = e.target.value;
+  inv.drawTray();
+  const again = document.getElementById(inv.st.saveTo ? 'saveListBtn' : 'saveListName');
+  if (again) again.focus();
 });
 
 onActions({
   'open-invite': (el) => openInvite(el),
   'close-invite': () => closeSheet(),
-  'pick-list': (btn) => {
-    const l = inv.st.lists.find((x) => x.id === btn.getAttribute('data-list'));
-    if (!l) return;
-    const ids = UI.listPickable(inv.st, l);
-    setPicked(ids, !ids.every((id) => inv.st.selected.includes(id)));
+  'save-as-list': () => {
+    if (!inv.st || !inv.st.selected.length) return;
+    inv.st.saving = true;
+    inv.st.saveTo = '';
+    inv.drawTray();
+    const box = document.getElementById('saveListName');
+    if (box) box.focus();
   },
-  // A face in the tray: unpicked, and focus moves to the next face (or
-  // the search box, with none left).
-  unpick: (btn) => {
-    const faces = Array.from(sheetBox.querySelectorAll('.tray-face'));
-    const at = faces.indexOf(btn);
-    setPicked([btn.getAttribute('data-person')], false);
-    const left = Array.from(sheetBox.querySelectorAll('.tray-face'));
-    const next = left[Math.min(at, left.length - 1)] || document.getElementById('inviteSearch');
-    if (next) next.focus();
+  'cancel-save-list': () => {
+    inv.st.saving = false;
+    inv.drawTray();
+    const btn = sheetBox.querySelector('[data-action="save-as-list"]');
+    if (btn) btn.focus();
   },
   // Up to 100 at a time, which is what the API takes in one request.
   // Then the sheet closes, the page is fetched again, and the host card
   // says how many.
   'send-invites': (btn) => {
     const st = inv.st;
-    const ids = st.selected.filter(pickableId);
+    const ids = st.selected.filter(inv.pickable);
     if (!ids.length) return;
     let refused = '';
     let invited = 0;
@@ -736,8 +542,8 @@ onActions({
           else if (s.reason === 'already_on_list' && !st.onList[s.personId]) st.onList[s.personId] = 'invited';
         });
       }
-      st.selected = st.selected.filter(pickableId);
-      if (refused){ drawInviteResults(); drawInviteTray(); return; }
+      st.selected = st.selected.filter(inv.pickable);
+      if (refused){ inv.drawResults(); inv.drawTray(); return; }
       st.selected = [];
       await refresh(true);
       draw();
@@ -754,6 +560,121 @@ if (new URLSearchParams(location.search).has('invite')){
   history.replaceState(null, '', location.pathname + location.hash);
   const btn = document.getElementById('inviteBtn');
   if (btn && viewer().canEdit) openInvite(btn);
+}
+
+// ---------------- The guest list, in a sheet ----------------
+//
+// "View all" under Attending: everyone this viewer may see (GET
+// .../guests, every page, and for hosts ?status=removed: what the API
+// gives them, so never more than the page), a tab per status, a search
+// by name, and for hosts Remove, Undo and Invite. Fetched each time it
+// opens, and again after a host's change.
+const gs = { st: null };
+
+async function loadGuests(){
+  const st = gs.st;
+  const [all, removed] = await Promise.all([
+    allPages(eventPath() + '/guests', 'guests', 20),
+    st.isHost ? allPages(eventPath() + '/guests?status=removed', 'guests', 20) : null
+  ]);
+  st.event = data.event;
+  st.guests = all.items;
+  st.removed = removed ? removed.items : [];
+  st.loading = false;
+}
+
+function drawGuests(focusTab){
+  const tabs = document.getElementById('guestTabs');
+  const box = document.getElementById('guestResults');
+  if (!tabs || !box) return;
+  tabs.innerHTML = UI.guestTabs(gs.st);
+  box.innerHTML = UI.guestResults(gs.st);
+  if (focusTab){ const on = tabs.querySelector('[aria-selected="true"]'); if (on) on.focus(); }
+}
+
+async function openGuests(opener){
+  gs.st = { event: data.event, isHost: !!viewer().canEdit, guests: [], removed: [], tab: null, query: '', loading: true, canInvite: !!document.getElementById('inviteBtn') };
+  activePicker = null;
+  openSheet(UI.guestsSheet(gs.st), { opener, fallback: 'viewAllBtn', onClose: () => { gs.st = null; } });
+  try{
+    await loadGuests();
+  }catch(e){
+    show('guestsSheetError', t(e instanceof AccountsDown ? 'common.accountsDown' : 'common.unreachable'));
+  }
+  if (gs.st) drawGuests(false);
+}
+
+// A host's change from the sheet (remove, undo): made, then the page and
+// the sheet are fetched again; focus goes to the tab that's open (or the
+// search box). A refusal is said in the sheet.
+async function guestSheetChange(btn, work, noticeKey, name){
+  let words = '';
+  let done = false;
+  await busy(btn, document.getElementById('guestsSheetError'), async () => {
+    const { res, data: d } = await work();
+    if (!res.ok){ words = refusal('event', d); return; }
+    if (d.event) data.event = d.event;
+    await refresh(!d.event);
+    draw();
+    if (gs.st){ await loadGuests(); drawGuests(!gs.st.query); }
+    done = true;
+  });
+  if (words) show('guestsSheetError', words);
+  if (done){
+    show('guestsSheetNotice', t(noticeKey, { name }));
+    if (gs.st && gs.st.query){ const s = document.getElementById('guestSearch'); if (s) s.focus(); }
+  }
+}
+
+sheetBox.addEventListener('input', (e) => {
+  if (e.target.id !== 'guestSearch' || !gs.st) return;
+  gs.st.query = e.target.value;
+  const box = document.getElementById('guestResults');
+  if (box) box.innerHTML = UI.guestResults(gs.st);
+});
+// The tabs: arrow keys move between them, as tabs do.
+sheetBox.addEventListener('keydown', (e) => {
+  if (!e.target.classList || !e.target.classList.contains('guest-tab')) return;
+  const tabs = Array.from(sheetBox.querySelectorAll('.guest-tab'));
+  const at = tabs.indexOf(e.target);
+  let next = null;
+  if (e.key === 'ArrowRight') next = tabs[(at + 1) % tabs.length];
+  else if (e.key === 'ArrowLeft') next = tabs[(at - 1 + tabs.length) % tabs.length];
+  else if (e.key === 'Home') next = tabs[0];
+  else if (e.key === 'End') next = tabs[tabs.length - 1];
+  if (!next) return;
+  e.preventDefault();
+  next.click();
+});
+
+onActions({
+  'open-guests': (el) => openGuests(el),
+  'close-guests': () => closeSheet(),
+  'guest-tab': (btn) => {
+    gs.st.tab = btn.getAttribute('data-status');
+    drawGuests(true);
+  },
+  'guests-invite': () => {
+    closeSheet();
+    const btn = document.getElementById('inviteBtn');
+    if (btn) openInvite(btn);
+  },
+  'remove-guest': (btn) => {
+    const name = btn.getAttribute('data-name');
+    if (!confirm(t('event.removeGuestConfirm', { name }))) return;
+    guestSheetChange(btn, () => api('PUT', eventPath() + '/removed/' + encodeURIComponent(btn.getAttribute('data-person'))), 'event.removedGuest', name);
+  },
+  'undo-remove': (btn) => guestSheetChange(btn, () => api('DELETE', eventPath() + '/removed/' + encodeURIComponent(btn.getAttribute('data-person'))), 'event.restoredGuest', btn.getAttribute('data-name'))
+});
+
+// ?guests=1: the sheet opens with the page (without the script, the
+// server drew the list under the faces instead).
+if (new URLSearchParams(location.search).has('guests')){
+  history.replaceState(null, '', location.pathname);
+  data.guestsInline = false;
+  draw();
+  const btn = document.getElementById('viewAllBtn');
+  if (btn) openGuests(btn);
 }
 
 // "Lists…": the lists on the event, and the host's own to put on it.
@@ -879,20 +800,6 @@ onActions({
     if (!confirm(t('event.stepDownConfirm'))) return;
     hostChange(btn, 'cohostError', 'cohosts', () => api('DELETE', eventPath() + '/cohosts/' + encodeURIComponent(data.me.id)));
   },
-
-  'remove-guest': (btn) => {
-    if (!confirm(t('event.removeGuestConfirm', { name: btn.getAttribute('data-name') }))) return;
-    hostChange(btn, 'guestsError', 'event', () => api('PUT', eventPath() + '/removed/' + encodeURIComponent(btn.getAttribute('data-person'))));
-  },
-  'undo-remove': (btn) => hostChange(btn, 'guestsError', 'event', () => api('DELETE', eventPath() + '/removed/' + encodeURIComponent(btn.getAttribute('data-person')))),
-
-  'more-guests': (btn) => busy(btn, null, async () => {
-    const { res, data: g } = await api('GET', eventPath() + '/guests?limit=' + GUESTS + '&cursor=' + encodeURIComponent(data.guests.nextCursor));
-    if (!res.ok) return;
-    data.guests.guests = data.guests.guests.concat(g.guests);
-    data.guests.nextCursor = g.nextCursor;
-    draw();
-  }),
 
   'more-wall': (btn) => busy(btn, null, async () => {
     const { res, data: w } = await api('GET', eventPath() + '/wall?limit=' + WALL + '&cursor=' + encodeURIComponent(data.wall.nextCursor));

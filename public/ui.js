@@ -1336,9 +1336,10 @@
     return h + '</ul>';
   }
 
-  // The whole guest list, by answer, as it was before the row: behind
-  // "View all". Hosts get "Remove" on each guest, and the people they've
-  // removed (`removed`, from ?status=removed) with "Undo".
+  // The whole guest list, by answer: what /e/<id>?guests=1 shows under
+  // the row without the script (the sheet is "View all" with it). With
+  // `isHost`, "Remove" on each guest, and the people they've removed
+  // (`removed`, from ?status=removed) with "Undo".
   function guestGroups(e, g, isHost, removed) {
     let h = '';
     const c = e.counts || {};
@@ -1364,18 +1365,23 @@
   }
 
   // Attending: the heading, the counts under it, "View all" on the right,
-  // and one row of faces. "View all" opens the whole list, by answer, with
-  // the host's tools; it stays open across redraws (d.showAll). Signed
-  // out: the counts only. Names the viewer may not see yet: the counts,
-  // how many friends are going, and why there are no faces.
-  // `g` is GET /events/{id}/guests's answer, or null signed out.
+  // and one row of faces. "View all" opens the guest list in a sheet
+  // (guestsSheet, drawn by the page's script), with the host's tools.
+  // It's a link to the page with ?guests=1, which without the script
+  // draws the whole list (as far as it was fetched) here instead
+  // (d.guestsInline), read only. Signed out: the counts only. Names the
+  // viewer may not see yet: the counts, how many friends are going, and
+  // why there are no faces. `g` is GET /events/{id}/guests's answer, or
+  // null signed out.
   function guestsSection(e, g, isHost, removed, d) {
     d = d || {};
     const visible = !!(g && g.guestsVisible);
     const any = visible && (g.guests.length || (isHost && removed && removed.guests && removed.guests.length));
     let h = '<section class="card attend" id="guests" data-section="guests">';
     h += '<div class="attend-head"><div class="attend-titles"><h2>' + tx('attend.heading') + '</h2>'
-      + '<p class="attend-sum">' + esc(attendSummary(e)) + '</p></div></div>';
+      + '<p class="attend-sum">' + esc(attendSummary(e)) + '</p></div>'
+      + (any ? '<a class="pill-btn view-all-btn" id="viewAllBtn" href="/e/' + esc(e.id) + '?guests=1#guests" data-action="open-guests" aria-haspopup="dialog">' + tx('attend.viewAll') + '</a>' : '')
+      + '</div>';
     if (!g) return h + '</section>';
     if (!visible) {
       const f = e.friendsGoing;
@@ -1384,12 +1390,7 @@
     }
     const row = attendRow(e, g, d.attendSlots);
     h += row || '<p class="attend-note" style="margin:0">' + tx('event.noAnswers') + '</p>';
-    if (any) {
-      h += '<details class="view-all" id="viewAll"' + (d.showAll ? ' open' : '') + '><summary class="pill-btn">'
-        + '<span class="when-closed">' + tx('attend.viewAll') + '</span><span class="when-open">' + tx('attend.hide') + '</span></summary>'
-        + '<div class="all-guests">' + guestGroups(e, g, isHost, removed) + '</div></details>';
-    }
-    h += '<div class="error" id="guestsError" role="alert"></div>';
+    if (any && d.guestsInline) h += '<div class="all-guests" id="allGuests">' + guestGroups(e, Object.assign({}, g, { nextCursor: null }), false, null) + '</div>';
     return h + '</section>';
   }
 
@@ -1692,10 +1693,10 @@
   // Instagram, your friends, the lists you're on, and whose invitations
   // you've opted out of. `d` is { me, link, lists, friends, nextCursor,
   // memberships, optouts, links }; `o.qr` the friend link's QR code (an
-  // SVG), `o.listStates` what the page has open in each list.
+  // SVG).
   function friendsPage(d, o) {
     let h = friendLinkSection(d, (o || {}).qr);
-    h += listsSection(d, (o || {}).listStates);
+    h += listsSection(d);
     h += lookupSection(d, 'friends');
     h += '<section class="card" id="friends" data-section="friends"><h2>' + tx('friends.heading') + '</h2>';
     h += '<p>' + tx('friends.hint') + '</p>';
@@ -1767,72 +1768,24 @@
     return n === 1 ? t('lists.countOne') : t('lists.count', { count: n });
   }
 
-  // "Joined Oct 8", with the year only when it isn't this one.
-  function joinedOn(iso) {
-    const d = new Date(iso);
-    const opts = { month: 'short', day: 'numeric' };
-    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
-    return t('lists.joined', { date: d.toLocaleDateString(LOCALE, opts) });
-  }
-
-  // A list's members, each with Remove (the page asks first).
-  function listMemberRows(l, members) {
-    return members.map((m) => {
-      const p = m.person;
-      return '<li class="person" data-id="' + esc(p.id) + '">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div>'
-        + '<div class="sub">' + esc(joinedOn(m.joinedAt)) + '</div></div>'
-        + '<button type="button" class="small-btn secondary" data-action="remove-member" data-list="' + esc(l.id) + '" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Remove</button></li>';
-    }).join('');
-  }
-
-  // One of your lists: its name and how many are on it, its link with
-  // Share, Copy link and QR, Rename, Reset link and Delete, and who's on
-  // it (folded, with Remove each). `l` is an OwnedList plus `members` and
-  // `nextCursor` (its first page of members); `state` is what the page has
-  // open: { qr, open, editing }.
-  function ownListItem(l, state) {
-    state = state || {};
+  // One of your lists on the friends page: a row with its name and how
+  // many are on it, which opens the list's sheet (listSheet).
+  function ownListRow(l) {
     const id = esc(l.id);
-    let h = '<li class="list-item" id="list-' + id + '" data-id="' + id + '">';
-    if (state.editing) {
-      h += '<form class="lookup-row rename-form" data-list="' + id + '" novalidate>'
-        + '<input type="text" class="rename-input" value="' + esc(l.name) + '" maxlength="60" aria-label="' + tx('lists.renameLabel') + '" autocomplete="off">'
-        + '<button type="submit">Save</button>'
-        + '<button type="button" class="secondary" data-action="cancel-rename" data-list="' + id + '">Cancel</button></form>';
-    } else {
-      h += '<div class="list-head"><div class="who"><div class="name">' + esc(l.name) + '</div><div class="sub">' + esc(listCount(l.memberCount)) + '</div></div></div>';
-    }
-    if (state.qr) h += listQr(l.code, l.name);
-    h += '<input type="text" class="link-field" readonly value="' + esc(l.url) + '" aria-label="' + esc(l.name) + '" data-action="select">';
-    h += '<div class="button-row list-buttons">'
-      + '<button type="button" data-action="share-list" data-url="' + esc(l.url) + '" data-name="' + esc(l.name) + '">Share</button>'
-      + '<button type="button" class="secondary" data-action="copy-list" data-url="' + esc(l.url) + '">Copy</button>'
-      + '<button type="button" class="secondary" data-action="toggle-qr" data-list="' + id + '" aria-pressed="' + (state.qr ? 'true' : 'false') + '">QR</button></div>';
-    h += '<div class="list-tools">'
-      + '<button type="button" class="link-btn" data-action="rename-list" data-list="' + id + '">Rename</button>'
-      + '<button type="button" class="link-btn" data-action="reset-list" data-list="' + id + '">Reset link</button>'
-      + '<button type="button" class="link-btn danger-link" data-action="delete-list" data-list="' + id + '">Delete</button></div>';
-    const members = l.members || [];
-    h += '<details class="list-members" data-list="' + id + '"' + (state.open ? ' open' : '') + '><summary>' + tx('lists.members') + (l.memberCount ? ' · ' + esc(l.memberCount) : '') + '</summary>';
-    if (members.length) {
-      h += '<ul class="people">' + listMemberRows(l, members) + '</ul>';
-      if (l.nextCursor) h += '<button type="button" class="secondary more" data-action="more-members" data-list="' + id + '">' + tx('common.showMore') + '</button>';
-    } else {
-      h += '<p class="small" style="margin:8px 0 0">' + tx('lists.noMembers') + '</p>';
-    }
-    h += '</details></li>';
-    return h;
+    return '<li class="list-item" id="list-' + id + '" data-id="' + id + '">'
+      + '<button type="button" class="list-open" id="openList-' + id + '" data-action="open-list" data-list="' + id + '" aria-haspopup="dialog">'
+      + '<span class="list-icon" aria-hidden="true">' + ICON_LIST + '</span>'
+      + '<span class="who"><span class="name">' + esc(l.name) + '</span><span class="sub">' + esc(listCount(l.memberCount)) + '</span></span>'
+      + '<span class="chev" aria-hidden="true">' + ICON_CHEVRON + '</span></button></li>';
   }
 
-  // "Your lists" on the friends page: each of yours, and making a new one
-  // (a name, nothing else). `d` is { me, lists, links }, `states` the
-  // page's { listId: state } (ownListItem).
-  function listsSection(d, states) {
-    states = states || {};
+  // "Your lists" on the friends page: each of yours, one row each, and
+  // making a new one (a name, nothing else). `d` is { me, lists, links }.
+  function listsSection(d) {
     const lists = d.lists || [];
     let h = '<section class="card" id="lists" data-section="lists"><h2>' + tx('lists.heading') + '</h2>';
     h += '<div class="notice" id="listsNotice" role="status"></div><div class="error" id="listsError" role="alert"></div>';
-    h += '<ul class="lists" id="ownLists">' + lists.map((l) => ownListItem(l, states[l.id])).join('') + '</ul>';
+    h += '<ul class="lists" id="ownLists">' + lists.map(ownListRow).join('') + '</ul>';
     if (d.me && d.me.emailVerified) {
       h += '<form class="lookup-row" id="createList" novalidate>'
         + '<input type="text" id="newListName" maxlength="60" placeholder="' + tx('lists.createPlaceholder') + '" aria-label="' + tx('lists.createLabel') + '" autocomplete="off">'
@@ -1949,15 +1902,11 @@
   // name, a QR code as big as the screen allows and its link, to show at
   // the door. Drawn by the page's script when opened.
   function listQrSheet(lists) {
-    let h = '<div class="sheet-backdrop" id="listQrBackdrop"></div>'
-      + '<div class="sheet-panel qr-panel" id="listQrPanel" role="dialog" aria-modal="true" aria-labelledby="listQrHeading">'
-      + '<div class="bg-head"><h2 id="listQrHeading">' + tx('lists.qrHeading') + '</h2>'
-      + '<button type="button" class="round-btn" data-action="close-list-qr" aria-label="' + tx('lists.qrClose') + '">' + ICON_CLOSE + '</button></div>'
-      + '<div class="sheet-scroll">';
+    let h = '<div class="sheet-scroll">';
     lists.forEach((l) => {
       h += '<div class="door-qr"><h3>' + esc(l.name) + '</h3>' + listQr(l.code, l.name, 'big') + '<p class="door-link">' + esc(String(l.url).replace(/^https?:\/\//, '')) + '</p></div>';
     });
-    return h + '</div></div>';
+    return sheetShell({ id: 'listQr', cls: 'qr-panel', heading: tx('lists.qrHeading'), closeAction: 'close-list-qr', closeLabel: 'lists.qrClose' }, h + '</div>');
   }
 
   // Someone's part in an event, as a badge, the same everywhere the web
@@ -1993,22 +1942,60 @@
     return h + '</section>';
   }
 
-  // ---------------- The invite sheet ----------------
+  // ---------------- Sheets, and picking people ----------------
   //
-  // A host's "Invite" opens a sheet over the event page (views/event.html
-  // loads what it needs and keeps the state; these draw it). Top to
-  // bottom: one search field, which filters everyone by name and, when
-  // what's typed is a whole phone number or @username, looks that person
-  // up and offers them first; your lists, each with "Invite all <n>"; "Invite
-  // everyone from…" one of your past events; Suggested (the people you've
-  // been with most and most recently, GET /me/friends/suggested); then
-  // everyone else, A to Z. Everyone already on the event stays in the
-  // list, greyed, with their status, and can't be picked. The picked are a
-  // row of faces at the foot, beside "Invite 7".
+  // Everything about people that's more than a glance happens in a sheet
+  // over the page: inviting (an event's host), a list of yours (the
+  // friends page: its people, its link, and adding people to it), and an
+  // event's guest list. One shell draws them all (sheetShell; the pages'
+  // script, public/sheets.js, opens and closes it), and the two that pick
+  // people share one picker (pickerBody and what it draws).
+
+  // A sheet: the backdrop, a dialog labelled by its heading, the heading
+  // row (a back button when there's one, the heading, any `tools`, and
+  // ×), then `body`. `o` is { id, cls, heading (HTML), closeAction,
+  // closeLabel (a copy key), back: { action, label (text) }, tools }.
+  // The parts' ids are <id>Backdrop, <id>Panel and <id>Heading.
+  function sheetShell(o, body) {
+    return '<div class="sheet-backdrop" id="' + o.id + 'Backdrop"></div>'
+      + '<div class="sheet-panel' + (o.cls ? ' ' + o.cls : '') + '" id="' + o.id + 'Panel" role="dialog" aria-modal="true" aria-labelledby="' + o.id + 'Heading">'
+      + '<div class="bg-head">'
+      + (o.back ? '<button type="button" class="round-btn back-btn" data-action="' + o.back.action + '" aria-label="' + esc(o.back.label) + '">' + ICON_BACK + '</button>' : '')
+      + '<h2 id="' + o.id + 'Heading">' + o.heading + '</h2>' + (o.tools || '')
+      + '<button type="button" class="round-btn" data-action="' + o.closeAction + '" aria-label="' + tx(o.closeLabel || 'invite.close') + '">' + ICON_CLOSE + '</button></div>'
+      + body + '</div>';
+  }
+
+  // The picker: one search field, which filters everyone by name and,
+  // when what's typed is a whole phone number or @username, looks that
+  // person up and offers them first; your lists, each with "Invite all
+  // <n>" ("Add all <n>"); "Filter by past event"; Suggested (the people
+  // you've been with most and most recently, GET /me/friends/suggested);
+  // then everyone else, A to Z. Everyone already there (on the event, or
+  // on the list) stays in the list, greyed, and can't be picked. The
+  // picked are a row of faces at the foot, beside "Invite 7" ("Add 7").
   //
-  // `st` is the page's state: { me, people: { id: { person, sub } },
-  // suggestedIds, lists: [{ id, name, memberIds }], past: [event],
-  // onList: { id: status }, selected: [id], query, lookup, loading }.
+  // `st` is the page's state: { kind: 'invite' | 'list', me, people: {
+  // id: { person, sub } }, suggestedIds, lists: [{ id, name, memberIds }],
+  // past: [event], onList: { id: status }, selected: [id], query, lookup,
+  // loading }. For an invitation, `onList` is everyone on the event with
+  // their status; for a list, everyone on it ('on_list').
+  //
+  // What differs between the two: the words, and what "already there"
+  // looks like.
+  const PICKERS = {
+    invite: {
+      send: 'send-invites', some: 'invite.inviteSome', none: 'Invite', all: 'invite.inviteAll', allDone: 'invite.allOnEvent',
+      tag: (status) => statusTag(status)
+    },
+    list: {
+      send: 'add-to-list', some: 'lists.addSome', none: 'Add', all: 'lists.addAll', allDone: 'lists.allOnList',
+      tag: () => '<span class="tag off">' + tx('lists.onListTag') + '</span>'
+    }
+  };
+  function pickerOf(st) {
+    return PICKERS[(st && st.kind) || 'invite'];
+  }
 
   const SUGGESTED_SHOWN = 8;
 
@@ -2028,25 +2015,25 @@
 
   // Letters without their accents, lower case: "Inés" is found by "ines".
   function foldName(s) {
-    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   }
 
   function byName(st) {
     return (a, b) => fullName(st.people[a].person).localeCompare(fullName(st.people[b].person), LOCALE, { sensitivity: 'base' }) || (a < b ? -1 : 1);
   }
 
-  // Who can be picked: not already on the event (hosting, invited, any
-  // answer, removed) and not you.
+  // Who can be picked: not already there (on the event: hosting, invited,
+  // any answer, removed; or on the list) and not you.
   function pickable(st, id) {
     return !st.onList[id] && !(st.me && st.me.id === id);
   }
 
   // The order of the list under the lists: { suggested, everyone }, ids.
-  // Suggested is the first SUGGESTED_SHOWN suggestions who aren't on the
-  // event yet; everyone is everybody else known to the sheet (friends, and
-  // people from your lists, a past event or a lookup), A to Z, the ones on
-  // the event included (greyed). With a search, one list: whoever's name
-  // matches, suggested first, then A to Z.
+  // Suggested is the first SUGGESTED_SHOWN suggestions who aren't there
+  // yet; everyone is everybody else known to the sheet (friends, and
+  // people from your lists, a past event or a lookup), A to Z, the ones
+  // already there included (greyed). With a search, one list: whoever's
+  // name matches, suggested first, then A to Z.
   function inviteOrder(st) {
     // Filtered to a past event: just its people, A to Z.
     const from = st.from && !st.from.hidden ? st.from.ids : null;
@@ -2067,8 +2054,8 @@
     return l.memberIds.filter((id) => pickable(st, id));
   }
 
-  // One person: a checkbox, the whole row its label; or, already on the
-  // event, greyed with their status and nothing to tick.
+  // One person: a checkbox, the whole row its label; or, already there,
+  // greyed with their status ("On list" for a list) and nothing to tick.
   function invitePickRow(st, id) {
     const x = st.people[id];
     const p = x.person;
@@ -2076,7 +2063,7 @@
     const name = fullName(p);
     const picked = (st.selected || []).includes(id);
     const right = status
-      ? statusTag(status)
+      ? pickerOf(st).tag(status)
       : '<input type="checkbox" class="pick-box" value="' + esc(id) + '"' + (picked ? ' checked' : '') + ' aria-label="' + esc(name) + '">';
     return '<li class="person pick-row' + (status ? ' on-list' : '') + '">'
       + (status ? '<div class="pick-label">' : '<label class="pick-label">')
@@ -2144,50 +2131,244 @@
     return h;
   }
 
-  // A list, with "Invite all <n>" (its people not on the event yet), a
-  // toggle: pressed once they're all picked, and pressing it again
-  // unpicks them.
+  // A list, with "Invite all <n>" (its people not there yet), a toggle:
+  // pressed once they're all picked, and pressing it again unpicks them.
   function inviteListRow(st, l) {
+    const k = pickerOf(st);
     const ids = listPickable(st, l);
     const all = ids.length > 0 && ids.every((id) => (st.selected || []).includes(id));
     const sub = l.memberIds.length === 1 ? t('lists.countOne') : t('lists.count', { count: l.memberIds.length });
     const btn = ids.length
-      ? '<button type="button" class="small-btn' + (all ? '' : ' secondary') + '" data-action="pick-list" data-list="' + esc(l.id) + '" aria-pressed="' + (all ? 'true' : 'false') + '">' + tx('invite.inviteAll', { count: ids.length }) + '</button>'
-      : '<span class="tag off">' + tx('invite.allOnEvent') + '</span>';
+      ? '<button type="button" class="small-btn' + (all ? '' : ' secondary') + '" data-action="pick-list" data-list="' + esc(l.id) + '" aria-pressed="' + (all ? 'true' : 'false') + '">' + tx(k.all, { count: ids.length }) + '</button>'
+      : '<span class="tag off">' + tx(k.allDone) + '</span>';
     return '<li class="person list-row" data-list="' + esc(l.id) + '"><span class="list-icon" aria-hidden="true">' + ICON_LIST + '</span>'
       + '<div class="who"><div class="name">' + esc(l.name) + '</div><div class="sub">' + esc(sub) + '</div></div>' + btn + '</li>';
   }
 
   // The foot of the sheet: the picked as a row of faces (each a button that
   // unpicks them), and the button, "Invite 7" (just "Invite", off, at 0).
+  // An invitation's tray also has "Save as list" (st.canSave), which
+  // turns the foot into a small form while it's open (st.saving).
   function inviteTray(st) {
+    const k = pickerOf(st);
     // The latest picked first, so a tick shows up where you're looking.
-    const picked = (st.selected || []).filter((id) => st.people[id]).reverse();
+    const picked = (st.selected || []).filter((id) => st.people && st.people[id]).reverse();
     const n = picked.length;
+    if (st.saving && n) return saveListForm(st, n);
     let h = '<div class="tray-faces" role="list" aria-label="' + tx('invite.pickedLabel', { count: n }) + '">';
     h += picked.map((id) => {
       const p = st.people[id].person;
       return '<span role="listitem"><button type="button" class="tray-face" data-action="unpick" data-person="' + esc(id) + '" aria-label="' + tx('invite.unpick', { name: fullName(p) }) + '" title="' + esc(fullName(p)) + '">' + avatar(p, 'small') + '</button></span>';
     }).join('');
     h += '</div>';
-    h += '<button type="button" id="inviteSend" data-action="send-invites"' + (n ? '' : ' disabled') + '>' + (n ? tx('invite.inviteSome', { count: n }) : 'Invite') + '</button>';
+    if (st.canSave) h += '<button type="button" class="link-btn quiet save-list-btn" data-action="save-as-list"' + (n ? '' : ' disabled') + '>' + tx('lists.saveAsList') + '</button>';
+    h += '<button type="button" id="inviteSend" data-action="' + k.send + '"' + (n ? '' : ' disabled') + '>' + (n ? tx(k.some, { count: n }) : k.none) + '</button>';
     return h;
   }
 
-  // The sheet itself, once: its heading, the search box, a box for the
-  // results and one for the tray. `e` is the event.
-  function inviteSheet(e, st) {
-    return '<div class="sheet-backdrop" id="inviteBackdrop"></div>'
-      + '<div class="sheet-panel invite-panel" id="invitePanel" role="dialog" aria-modal="true" aria-labelledby="inviteHeading">'
-      + '<div class="bg-head"><h2 id="inviteHeading">' + tx('invite.sheetHeading', { title: e.title }) + '</h2>'
-      + '<button type="button" class="round-btn" data-action="close-invite" aria-label="' + tx('invite.close') + '">' + ICON_CLOSE + '</button></div>'
-      + '<div class="invite-search"><input type="search" id="inviteSearch" placeholder="' + tx(st && st.me && st.me.emailVerified ? 'invite.searchPlaceholder' : 'invite.search') + '"'
+  // "Save as list": a new list (named here) or one of yours, for the
+  // people picked, without sending anything. `st.saveTo` is the list
+  // chosen ('' for a new one).
+  function saveListForm(st, n) {
+    const to = st.saveTo || '';
+    let h = '<form class="save-list" id="saveListForm" novalidate>'
+      + '<label class="sr-only" for="saveListTo">' + tx('lists.saveToLabel') + '</label>'
+      + '<select id="saveListTo"><option value="">' + tx('lists.saveToNew') + '</option>'
+      + (st.lists || []).map((l) => '<option value="' + esc(l.id) + '"' + (to === l.id ? ' selected' : '') + '>' + esc(l.name) + '</option>').join('')
+      + '</select>';
+    if (!to) h += '<input type="text" id="saveListName" maxlength="60" placeholder="' + tx('lists.createPlaceholder') + '" aria-label="' + tx('lists.createLabel') + '" autocomplete="off">';
+    h += '<div class="save-list-buttons"><button type="button" class="secondary" data-action="cancel-save-list">Cancel</button>'
+      + '<button type="submit" id="saveListBtn">' + tx('lists.saveSome', { count: n }) + '</button></div></form>';
+    return h;
+  }
+
+  // The picker under a sheet's heading: the search box, a box for the
+  // results, and the foot with the tray. Its parts' ids are the same in
+  // every sheet that picks (only one is ever open).
+  function pickerBody(st) {
+    return '<div class="invite-search"><input type="search" id="inviteSearch" placeholder="' + tx(st && st.me && st.me.emailVerified ? 'invite.searchPlaceholder' : 'invite.search') + '"'
       + ' aria-label="' + tx('invite.searchLabel') + '" aria-controls="inviteResults" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="64"></div>'
       + '<div class="sheet-scroll" id="inviteResults">' + inviteResults(st || { loading: true }) + '</div>'
       + '<div class="invite-foot"><div class="notice" id="inviteNotice" role="status"></div><div class="error" id="inviteError" role="alert"></div>'
       + '<div class="invite-tray" id="inviteTray">' + inviteTray(st || {}) + '</div></div>'
-      + '<p class="sr-only" id="inviteLive" aria-live="polite"></p>'
-      + '</div>';
+      + '<p class="sr-only" id="inviteLive" aria-live="polite"></p>';
+  }
+
+  // The invite sheet, once: its heading and the picker. `e` is the event.
+  function inviteSheet(e, st) {
+    return sheetShell({ id: 'invite', cls: 'invite-panel', heading: tx('invite.sheetHeading', { title: e.title }), closeAction: 'close-invite' }, pickerBody(st));
+  }
+
+  // ---------------- A list of yours, in a sheet ----------------
+  //
+  // On the friends page each of your lists is one row (its name and how
+  // many are on it); the row opens this sheet. In it: the list's link,
+  // with Share, Copy and its QR code; Rename, Reset link and Delete; its
+  // people, newest first, searchable, each with Remove; and "Add people",
+  // which turns the sheet into the picker (a back button returns). `st`
+  // is { list (an OwnedList), members: [{ person, joinedAt, source }] or
+  // null while they load, query, mode: 'members' | 'add', qr, editing,
+  // picker (the picker's state, in 'add') }.
+
+  // "Joined Oct 8" (by the link) or "Added Oct 8" (by you), with the year
+  // only when it isn't this one.
+  function joinedOn(iso, source) {
+    const d = new Date(iso);
+    const opts = { month: 'short', day: 'numeric' };
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+    return t(source === 'added' ? 'lists.added' : 'lists.joined', { date: d.toLocaleDateString(LOCALE, opts) });
+  }
+
+  // A list's people, each with Remove (the page asks first). Rows light
+  // up edge to edge, like the picker's.
+  function listMemberRows(l, members) {
+    return members.map((m) => {
+      const p = m.person;
+      return '<li class="person" data-id="' + esc(p.id) + '">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div>'
+        + '<div class="sub">' + esc(joinedOn(m.joinedAt, m.source)) + '</div></div>'
+        + '<button type="button" class="small-btn secondary" data-action="remove-member" data-list="' + esc(l.id) + '" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Remove</button></li>';
+    }).join('');
+  }
+
+  // The people under the search box: everyone, or whoever's name matches.
+  function listMembersResults(st) {
+    const l = st.list;
+    if (!st.members) return '<p class="small invite-line" role="status">' + tx('invite.loading') + '</p>';
+    if (!st.members.length) return '<p class="small invite-line">' + tx('lists.noMembers') + '</p>';
+    const q = foldName(String(st.query || '').trim());
+    const shown = q ? st.members.filter((m) => foldName(fullName(m.person)).includes(q)) : st.members;
+    if (!shown.length) return '<p class="small invite-line">' + tx('lists.noMemberMatch') + '</p>';
+    return '<ul class="people rows">' + listMemberRows(l, shown) + '</ul>';
+  }
+
+  // Everything in the sheet under its heading, while it shows the list.
+  function listSheetBody(st) {
+    const l = st.list;
+    const id = esc(l.id);
+    let h = '';
+    if (st.editing) {
+      h += '<form class="lookup-row rename-form" id="renameList" data-list="' + id + '" novalidate>'
+        + '<input type="text" class="rename-input" id="renameInput" value="' + esc(l.name) + '" maxlength="60" aria-label="' + tx('lists.renameLabel') + '" autocomplete="off">'
+        + '<button type="submit">Save</button>'
+        + '<button type="button" class="secondary" data-action="cancel-rename" data-list="' + id + '">Cancel</button></form>';
+    }
+    if (st.qr) h += listQr(l.code, l.name);
+    h += '<input type="text" class="link-field" readonly value="' + esc(l.url) + '" aria-label="' + tx('lists.linkLabel', { name: l.name }) + '" data-action="select">';
+    h += '<div class="button-row list-buttons">'
+      + '<button type="button" data-action="share-list" data-url="' + esc(l.url) + '" data-name="' + esc(l.name) + '">Share</button>'
+      + '<button type="button" class="secondary" data-action="copy-list" data-url="' + esc(l.url) + '">Copy</button>'
+      + '<button type="button" class="secondary" data-action="toggle-qr" data-list="' + id + '" aria-pressed="' + (st.qr ? 'true' : 'false') + '">QR</button></div>';
+    h += '<div class="list-tools">'
+      + '<button type="button" class="link-btn" data-action="rename-list" data-list="' + id + '">Rename</button>'
+      + '<button type="button" class="link-btn" data-action="reset-list" data-list="' + id + '">Reset link</button>'
+      + '<button type="button" class="link-btn danger-link" data-action="delete-list" data-list="' + id + '">Delete</button></div>';
+    h += '<div class="notice" id="listNotice" role="status"></div><div class="error" id="listError" role="alert"></div>';
+    h += '<div class="people-head"><h3 class="group-heading" id="listPeopleHeading">' + tx('lists.members') + (l.memberCount ? ' · ' + esc(l.memberCount) : '') + '</h3>'
+      + '<button type="button" class="small-btn" data-action="add-people" data-list="' + id + '">' + tx('lists.addPeople') + '</button></div>';
+    if (st.members && st.members.length) {
+      h += '<input type="search" id="memberSearch" value="' + esc(st.query || '') + '" placeholder="' + tx('invite.search') + '" aria-label="' + tx('lists.memberSearchLabel', { name: l.name }) + '" aria-controls="listMembers" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="64">';
+    }
+    h += '<div id="listMembers">' + listMembersResults(st) + '</div>';
+    return h;
+  }
+
+  // The sheet: the list, or (st.mode 'add') the picker for adding people,
+  // with a back button to the list.
+  function listSheet(st) {
+    const l = st.list;
+    if (st.mode === 'add') {
+      return sheetShell({ id: 'list', cls: 'invite-panel list-panel', heading: tx('lists.addHeading', { name: l.name }), closeAction: 'close-list',
+        back: { action: 'list-back', label: t('lists.backTo', { name: l.name }) } }, pickerBody(st.picker));
+    }
+    return sheetShell({ id: 'list', cls: 'invite-panel list-panel', heading: esc(l.name), closeAction: 'close-list' },
+      '<div class="sheet-scroll" id="listBody">' + listSheetBody(st) + '</div>');
+  }
+
+  // ---------------- An event's guest list, in a sheet ----------------
+  //
+  // "View all" under Attending opens it: a tab for each status there's
+  // anyone in (Going, Maybe, Invited, Can't Go, the waitlist; and for
+  // hosts, Removed), each with its count in that status's color, the
+  // plus-ones under it, and a search by name across them all. It shows
+  // exactly what GET /events/{id}/guests gives this viewer (hosts also
+  // ?status=removed), so never more than the page itself. Hosts get
+  // Remove on each guest (asked first), Undo on the removed, and Invite,
+  // which opens the invite sheet. `st` is { event, isHost, guests: [guest],
+  // removed: [guest], tab, query, loading, canInvite }.
+
+  const GUEST_TABS = ['going', 'maybe', 'invited', 'not_going', 'waitlisted', 'removed'];
+  const GUEST_TAB_LABELS = { going: 'status.going', maybe: 'status.maybe', invited: 'status.invited', not_going: 'status.not_going', waitlisted: 'event.waitlistGroup', removed: 'status.removed' };
+
+  // How many in `status`: the event's counts where it has them (the rows
+  // loaded are at most a few pages), otherwise the rows.
+  function guestTabCount(st, status) {
+    if (status === 'removed') return (st.removed || []).length;
+    const c = (st.event && st.event.counts) || {};
+    const n = c[status === 'not_going' ? 'notGoing' : status];
+    const rows = (st.guests || []).filter((g) => g.status === status).length;
+    return typeof n === 'number' ? Math.max(n, rows) : rows;
+  }
+
+  // The tabs there's anyone in, in order; hosts' Removed only for hosts.
+  function guestTabsOf(st) {
+    return GUEST_TABS.filter((s) => (s !== 'removed' || st.isHost) && (s !== 'invited' || st.isHost) && guestTabCount(st, s) > 0);
+  }
+
+  function guestTabs(st) {
+    const tabs = guestTabsOf(st);
+    if (!tabs.length) return '';
+    const on = tabs.includes(st.tab) ? st.tab : tabs[0];
+    return '<div class="guest-tabs" role="tablist" aria-label="' + tx('guests.tabsLabel') + '">' + tabs.map((s) => {
+      const badge = STATUS_BADGE[s] ? 'status-' + STATUS_BADGE[s] : 'off';
+      return '<button type="button" role="tab" class="guest-tab" id="guestTab-' + s + '" aria-selected="' + (s === on ? 'true' : 'false') + '" aria-controls="guestResults"'
+        + ' data-action="guest-tab" data-status="' + s + '"' + (s === on ? '' : ' tabindex="-1"') + '>'
+        + tx(GUEST_TAB_LABELS[s]) + ' <span class="tag ' + badge + '">' + esc(guestTabCount(st, s)) + '</span></button>';
+    }).join('') + '</div>';
+  }
+
+  // One guest: their plus-ones under their name; for hosts, Remove (or
+  // Undo, for the removed); while searching, their status too.
+  function guestSheetRow(st, g, withStatus) {
+    const p = g.person;
+    let right = withStatus ? statusTag(g.status) : '';
+    if (st.isHost && g.status === 'removed') right += '<button type="button" class="small-btn secondary" data-action="undo-remove" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Undo</button>';
+    else if (st.isHost) right += '<button type="button" class="small-btn secondary" data-action="remove-guest" data-person="' + esc(p.id) + '" data-name="' + esc(fullName(p)) + '">Remove</button>';
+    return '<li class="person" data-id="' + esc(p.id) + '">' + avatar(p) + '<div class="who"><div class="name">' + esc(fullName(p)) + '</div>'
+      + (guestSub(g) ? '<div class="sub">' + esc(guestSub(g)) + '</div>' : '') + '</div>' + right + '</li>';
+  }
+
+  // Under the tabs: the chosen tab's people, its count and plus-ones; or,
+  // while searching, everyone whose name matches, with their status.
+  function guestResults(st) {
+    if (st.loading) return '<p class="small invite-line" role="status">' + tx('invite.loading') + '</p>';
+    const all = (st.guests || []).concat(st.isHost ? (st.removed || []) : []);
+    const q = foldName(String(st.query || '').trim());
+    if (q) {
+      const hits = all.filter((g) => foldName(fullName(g.person)).includes(q));
+      if (!hits.length) return '<p class="small invite-line">' + tx('guests.noMatch') + '</p>';
+      return '<ul class="people rows">' + hits.map((g) => guestSheetRow(st, g, true)).join('') + '</ul>';
+    }
+    const tabs = guestTabsOf(st);
+    if (!tabs.length) return '<p class="small invite-line">' + tx('event.noAnswers') + '</p>';
+    const tab = tabs.includes(st.tab) ? st.tab : tabs[0];
+    const rows = all.filter((g) => g.status === tab);
+    const c = (st.event && st.event.counts) || {};
+    const plus = tab === 'removed' ? 0 : ((c.guests || {})[tab] || 0);
+    let h = '<p class="small guest-sum">' + esc(guestTabCount(st, tab) + ' ' + t(GUEST_TAB_LABELS[tab]) + (plus ? ' · ' + plusGuests(plus) : '')) + '</p>';
+    if (tab === 'removed') h += '<p class="small guest-sum">' + tx('event.removedGroupHint') + '</p>';
+    return h + '<ul class="people rows" role="tabpanel" aria-labelledby="guestTab-' + tab + '">' + rows.map((g) => guestSheetRow(st, g, false)).join('') + '</ul>';
+  }
+
+  function guestsSheet(st) {
+    let body = '<div class="invite-search"><input type="search" id="guestSearch" placeholder="' + tx('invite.search') + '" aria-label="' + tx('guests.searchLabel') + '" aria-controls="guestResults"'
+      + ' autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="64"></div>'
+      + '<div id="guestTabs">' + guestTabs(st) + '</div>'
+      + '<div class="sheet-scroll" id="guestResults">' + guestResults(st) + '</div>';
+    const msgs = '<div class="notice" id="guestsSheetNotice" role="status"></div><div class="error" id="guestsSheetError" role="alert"></div>';
+    body += st.isHost && st.canInvite
+      ? '<div class="invite-foot">' + msgs + '<button type="button" id="guestsInvite" data-action="guests-invite">Invite</button></div>'
+      : '<div class="sheet-msgs">' + msgs + '</div>';
+    return sheetShell({ id: 'guests', cls: 'invite-panel guests-panel', heading: tx('guests.heading'), closeAction: 'close-guests' }, body);
   }
 
   // ---------------- Adding co-hosts ----------------
@@ -2490,6 +2671,9 @@
     + '<path fill="currentColor" d="M2.2 19.6c0-3.7 3-6.3 6.8-6.3s6.8 2.6 6.8 6.3c0 .6-.4 1-1 1H3.2c-.6 0-1-.4-1-1z"/>'
     + '<circle cx="16.8" cy="8" r="2.9" fill="currentColor"/>'
     + '<path fill="currentColor" d="M17.6 20.6h3.4c.5 0 .9-.4.9-.9 0-3.1-2.2-5.3-5.1-5.3-.8 0-1.5.15-2.1.4 1.6 1.4 2.5 3.3 2.5 5.4 0 .1 0 .3.4.4z"/></svg>';
+  // Back (a chevron pointing left), and on into something (pointing right).
+  const ICON_BACK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M15 5.5L8.5 12l6.5 6.5"/></svg>';
+  const ICON_CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M9.5 6l6 6-6 6"/></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
 
   // A gallery: four tiles.
@@ -2815,7 +2999,8 @@
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     backgroundGroups, backgroundSheet, tmdbCredit,
     eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
-    listQr, listCount, ownListItem, listMemberRows, listsSection, membershipsSection, listLinkPage, joinListSection, eventListsBlock, listQrSheet,
+    listQr, listCount, ownListRow, listMemberRows, listMembersResults, listSheetBody, listSheet, joinedOn, listsSection, membershipsSection, listLinkPage, joinListSection, eventListsBlock, listQrSheet,
+    sheetShell, pickerBody, saveListForm, guestsSheet, guestTabs, guestTabsOf, guestResults, guestSheetRow,
     eventRow, viewerStatus, statusTag, homeLists, homeList, homeTabBar, homePanel, homeTabOf, homeTabHref, calendarCard, ICON_CALENDAR, friendRows, friendSub, friendsPage, friendLinkPage, friendFound, lookupKindOf, foldName, inviteOrder, invitePickRow, inviteResults, inviteTray, inviteSheet, inviteListRow, listPickable, SUGGESTED_SHOWN, cohostRow, cohostPage,
     ASSUMED_LENGTH_MS, HOME_LISTS, HOME_LOADS, HOME_TABS, MAX_GUESTS_ALLOWED
   };

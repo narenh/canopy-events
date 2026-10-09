@@ -95,15 +95,30 @@ test('list pages', async (t) => {
     assert.equal((await anon.get('/l/nope/qr.svg')).status, 404);
   });
 
-  await t.test('/friends: your lists with link, QR, rename, reset, delete and who is on each; the lists you are on, with Leave', async () => {
+  await t.test('/friends: your lists a row each, opening a sheet with the link, QR, rename, reset, delete and who is on it; the lists you are on, with Leave', async () => {
     const r = await page(server, ana, '/friends');
     const box = section(r.body, 'lists');
     assert.ok(box.includes('<h2>Your lists</h2>'));
-    assert.ok(box.includes('Drag Race') && box.includes('1 person'));
-    assert.ok(box.includes(`value="${drag.url}"`));
-    for (const action of ['share-list', 'copy-list', 'toggle-qr', 'rename-list', 'reset-list', 'delete-list', 'remove-member']) assert.ok(box.includes(`data-action="${action}"`), action);
-    assert.match(box, /Ben Okafor<\/div><div class="sub">Joined /);
+    assert.match(box, new RegExp(`<button type="button" class="list-open" id="openList-${drag.id}" data-action="open-list" data-list="${drag.id}" aria-haspopup="dialog">.*Drag Race</span><span class="sub">1 person</span>`));
+    // Who's on it is in the sheet, not on the page.
+    assert.ok(!box.includes('Ben Okafor') && !box.includes('remove-member') && !box.includes(drag.url));
     assert.ok(box.includes('id="createList"') && box.includes('placeholder="Name a new list"'));
+    // The sheet, drawn from what the API gives Ana.
+    const members = (await ana.get(`/api/v1/me/lists/${drag.id}/members`)).data.members;
+    const own = (await ana.get('/api/v1/me/lists')).data.lists.find((l) => l.id === drag.id);
+    const sheet = UI.listSheet({ list: own, members, query: '', mode: 'members' });
+    assert.match(sheet, /role="dialog" aria-modal="true" aria-labelledby="listHeading"/);
+    assert.ok(sheet.includes('<h2 id="listHeading">Drag Race</h2>') && sheet.includes('data-action="close-list" aria-label="Close"'));
+    assert.ok(sheet.includes(`value="${drag.url}"`));
+    for (const action of ['share-list', 'copy-list', 'toggle-qr', 'rename-list', 'reset-list', 'delete-list', 'remove-member', 'add-people']) assert.ok(sheet.includes(`data-action="${action}"`), action);
+    assert.match(sheet, /People · 1<\/h3><button type="button" class="small-btn" data-action="add-people"[^>]*>Add people<\/button>/);
+    assert.match(sheet, /<ul class="people rows"><li class="person"[^>]*>.*Ben Okafor<\/div><div class="sub">Joined /);
+    assert.ok(sheet.includes('id="memberSearch"') && sheet.includes('aria-label="Search the people on Drag Race"'));
+    // Searching: only who matches, or a line.
+    assert.ok(UI.listMembersResults({ list: drag, members, query: 'ben' }).includes('Ben Okafor'));
+    assert.ok(UI.listMembersResults({ list: drag, members, query: 'zed' }).includes('No one on it by that name.'));
+    // Added by Ana: "Added", not "Joined".
+    assert.ok(UI.listMembersResults({ list: drag, members: [{ ...members[0], source: 'added' }] }).includes('<div class="sub">Added '));
     assert.equal(section(r.body, 'memberships'), null, "Ana isn't on any");
     // Ben: none of his own, Ana's in "Lists you're on", and nobody else on it.
     const b = await page(server, ben, '/friends');
@@ -115,7 +130,8 @@ test('list pages', async (t) => {
     const q = section((await page(server, una, '/friends')).body, 'lists');
     assert.ok(!q.includes('id="createList"') && q.includes('Confirm your email to make lists.'));
     // The QR code, once opened, is the image of the list link.
-    assert.ok(UI.ownListItem({ ...drag, members: [] }, { qr: true }).includes(`<img src="/l/${drag.code}/qr.svg"`));
+    assert.ok(UI.listSheet({ list: drag, members: [], qr: true }).includes(`<img src="/l/${drag.code}/qr.svg"`));
+    assert.ok(UI.listSheet({ list: drag, members: [] }).includes('Add people, or share the link or QR code'));
   });
 
   await t.test('an event: guests get "Get invited next time"; hosts get Lists… and Show list QR', async () => {

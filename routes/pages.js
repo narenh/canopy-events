@@ -30,13 +30,13 @@ const { qrSvg } = require('../lib/qr');
 const { isVerified } = require('../lib/people');
 const { publicBase } = require('../lib/domain');
 
-// How many of a list a page asks for at once. The guest list shows 50 and
-// then "show more". (The invite sheet reads what it needs itself, in the
-// browser: views/event.html.)
+// How many of a list a page asks for at once. An event's page asks for
+// 50 guests, for the faces (and the list without the script). (The
+// sheets read what they need themselves, in the browser: the invite
+// sheet, the guest list and a list of yours; public/sheets.js.)
 const GUESTS_SHOWN = 50;
 const WALL_SHOWN = 20;
 const FRIENDS_SHOWN = 50;
-const MEMBERS_SHOWN = 50;
 const LIST_SHOWN = 20;
 const PAST_SHOWN = 10;
 // The account service, for links to the Canopy profile.
@@ -243,6 +243,8 @@ module.exports = function pagesRoutes(ctx) {
       wall,
       // Ids only: the menu names the hosts from the event.
       optouts: optouts ? optouts.hosts.map((p) => p.id) : null,
+      // ?guests=1: "View all" without the script, the list under the faces.
+      guestsInline: req.query.guests !== undefined,
       links: req.person ? null : { quickSignUp: canopy.quickSignUpUrl(req, here), signIn: canopy.signInUrl(req, here) }
     };
     render.page(req, res, 'event.html', {
@@ -339,10 +341,9 @@ module.exports = function pagesRoutes(ctx) {
       apiGet(req, '/me/friend-link'), apiGet(req, `/me/friends?limit=${FRIENDS_SHOWN}`), apiGet(req, '/me/invite-optouts'),
       apiGet(req, '/me/lists'), apiGet(req, '/me/list-memberships')
     ]);
-    // Your lists, each with its first page of who's on it.
+    // Your lists, a row each: who's on one is in its sheet, which the
+    // page's script loads when it opens.
     const own = want(lists).lists;
-    const members = await Promise.all(own.map((l) => apiGet(req, `/me/lists/${l.id}/members?limit=${MEMBERS_SHOWN}`).then((r) => want(r))));
-    own.forEach((l, i) => Object.assign(l, { members: members[i].members, nextCursor: members[i].nextCursor }));
     const me = meView(req.person);
     const data = {
       me, link: want(link), friends: want(friends).friends, nextCursor: want(friends).nextCursor,

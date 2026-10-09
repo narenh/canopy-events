@@ -3243,6 +3243,81 @@ anyone joining later invited to what's still to come. The rest:
   from an event, Lists… (Take off / Add), and Show list QR (Escape back
   to the ⋯).
 
+### Adding people
+
+On `feat/list-manage`. **(You)** "need to be able to manage lists! add
+and remove people". Until now people only joined a list themselves (its
+link or QR code) and the owner could only take them off. The rest:
+
+- **`POST /api/v1/me/lists/{listId}/members` `{personIds}`**, 1 to 100 a
+  request (as inviting), owner only (anyone else's list, or none, is 404
+  `list_not_found`, as on every owner call), verified only (403
+  `email_unverified`, as making a list). Answers `{added, alreadyOn,
+  skipped, invitedTo, list}`: `added` as `Person`s, `alreadyOn` ids,
+  `skipped` `[{personId, reason}]`, `invitedTo` how many events the add
+  invited anyone to, `list` the OwnedList with its new count. · The
+  brief's `{added, alreadyOn, list}`; `skipped` and `invitedTo` were
+  needed to say who wasn't added and "Invited them to 1 event."
+- **Who can be added: the people the owner could invite**, matching
+  `POST .../invites`: any Canopy Account by id, **friends or not** (the
+  picker offers friends, list members, a past event's people and
+  lookups, which aren't all friends, as the invite sheet does). Not
+  yourself (`is_you`; the owner is never on their own list), not an
+  account that's gone or never was (`not_found`).
+- **Someone who opted out of the owner's invitations isn't added**, and
+  is skipped as `not_found`, exactly as inviting skips them. · The brief
+  leaned the other way ("still added, as with joining"). Joining is the
+  person's own choice; being added isn't, and they asked this person to
+  stop inviting them: a list is an inviting tool, and it would appear in
+  their "Lists you're on". It also keeps the answer from telling: added
+  but invited to nothing while the list is on an upcoming event would
+  give the opt-out away. Someone already on the list who opts out later
+  stays on it (as now), and is `alreadyOn` if added again.
+- **Being added is the same as joining**: in the same transaction
+  (lib/store/lists.js `addMembers`), each person added is invited, by the
+  owner, to every event the list is on that isn't over or cancelled
+  (the joining rule: an event happening now counts), with the usual
+  `invited` notification. Hosts and anyone removed from an event are
+  skipped for that event by the invitation code; an answer someone gave
+  stays. The invitation makes them friends, as every invitation does;
+  adding to a list on nothing makes no friends (as joining).
+- **No "added to a list" notification.** The invitations notify as
+  usual; the list shows up in their "Lists you're on", where they can
+  leave. · A notification type of its own.
+- **Idempotent**: someone on it already is in `alreadyOn`, nothing about
+  them changes (no second invitation or notification, `joinedAt` and
+  how they came stay).
+- **Limits.** 1,000 people a list, **all or nothing** (409 `list_full`
+  and nobody added if they wouldn't all fit; a partial add would leave
+  the owner guessing who). **300 people added a day** a person (600 an
+  address, 5,000 overall), counted apart from the invitation limit, each
+  person actually added counting one (someone on it already costs
+  nothing). The invitations an add makes aren't counted again. · Share
+  the invitation limit's bucket (adding 300 regulars would have blocked
+  inviting for the day).
+- **Schema version 17: `list_members.added_by`**, the owner when they
+  added someone, NULL for everyone who joined by the link (all rows
+  before this). The owner's members answer gains `source` (`link` or
+  `added`), so the list says "Joined Oct 8" or "Added Oct 8". · A step
+  that drops the column. · No column, and "Joined" for everyone.
+- **Removing stays as it was**: Remove on each person, asked first
+  (`confirm`, like removing a friend or a guest); they aren't told.
+- **Tests** (test/list-add.test.js): owner only (another's list and an
+  unknown id 404, signed out 401, a quick account 403, bad bodies 400, a
+  forged origin); who can't be added (you, the gone, the unknown, the
+  opted out, each skipped as the invite call would); invited to the
+  upcoming event in the same step and not the past or cancelled ones,
+  the notification from the owner and nothing else, friends both ways,
+  a removed guest still removed, an answer kept, `invitedTo` counting
+  two events; no friendship from a list on nothing; idempotency; `source`
+  for joined and added; the added see it in "Lists you're on" with only
+  id, name, owner and joinedAt, never other members, 404 on the owner's
+  calls, and can leave (and be added again); a full list adds nobody
+  (999 + 2), one more fits; 300 a day then 429, re-adding free, inviting
+  unaffected. test/leaks.test.js calls it for every caller; the spec
+  check covers the new route and `source`; test/db.test.js runs the new
+  step.
+
 ## The inviter
 
 On `feat/lists-inviter`. **(You)** approved the redesign (see "Lists and
@@ -3614,3 +3689,122 @@ start empty, and no invite list. The rest:
   default too when its day is picked; it keeps the original's time zone
   (main's `if (!prefill && here)`), and "today" and past days are
   counted on that zone's clock.
+
+## People sheets
+
+On `feat/list-manage`. **(You)** "all that sort of thing with people
+management should be in the modal/sheet. including view all event
+attendees". The rest:
+
+- **One shell, one picker.** public/ui.js `sheetShell` draws every sheet
+  (backdrop, a dialog labelled by its heading, an optional back button,
+  ×), and public/sheets.js runs them: `openSheet` / `swapSheet` /
+  `closeSheet`, the page behind made `inert` (everything in the body
+  but the sheet, so the header too), Tab kept inside, Escape, × or the
+  backdrop to close, focus back on the opener (or a named fallback when
+  the opener was drawn again). The picker (search with phone/@username
+  lookup, your lists, Filter by past event, Suggested, everyone A to Z,
+  the tray) is `pickerBody` plus `makePicker` in sheets.js, used by the
+  invite sheet and a list's "Add people"; what differs is a `kind`
+  (`invite` or `list`): the words ("Invite 7" / "Add 7", "Invite all" /
+  "Add all", "All invited" / "All on it") and what "already there" looks
+  like (a status badge / "On list"). The invite sheet and "Show list QR"
+  now use the shell; their markup and behavior are unchanged, and
+  test/inviter.test.js passes as it was. sheets.js is inlined into pages
+  like the other scripts. · Copy the invite sheet's code into the
+  friends page.
+
+**A list of yours, in a sheet** (the friends page)
+
+- **"Your lists" is a row per list**: its name, "9 people", and a
+  chevron, the whole row a button (lighting up edge to edge) that opens
+  the list's sheet. **Share, Copy and QR moved into the sheet** with
+  everything else, rather than staying on the row: the row is then one
+  target, and the card stays short however many lists there are. Making
+  a list opens its sheet at once with the QR code showing (the next
+  thing anyone does with a new list). · Keep Share/QR on the row.
+- **The sheet**: the link, Share / Copy / QR, then Rename (in place),
+  Reset link and Delete as quiet links (both asked first, as before);
+  then "People · 9" with **Add people**, a search box (names, accents
+  aside), and everyone newest first with "Joined Oct 8" or "Added Oct 8"
+  and Remove (asked first). All of them load when it opens (up to the
+  1,000 a list can have), so search covers everyone and there's no
+  "Show more". The page no longer fetches each list's members to draw
+  itself.
+- **Add people is a second step in the same sheet**: a back button and
+  "Add to Drag Race" in the heading, then the picker with everyone on
+  the list greyed "On list", your other lists ("Add all 3"), and "Add 5"
+  (just "Add", disabled, at 0). Escape steps back to the list rather
+  than closing; the back button too. After adding, the sheet is back on
+  the list, fetched again, saying "Added 5 people. Invited them to 1
+  event." (or "Added 1 person.", or "Everyone you picked is on it
+  already."). Each list keeps its picker while the page is open, so a
+  second visit doesn't fetch everyone again.
+
+**The guest list, in a sheet** (an event)
+
+- **Attending keeps its summary**: the heading, "3 Going · 2 Maybe · +2
+  guests", the row of faces, and "View all", which opens the guests
+  sheet. The whole list is no longer drawn on the page.
+- **The sheet**: a search box, then a tab for each status there's
+  anyone in, in order Going, Maybe, Invited, Can't Go, Waitlist and (hosts)
+  Removed, each with its count in its status color (statusTag's fixed
+  colors; Can't Go and Removed plain); under the tabs, the chosen one's
+  count and plus-ones ("3 Going · +2 guests") and its people, each with
+  their plus-ones. Typing searches every tab at once, each match with
+  its status badge. Tabs wrap rather than scroll sideways (at 375 px
+  six take three lines, and none hide). Arrow keys, Home and End move
+  between tabs.
+- **Who sees what is exactly the guest list's rule**: the sheet is drawn
+  from `GET /events/{id}/guests` (every page, up to 2,000) as the viewer,
+  and for hosts `?status=removed`, the same calls the page itself makes,
+  so it can't show more. "View all" appears only when the page would
+  have shown names (not signed out, not to someone removed, not before
+  answering on a responded-only list). Invited is never a tab for a
+  guest (the API doesn't give them those rows, and the tab is also
+  host-only in the drawing).
+- **Hosts get their tools there**: Remove on each guest (asked first,
+  as before), the Removed tab with Undo, and **Invite**, which closes
+  this sheet and opens the invite sheet (when the event can still take
+  invitations). After a change the page and the sheet are fetched again
+  and the sheet says "Removed Kai Tanaka." / "Kai Tanaka is invited
+  again.". Guests see the same sheet without any of it.
+- **Without the script: "View all" is a link to `/e/<id>?guests=1`**,
+  which the server draws with the list under the faces (the first 50,
+  read only, as the old "View all" showed them). With the script the
+  link opens the sheet instead, and `?guests=1` opens it with the page
+  (like `?invite=1`). · The summary only, with nothing behind "View
+  all" without the script.
+
+**Save as list** (the invite sheet)
+
+- **A quiet "Save as list" beside Invite** (disabled at 0, like Invite).
+  It turns the tray into a small form: a select of "New list" or one of
+  your lists, a name field for a new one, Cancel and "Save 5". It adds
+  the picked with the new call and invites nobody to this event; the
+  picks stay, so Invite is still one tap away; the sheet says "Saved 5
+  people to Regulars." and a new list joins "Your lists" in the sheet.
+  **Adding to an existing list that's on events still to come invites
+  them to those**, by the list rule, and the line says so ("Invited
+  them to 1 event."). · Only "new list"; a window.prompt for the name.
+- Only for verified hosts (making a list needs it).
+
+- **Tests**: test/inviter.test.js (the list picker: "On list" rows with
+  no checkbox, "Add 3" and the disabled "Add", "Add all"/"All on it",
+  the add step's back button and heading; Save as list and its form;
+  the guests sheet's tabs, colors, counts, search, and tools for hosts
+  only); test/pages.test.js (the summary and the "View all" link for
+  hosts, ?guests=1's list for a guest and a host, the sheet drawn from
+  each viewer's own API answers: a going guest gets no tools, no
+  Invited or Removed tab, a co-host gets Remove, the Removed tab with
+  Undo and Invite; a guest who can't see names and someone signed out
+  get no names at ?guests=1 or in the sheet; someone removed gets no
+  guest section, as before); test/list-pages.test.js (the rows, nothing
+  of the members on the page, the sheet's link, tools, people, search,
+  "Joined"/"Added", QR). Checked by hand in the desktop pane at 800 px
+  and 375 px against the fake account service with 20 more people, a
+  past night, two lists and an event with every status: a list's sheet,
+  Add people (On list rows, Add 2, "Added 2 people. Invited them to 1
+  event."), Escape back and focus on the row, the guests sheet (tabs,
+  Remove with its line, Invite into the invite sheet), Save as list to a
+  new list, and ?guests=1 opening the sheet.

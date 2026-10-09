@@ -17,7 +17,7 @@ const ROOT = path.join(__dirname, '..');
 
 // Where the web side starts: the page routes, their renderer, and the
 // scripts the browser runs (also run by the server to draw pages).
-const ENTRY_POINTS = ['routes/pages.js', 'lib/render.js', 'public/ui.js', 'public/copy.js', 'public/events.js'];
+const ENTRY_POINTS = ['routes/pages.js', 'lib/render.js', 'public/ui.js', 'public/copy.js', 'public/events.js', 'public/sheets.js'];
 
 // What the web side may reach. Everything else under lib/ and routes/ is
 // the API's own. To add one here it must be small and pure: no store, no

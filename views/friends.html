@@ -14,11 +14,12 @@
      /api/v1/people/lookup, then POST /api/v1/me/friends); and your list
      (GET /api/v1/me/friends), each with Remove (DELETE
      /api/v1/me/friends/<id>, asked first); your lists (GET
-     /api/v1/me/lists and each one's members), each with its link, Share,
-     Copy, its QR code (/l/<code>/qr.svg), Rename, Reset link, Delete and
-     Remove for each person on it, and making a new one; and the lists
-     you're on (GET /api/v1/me/list-memberships), with Leave. Drawn by
-     public/ui.js (friendsPage). -->
+     /api/v1/me/lists), a row each opening the list's sheet: its link,
+     Share, Copy, its QR code (/l/<code>/qr.svg), Rename, Reset link,
+     Delete, who's on it (.../members) with Remove, and Add people (POST
+     .../members, with the invite sheet's picker); making a new one; and
+     the lists you're on (GET /api/v1/me/list-memberships), with Leave.
+     Drawn by public/ui.js (friendsPage, listSheet). -->
 <body class="mesh-bg">
 <!-- PAGE:HEADER -->
 <main class="wrap">
@@ -30,6 +31,7 @@
 <script src="/copy.js"></script>
 <script src="/ui.js"></script>
 <script src="/events.js"></script>
+<script src="/sheets.js"></script>
 <script>
 applyCopy();
 
@@ -101,29 +103,22 @@ if (lookupForm){
 
 // ---------------- Your lists ----------------
 //
-// Each list's link with Share, Copy and its QR code (an image the server
-// draws, /l/<code>/qr.svg), Rename, Reset link and Delete, and who's on
-// it, folded, with Remove. Drawn again from `data.lists` after a change;
-// `listStates` keeps what's open (the QR code, the people, renaming).
-const listStates = {};
-function listState(id){
-  if (!listStates[id]) listStates[id] = {};
-  return listStates[id];
-}
+// Each list is a row; the row opens the list's sheet (public/ui.js
+// listSheet; public/sheets.js opens it): its link with Share, Copy and
+// its QR code (an image the server draws, /l/<code>/qr.svg), Rename,
+// Reset link and Delete, and who's on it, searchable, with Remove. "Add
+// people" turns the sheet into the picker (the invite sheet's), with
+// everyone on the list greyed, and "Add 5"; back (or Escape) returns.
+// `ls.st` is the open list's state.
+const ls = { st: null, pickers: {} };
+
 function listOf(id){
   return (data.lists || []).find((l) => l.id === id);
 }
-function drawLists(focusSelector){
+function drawListRows(){
   const box = document.getElementById('ownLists');
-  if (!box) return;
-  box.innerHTML = (data.lists || []).map((l) => UI.ownListItem(l, listStates[l.id])).join('');
-  if (focusSelector){ const el = box.querySelector(focusSelector); if (el) el.focus(); }
+  if (box) box.innerHTML = (data.lists || []).map(UI.ownListRow).join('');
 }
-// The people folded under a list stay open (or shut) when it's drawn again.
-document.addEventListener('toggle', (e) => {
-  const el = e.target;
-  if (el && el.classList && el.classList.contains('list-members')) listState(el.getAttribute('data-list')).open = el.open;
-}, true);
 
 function listRefusal(d){
   return (COPY.lists.errors[d.reason] && t('lists.errors.' + d.reason)) || sentence(d.error);
@@ -132,13 +127,87 @@ function listRefusal(d){
 async function copyListLink(url){
   try{
     await navigator.clipboard.writeText(url);
-    say('listsNotice', t('lists.copied'));
+    say('listNotice', t('lists.copied'));
   }catch(e){
     window.prompt('', url);
   }
 }
 
-// Making one: a name, nothing else. It goes at the end, open on its link.
+// The sheet's list part again (not the heading), focus on `focus`. What
+// it says (a notice, an error) stays.
+function drawListBody(focus){
+  const box = document.getElementById('listBody');
+  if (!box) return;
+  const kept = ['listNotice', 'listError'].map((id) => { const el = document.getElementById(id); return el ? el.textContent : ''; });
+  box.innerHTML = UI.listSheetBody(ls.st);
+  ['listNotice', 'listError'].forEach((id, i) => { const el = document.getElementById(id); if (el) el.textContent = kept[i]; });
+  const el = focus && box.querySelector(focus);
+  if (el) el.focus();
+}
+function drawListMembers(){
+  const box = document.getElementById('listMembers');
+  if (box) box.innerHTML = UI.listMembersResults(ls.st);
+}
+
+// Everyone on it, newest first (1,000 at most: ten pages).
+async function loadMembers(){
+  const r = await allPages('/me/lists/' + encodeURIComponent(ls.st.list.id) + '/members', 'members', 10);
+  if (!ls.st) return;
+  ls.st.members = r.items;
+}
+
+async function openList(id, opener, extra){
+  const l = listOf(id);
+  if (!l) return;
+  ls.st = Object.assign({ list: l, members: null, query: '', mode: 'members', qr: false, editing: false }, extra || {});
+  activePicker = null;
+  openSheet(UI.listSheet(ls.st), { opener, fallback: 'ownLists', onClose: () => { ls.st = null; drawListRows(); }, onEscape: listEscape });
+  try{
+    await loadMembers();
+  }catch(e){
+    say('listError', t(e instanceof AccountsDown ? 'common.accountsDown' : 'common.unreachable'));
+  }
+  if (ls.st && ls.st.mode === 'members') drawListBody(null);
+}
+
+// Escape: from adding people, back to the list; otherwise closed.
+function listEscape(){
+  if (ls.st && ls.st.mode === 'add') backToList();
+  else closeSheet();
+}
+
+function backToList(said){
+  ls.st.mode = 'members';
+  activePicker = null;
+  swapSheet(UI.listSheet(ls.st), '[data-action="add-people"]');
+  if (said) say('listNotice', said);
+}
+
+// "Add people": the picker, one per list, kept while the page is open
+// (so a second visit doesn't fetch everything again).
+async function addPeople(){
+  const st = ls.st;
+  const id = st.list.id;
+  if (!ls.pickers[id]){
+    ls.pickers[id] = makePicker({
+      kind: 'list', me: data.me, skipList: id,
+      loadTaken: async () => {
+        if (!ls.st || ls.st.list.id !== id || !ls.st.members) await loadMembers();
+        const on = {};
+        (ls.st ? ls.st.members || [] : []).forEach((m) => { on[m.person.id] = 'on_list'; });
+        return on;
+      }
+    });
+  }
+  const p = ls.pickers[id];
+  st.picker = p.start();
+  st.mode = 'add';
+  swapSheet(UI.listSheet(st), '#inviteSearch');
+  await p.load();
+}
+
+// Making one: a name, nothing else. It goes at the end, and its sheet
+// opens with its QR code showing.
 const createForm = document.getElementById('createList');
 if (createForm){
   createForm.addEventListener('submit', (e) => {
@@ -147,35 +216,48 @@ if (createForm){
     const name = input.value.trim();
     if (!name){ input.focus(); return; }
     let refused = '';
+    let made = null;
     busy(document.getElementById('createListBtn'), document.getElementById('listsError'), async () => {
       const { res, data: d } = await api('POST', '/me/lists', { name });
       if (!res.ok){ refused = listRefusal(d); return; }
-      data.lists = (data.lists || []).concat([Object.assign(d.list, { members: [], nextCursor: null })]);
-      listState(d.list.id).qr = true;
+      data.lists = (data.lists || []).concat([d.list]);
       input.value = '';
-      drawLists();
-    }).then(() => { if (refused) say('listsError', refused); });
+      drawListRows();
+      made = d.list;
+    }).then(() => {
+      if (refused) say('listsError', refused);
+      if (made) openList(made.id, document.querySelector('#list-' + made.id + ' .list-open'), { qr: true });
+    });
   });
 }
 
-// Renaming, in place.
-document.addEventListener('submit', (e) => {
-  const form = e.target;
-  if (!form.classList || !form.classList.contains('rename-form')) return;
+// Renaming, in the sheet.
+sheetBox.addEventListener('submit', (e) => {
+  if (e.target.id !== 'renameList') return;
   e.preventDefault();
-  const id = form.getAttribute('data-list');
-  const name = form.querySelector('input').value.trim();
+  const l = ls.st.list;
+  const name = document.getElementById('renameInput').value.trim();
   let refused = '';
-  busy(form.querySelector('button[type=submit]'), document.getElementById('listsError'), async () => {
-    const { res, data: d } = await api('PATCH', '/me/lists/' + encodeURIComponent(id), { name });
+  busy(e.target.querySelector('button[type=submit]'), document.getElementById('listError'), async () => {
+    const { res, data: d } = await api('PATCH', '/me/lists/' + encodeURIComponent(l.id), { name });
     if (!res.ok){ refused = listRefusal(d); return; }
-    Object.assign(listOf(id), { name: d.list.name });
-    listState(id).editing = false;
-    drawLists('#list-' + id + ' [data-action="rename-list"]');
-  }).then(() => { if (refused) say('listsError', refused); });
+    l.name = d.list.name;
+    ls.st.editing = false;
+    swapSheet(UI.listSheet(ls.st), '[data-action="rename-list"]');
+  }).then(() => { if (refused) say('listError', refused); });
+});
+
+sheetBox.addEventListener('input', (e) => {
+  if (e.target.id !== 'memberSearch' || !ls.st) return;
+  ls.st.query = e.target.value;
+  drawListMembers();
 });
 
 onActions({
+  'open-list': (btn) => openList(btn.getAttribute('data-list'), btn),
+  'close-list': () => closeSheet(),
+  'list-back': () => backToList(),
+  'add-people': () => addPeople(),
   'share-list': async (btn) => {
     const url = btn.getAttribute('data-url');
     if (navigator.share){
@@ -185,66 +267,89 @@ onActions({
     copyListLink(url);
   },
   'copy-list': (btn) => copyListLink(btn.getAttribute('data-url')),
-  'toggle-qr': (btn) => {
-    const id = btn.getAttribute('data-list');
-    listState(id).qr = !listState(id).qr;
-    drawLists('#list-' + id + ' [data-action="toggle-qr"]');
+  'toggle-qr': () => {
+    ls.st.qr = !ls.st.qr;
+    drawListBody('[data-action="toggle-qr"]');
   },
-  'rename-list': (btn) => {
-    const id = btn.getAttribute('data-list');
-    listState(id).editing = true;
-    drawLists('#list-' + id + ' .rename-input');
+  'rename-list': () => {
+    ls.st.editing = true;
+    drawListBody('#renameInput');
   },
-  'cancel-rename': (btn) => {
-    const id = btn.getAttribute('data-list');
-    listState(id).editing = false;
-    drawLists('#list-' + id + ' [data-action="rename-list"]');
+  'cancel-rename': () => {
+    ls.st.editing = false;
+    drawListBody('[data-action="rename-list"]');
   },
   // A new link: the old one and its QR code stop working; everyone stays.
   'reset-list': (btn) => {
-    const l = listOf(btn.getAttribute('data-list'));
+    const l = ls.st.list;
     if (!confirm(t('lists.resetConfirm', { name: l.name }))) return;
     let refused = '';
-    busy(btn, document.getElementById('listsError'), async () => {
+    busy(btn, document.getElementById('listError'), async () => {
       const { res, data: d } = await api('POST', '/me/lists/' + encodeURIComponent(l.id) + '/reset-link');
       if (!res.ok){ refused = listRefusal(d); return; }
       Object.assign(l, { code: d.list.code, url: d.list.url });
-      drawLists();
-    }).then(() => { if (refused) say('listsError', refused); });
+      drawListBody('[data-action="reset-list"]');
+    }).then(() => { if (refused) say('listError', refused); });
   },
   'delete-list': (btn) => {
-    const l = listOf(btn.getAttribute('data-list'));
+    const l = ls.st.list;
     if (!confirm(t('lists.deleteConfirm', { name: l.name }))) return;
     let refused = '';
-    busy(btn, document.getElementById('listsError'), async () => {
+    busy(btn, document.getElementById('listError'), async () => {
       const { res, data: d } = await api('DELETE', '/me/lists/' + encodeURIComponent(l.id));
       if (!res.ok && d.reason !== 'list_not_found'){ refused = listRefusal(d); return; }
       data.lists = data.lists.filter((x) => x.id !== l.id);
-      drawLists();
-    }).then(() => { if (refused) say('listsError', refused); });
+      delete ls.pickers[l.id];
+      closeSheet();
+      const first = document.querySelector('#ownLists .list-open') || document.getElementById('newListName');
+      if (first) first.focus();
+    }).then(() => { if (refused) say('listError', refused); });
   },
+  // Taking someone off: asked first; they aren't told.
   'remove-member': (btn) => {
-    const l = listOf(btn.getAttribute('data-list'));
+    const l = ls.st.list;
     const id = btn.getAttribute('data-person');
     if (!confirm(t('lists.removeConfirm', { name: btn.getAttribute('data-name'), list: l.name }))) return;
     let refused = '';
-    busy(btn, document.getElementById('listsError'), async () => {
+    busy(btn, document.getElementById('listError'), async () => {
       const { res, data: d } = await api('DELETE', '/me/lists/' + encodeURIComponent(l.id) + '/members/' + encodeURIComponent(id));
       if (!res.ok && d.reason !== 'not_a_member'){ refused = listRefusal(d); return; }
-      l.members = l.members.filter((m) => m.person.id !== id);
+      ls.st.members = ls.st.members.filter((m) => m.person.id !== id);
       l.memberCount = Math.max(0, l.memberCount - 1);
-      drawLists('#list-' + l.id + ' summary');
-    }).then(() => { if (refused) say('listsError', refused); });
+      drawListBody(ls.st.query ? '#memberSearch' : '[data-action="add-people"]');
+    }).then(() => { if (refused) say('listError', refused); });
   },
-  'more-members': (btn) => {
-    const l = listOf(btn.getAttribute('data-list'));
-    busy(btn, null, async () => {
-      const { res, data: d } = await api('GET', '/me/lists/' + encodeURIComponent(l.id) + '/members?limit=50&cursor=' + encodeURIComponent(l.nextCursor));
-      if (!res.ok) return;
-      l.members = l.members.concat(d.members);
-      l.nextCursor = d.nextCursor;
-      drawLists();
-    });
+  // "Add 5": up to 100 a request (what the API takes); then back to the
+  // list, fetched again, saying how many and what it invited them to.
+  'add-to-list': (btn) => {
+    const st = ls.st;
+    const p = ls.pickers[st.list.id];
+    const ids = p.st.selected.filter(p.pickable);
+    if (!ids.length) return;
+    let refused = '';
+    let added = 0;
+    let invitedTo = 0;
+    let said = '';
+    busy(btn, document.getElementById('inviteError'), async () => {
+      for (let i = 0; i < ids.length; i += 100){
+        const { res, data: d } = await api('POST', '/me/lists/' + encodeURIComponent(st.list.id) + '/members', { personIds: ids.slice(i, i + 100) });
+        if (!res.ok){ refused = d.reason === 'rate_limited' ? t('lists.addLimited') : listRefusal(d); break; }
+        d.added.forEach((x) => { p.st.onList[x.id] = 'on_list'; });
+        d.alreadyOn.forEach((x) => { p.st.onList[x] = 'on_list'; });
+        added += d.added.length;
+        invitedTo = Math.max(invitedTo, d.invitedTo);
+        Object.assign(st.list, { memberCount: d.list.memberCount });
+      }
+      p.st.selected = p.st.selected.filter(p.pickable);
+      if (refused){ p.drawResults(); p.drawTray(); return; }
+      said = (added === 0 ? t('lists.addedNone') : added === 1 ? t('lists.addedOne') : t('lists.addedSome', { count: added }))
+        + (invitedTo ? ' ' + (invitedTo === 1 ? t('lists.invitedThemOne') : t('lists.invitedThem', { count: invitedTo })) : '');
+      backToList(said);
+      await loadMembers();
+      if (!ls.st || ls.st.mode !== 'members') return;
+      const onAdd = document.activeElement && document.activeElement.matches('[data-action="add-people"]');
+      drawListBody(onAdd ? '[data-action="add-people"]' : null);
+    }).then(() => { if (refused) say('inviteError', refused); });
   },
   // Leaving a list you're on: asked first; the owner isn't told.
   'leave-list': (btn) => {
