@@ -120,8 +120,20 @@ const backgrounds = createBackgrounds({ ...backgroundSettings(process.env), meas
 // Places, for the Location field (lib/places.js): Apple Maps, off unless
 // APPLE_MAPS_TEAM_ID, APPLE_MAPS_KEY_ID and APPLE_MAPS_PRIVATE_KEY are
 // all set. Off, the field is plain text.
-const places = createPlaces(placesSettings(process.env));
-if (!places.enabled) console.log('[canopy-events] Apple Maps not set up (APPLE_MAPS_TEAM_ID, APPLE_MAPS_KEY_ID, APPLE_MAPS_PRIVATE_KEY): no place suggestions; the Location field is plain text.');
+const placesSet = placesSettings(process.env);
+const places = createPlaces(placesSet);
+if (places.enabled) {
+  console.log(`[canopy-events] Apple Maps on (team ${placesSet.teamId}, key ${placesSet.keyId}).`);
+} else {
+  // Which piece is missing, never its value.
+  const missing = [['APPLE_MAPS_TEAM_ID', placesSet.teamId], ['APPLE_MAPS_KEY_ID', placesSet.keyId], ['APPLE_MAPS_PRIVATE_KEY', placesSet.privateKey.trim()]]
+    .filter(([, v]) => !v).map(([k]) => k);
+  const pem = placesSet.privateKey;
+  console.log('[canopy-events] Apple Maps off: ' + (missing.length
+    ? 'missing ' + missing.join(', ')
+    : `the private key didn't read (${pem.length} characters, ${pem.split(/\r?\n|\\n/).length} lines, ${/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(pem) ? 'has' : 'no'} BEGIN line, ${/-----END [A-Z ]*PRIVATE KEY-----/.test(pem) ? 'has' : 'no'} END line)`)
+    + '. No place suggestions; the Location field is plain text.');
+}
 const ctx = { store, canopy, auth, notify, backgrounds, places };
 const docsRouter = require('./routes/docs')();
 const apiRouters = [

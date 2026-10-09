@@ -268,7 +268,15 @@ test('places off: no suggestions, no errors, a plain field', async (t) => {
   // The form as drawn (the page also carries ui.js itself).
   const form = html.slice(html.indexOf('<form class="stack editor"'), html.indexOf('</form>'));
   assert.ok(form.includes('id="location"') && !form.includes('role="combobox"') && !form.includes('id="locationList"'));
-  assert.ok(server.output().includes('Apple Maps not set up'));
+  assert.ok(server.output().includes('Apple Maps off: missing APPLE_MAPS_TEAM_ID, APPLE_MAPS_KEY_ID, APPLE_MAPS_PRIVATE_KEY.'));
+});
+
+test('the startup log says why Apple Maps is off, never the key', async (t) => {
+  const server = await startServer({ APPLE_MAPS_TEAM_ID: 'TEAM123456', APPLE_MAPS_KEY_ID: 'KEY1234567', APPLE_MAPS_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nnotakeyatallsecretish\\n' });
+  t.after(() => server.stop());
+  const out = server.output();
+  assert.match(out, /Apple Maps off: the private key didn't read \(\d+ characters, 3 lines, has BEGIN line, no END line\)/);
+  assert.ok(!out.includes('notakeyatallsecretish'));
 });
 
 test("an event's pin: made, edited, refused, and as private as the address", async (t) => {
