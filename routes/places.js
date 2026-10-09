@@ -1,6 +1,8 @@
 // Places, for the Location field (lib/places.js asks Apple Maps):
 //
 //   GET /api/v1/places/autocomplete?q=&near=lat,lng  suggestions as you type
+//     (without near: near Cloudflare's guess at the asker's city, when
+//     its visitor location headers are on, else PLACES_DEFAULT_NEAR)
 //   GET /api/v1/places/{placeId}                     one of them, whole
 //
 // For people who can host (verified), like making an event. 120 calls a
@@ -41,6 +43,11 @@ module.exports = function placesRoutes(ctx) {
     if (req.query.near !== undefined && req.query.near !== '') {
       near = parseNear(req.query.near);
       if (!near) return fail(res, 400, 'bad_near', 'near is a latitude and longitude, like 37.77,-122.42');
+    } else if (req.get('cf-iplatitude') && req.get('cf-iplongitude')) {
+      // Cloudflare's guess at where the asker is, from their IP (its
+      // "Add visitor location headers" transform): city-level, never
+      // stored or logged. Only the bias of their own suggestions.
+      near = parseNear(req.get('cf-iplatitude') + ',' + req.get('cf-iplongitude'));
     }
     if (!places.enabled) return res.json({ enabled: false, results: [] });
     if (q.length < MIN_QUERY) return res.json({ enabled: true, results: [] });

@@ -153,7 +153,7 @@ test('the API: suggestions, a place, the limit, and Apple down', async (t) => {
     assert.ok(!r.text.includes('completionUrl') && !r.text.includes('metadata'));
   });
 
-  await t.test('biased to San Francisco, or near; in the Accept-Language', async () => {
+  await t.test("biased to San Francisco, near, or Cloudflare's guess; in the Accept-Language", async () => {
     await auto(ana, 'valencia', { headers: { 'Accept-Language': 'es-MX,es;q=0.9' } });
     let q = fake.of('/v1/searchAutocomplete').at(-1).query;
     assert.deepEqual(q, { q: 'valencia', searchLocation: '37.77,-122.42', lang: 'es-MX' });
@@ -164,6 +164,14 @@ test('the API: suggestions, a place, the limit, and Apple down', async (t) => {
     const bad = await ana.get('/api/v1/places/autocomplete?q=valencia&near=up');
     assert.equal(bad.status, 400);
     assert.equal(bad.data.reason, 'bad_near');
+    // Without near: Cloudflare's guess at the asker's city, when it sends one.
+    await ana.get('/api/v1/places/autocomplete?q=valencia', { headers: { 'cf-iplatitude': '34.05223', 'cf-iplongitude': '-118.24368' } });
+    assert.equal(fake.of('/v1/searchAutocomplete').at(-1).query.searchLocation, '34.05,-118.24');
+    // near still wins, and a nonsense guess falls back to the default.
+    await ana.get('/api/v1/places/autocomplete?q=mission&near=40.712776,-74.005974', { headers: { 'cf-iplatitude': '34.05', 'cf-iplongitude': '-118.24' } });
+    assert.equal(fake.of('/v1/searchAutocomplete').at(-1).query.searchLocation, '40.71,-74.01');
+    await ana.get('/api/v1/places/autocomplete?q=guerrero', { headers: { 'cf-iplatitude': 'xx', 'cf-iplongitude': '-118.24' } });
+    assert.equal(fake.of('/v1/searchAutocomplete').at(-1).query.searchLocation, '37.77,-122.42');
   });
 
   await t.test('the same question again is answered from memory', async () => {

@@ -3931,3 +3931,13 @@ attendees". The rest:
   against the fake Apple: typing, arrow keys and Enter, a tap, editing
   after a pick, Escape, saving untouched (pin kept), saving typed text
   (private), directions on the event page.
+
+### Suggestions near you (web)
+
+- Without `near`, autocomplete is biased to Cloudflare's guess at the
+  asker's city (its "Add visitor location headers" transform:
+  `cf-iplatitude` / `cf-iplongitude`), then `PLACES_DEFAULT_NEAR`. No
+  browser prompt. The guess is IP-based and city-level, never stored or
+  logged, and only biases that person's own suggestions, so a forged
+  header (only possible by reaching the server around Cloudflare) does
+  nothing worth doing.
