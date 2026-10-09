@@ -3432,3 +3432,80 @@ the inviter (in progress)" above). The rest:
   narrows the sheet to that event's hosts and going/maybe guests and
   ticks nobody. Its first choice ("Everyone") undoes it; typing searches
   within it. It sits under the search box, above lists.
+
+## Date and time picker
+
+- **(You)** A new event gets a 7 PM start (on the event's clock) as soon
+  as its day is picked, as Partiful does, on every device. It only fills
+  an empty time: a time someone chose stays, and an event being edited
+  never gets its time changed when its date is. · UI.startTimeFor in
+  public/ui.js; delete the fillStartTime listeners in views/editor.html.
+- The end follows the existing rule (it moves with the start, keeping
+  the length). The 7 PM default doesn't add an end; "+ End time" then
+  offers three hours after the start (10 PM), as before. If an end
+  existed with no start time (only possible after clearing the time),
+  the empty time had counted as midnight; when 7 PM fills it, that
+  midnight is moved to 7 PM first, so the end moves by the days only,
+  not 19 hours. · Remove the `lastStart +=` line in fillStartTime.
+- **(You)** With a mouse or trackpad (`(hover: hover) and (pointer:
+  fine)`, checked live, so plugging in a mouse or docking an iPad
+  switches it), the date, the start and the end each open one popover
+  under the when row: a month on the left, the time on the right. Phones
+  and tablets keep the system's date and time pickers exactly as before.
+  The native fields stay in the page, hidden, as the values; the popover
+  writes them and fires input and change, so the friendly words, moving
+  the end, the zone, validation and Save are unchanged. Without
+  JavaScript (or before it runs) the old CSS still shows the native
+  fields to a mouse. · `.popover-picks` on `.when-edit` is the switch.
+- The words become buttons in popover mode (role="button" on the
+  existing label, tabindex 0, aria-haspopup="dialog", aria-expanded, and
+  a label like "Date, Saturday, October 10"); the hidden inputs leave
+  the tab order. The server's markup is unchanged, so the editor still
+  renders and works the same on a touch screen. A refusal from the API
+  about the start or end focuses that button instead of the hidden
+  field.
+- **Past days:** dimmed and not pickable (aria-disabled) for a new event
+  and for an event that starts in the future. An event whose saved
+  start is already in the past (editing an old one) has nothing held
+  back, so it can be corrected to any day. "Today" is today on the
+  event's clock. The end's calendar starts at the start's day. · minDay
+  in views/editor.html.
+- **Any minute:** the time field at the top of the time column accepts
+  "7:57", "7:57 pm", "757p", "1957", "19:57", "7p", "12am", "noon" and
+  the like, on Enter or when it loses focus. An odd minute (7:57 PM) is
+  shown in the quarter-hour list at its sorted place, highlighted as
+  the choice, rather than only in the field, so the list always shows
+  what's picked. Unreadable text says "That isn't a time. Try one like
+  7:57 PM." under the field and changes nothing.
+- **"7:57" with no AM or PM** is read in the same half of the day as the
+  time it replaces (7 PM if none), so after the 7 PM default "7:57"
+  means 7:57 PM, and in a morning event it means 7:57 AM. A leading zero
+  ("07:57", "0:05"), 13 to 23, and 12 (noon) are taken as written. For
+  an end with no time yet, the reference is three hours after the
+  start. · UI.parseClock's `near`; pass nothing to read every bare time
+  as written.
+- The calendar always draws six weeks (the month's days plus the months
+  around it, dimmed), so the popover doesn't change height from month to
+  month. Sunday first, as en-US and the rest of the page's words; times
+  are 12-hour with AM/PM, as clockWords says them.
+- Picking a day keeps the popover open (the top line shows the day and
+  time picked); picking a time from the list, or Enter in the time field,
+  closes it and returns focus to what opened it. Escape closes without
+  taking an unsubmitted typed time; a click outside closes after taking
+  it (leaving the field takes it). The end's day alone, with no end time
+  yet, waits for a time before anything is written.
+- Keyboard: the dialog takes focus on open (the day, from the date; the
+  time field, from a time). The month is an ARIA grid with arrows, Page
+  Up/Down (Shift for a year), Home/End to the week's ends, Enter or Space
+  to pick; one day takes Tab. The times are a listbox (arrows, Page
+  Up/Down, Home/End, Enter) using aria-activedescendant; the down arrow
+  in the time field goes to it. Tab stays inside the popover. The popover
+  is a non-modal dialog (aria-modal isn't set): a click outside closes
+  it rather than being blocked.
+- Styled as the menus and the home calendar popover: the event's solid
+  card color (--theme-card-solid), the glass edge, the accent for the
+  picked day and time, a ring in the link color for today. No library.
+- **Fix:** "+ End time" called `openPicker()`, removed with showPicker()
+  earlier, so it threw after setting the end. It now opens the end's
+  popover with a mouse or trackpad and only focuses the end field on a
+  touch screen (no system picker is forced open there, as before).

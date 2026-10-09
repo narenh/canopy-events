@@ -76,7 +76,8 @@ function showRefusal(d){
   const el = (fieldId && $(fieldId + 'Error')) || $('formError');
   el.textContent = words;
   const focusId = fieldId && (fieldId in FOCUS_FOR ? FOCUS_FOR[fieldId] : fieldId);
-  const input = focusId && $(focusId);
+  // With the popover, the date or time's own button (the field's hidden).
+  const input = focusId && (fine && picks[focusId] ? picks[focusId] : $(focusId));
   if (input && input.focus) input.focus();
 }
 
@@ -123,6 +124,7 @@ function drawWhen(){
   const hasEnd = !!endsAt.value;
   $('endPart').hidden = !hasEnd;
   $('endAdd').hidden = hasEnd;
+  labelPicks();
 }
 
 // The start as a wall-clock time in milliseconds (for moving the end),
@@ -137,6 +139,22 @@ function wallValue(ms){
   return new Date(ms).toISOString().slice(0, 16);
 }
 let lastStart = startWall();
+
+// A new event whose day is picked with no start time yet starts at 7 PM
+// (on the event's clock, as every time here). A time someone chose stays,
+// and an event being edited keeps its own. Runs before startMoved: the
+// start had no time, which moving the end counts as midnight, so that's
+// moved to 7 PM too and an end only moves by the days.
+function fillStartTime(){
+  const time = UI.startTimeFor(editing, startDate.value, startTime.value);
+  if (time === startTime.value) return;
+  startTime.value = time;
+  const [hh, mm] = time.split(':').map(Number);
+  if (lastStart != null) lastStart += (hh * 60 + mm) * 60000;
+}
+startDate.addEventListener('input', fillStartTime);
+startDate.addEventListener('change', fillStartTime);
+
 function startMoved(){
   const now = startWall();
   if (endsAt.value && lastStart != null && now != null && now !== lastStart){
@@ -154,20 +172,378 @@ startTime.addEventListener('change', startMoved);
 endsAt.addEventListener('input', drawWhen);
 endsAt.addEventListener('change', drawWhen);
 
-// No showPicker() on click: with a mouse or trackpad the fields
-// themselves show (events.css), and a forced pop-up swallowed typing in
-// Chrome and opened nothing for times in desktop Safari. A phone opens
-// its own wheel when the see-through field is tapped.
+// No showPicker() on click: a forced pop-up swallowed typing in Chrome
+// and opened nothing for times in desktop Safari. A phone or a tablet
+// opens its own wheel when the see-through field is tapped. With a mouse
+// or trackpad, the date and times open the popover below instead.
+
+// ---------------- The date and time popover ----------------
+//
+// With a mouse or trackpad (hover and a fine pointer, checked live), the
+// date, the start and the end each open one popover under the when row:
+// the month on the left (past days dimmed, unless the event already
+// started in the past), the time on the right, typed (any minute: 7:57)
+// or picked from every quarter hour. The native fields stay underneath,
+// hidden, as the values: the popover writes them and fires input and
+// change, so the 7 PM default, moving the end with the start, the words,
+// saving and the time zone all work as with the browser's own pickers.
+// Picking a day keeps it open; picking a time (or Enter in the time
+// field) closes it. Phones and tablets keep the system's pickers.
+const fineQuery = window.matchMedia ? window.matchMedia('(hover: hover) and (pointer: fine)') : null;
+let fine = false;
+const whenBox = form.querySelector('.when-edit');
+const picks = { startDate: $('startDatePick'), startTime: $('startTimePick'), endsAt: $('endsAtPick') };
+const PICK_LABEL = { startDate: 'editor.date', startTime: 'editor.startTime', endsAt: 'editor.endTime' };
+// The popover's state: which ('start' or 'end'), what opened it, the
+// month shown (its first day), the day that takes Tab, the day and time
+// picked so far, and the time list's highlighted row.
+const pop = { el: null, mode: null, opener: null, view: '', focus: '', day: '', time: '', active: -1 };
+
+// Each piece, a button for the popover: "Date, Saturday, October 10".
+function labelPicks(){
+  Object.keys(picks).forEach((id) => {
+    if (!fine){ picks[id].removeAttribute('aria-label'); return; }
+    const words = picks[id].classList.contains('empty') ? '' : $(id + 'Text').textContent;
+    picks[id].setAttribute('aria-label', t(PICK_LABEL[id]) + (words ? ', ' + words : ''));
+  });
+}
+
+function setFine(on){
+  fine = on;
+  whenBox.classList.toggle('popover-picks', on);
+  Object.keys(picks).forEach((id) => {
+    const label = picks[id];
+    if (on){
+      label.setAttribute('tabindex', '0');
+      label.setAttribute('role', 'button');
+      label.setAttribute('aria-haspopup', 'dialog');
+      label.setAttribute('aria-expanded', 'false');
+      $(id).setAttribute('tabindex', '-1');
+    } else {
+      ['tabindex', 'role', 'aria-haspopup', 'aria-expanded'].forEach((a) => label.removeAttribute(a));
+      $(id).removeAttribute('tabindex');
+    }
+  });
+  if (!on) closeWhen(false);
+  labelPicks();
+}
+
+// Today, on the event's clock.
+function todayThere(){
+  return UI.localInput(new Date().toISOString(), zoneInput.value).slice(0, 10);
+}
+// The first day that may be picked: today, or for the end, the start's
+// day. An event that already started in the past (editing an old one)
+// can be moved anywhere: its days aren't held back.
+const startedInPast = editing && Date.parse(data.event.startsAt) < Date.now();
+function minDay(){
+  if (pop.mode === 'end' && startDate.value) return startDate.value;
+  return startedInPast ? '' : todayThere();
+}
+function monthOf(date){
+  return date.slice(0, 8) + '01';
+}
+
+function fire(input){
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+// Reads the picked day and time back from the fields (the start's day
+// may have just filled in 7 PM).
+function readPicked(){
+  if (pop.mode === 'start'){
+    pop.day = startDate.value;
+    pop.time = startTime.value;
+  } else if (endsAt.value){
+    pop.day = endsAt.value.slice(0, 10);
+    pop.time = endsAt.value.slice(11, 16);
+  }
+}
+// Writes the day and time picked into the fields. An end needs both; a
+// day or a time alone waits for the other.
+function writePicked(){
+  if (pop.mode === 'start'){
+    if (pop.day && pop.day !== startDate.value){ startDate.value = pop.day; fire(startDate); }
+    if (pop.time && pop.time !== startTime.value){ startTime.value = pop.time; fire(startTime); }
+  } else if (pop.day && pop.time){
+    const value = pop.day + 'T' + pop.time;
+    if (value !== endsAt.value){ endsAt.value = value; fire(endsAt); }
+  }
+  readPicked();
+}
+
+function buildPop(){
+  whenBox.insertAdjacentHTML('beforeend', UI.whenPopover());
+  pop.el = $('whenPop');
+  pop.el.querySelectorAll('input').forEach(noAutofill);
+  const field = $('whenPopTime');
+  const list = $('whenPopTimes');
+  pop.el.addEventListener('click', (e) => {
+    const nav = e.target.closest('[data-wp]');
+    if (nav){ moveMonth(nav.getAttribute('data-wp') === 'next' ? 1 : -1); return; }
+    const day = e.target.closest('.wp-day');
+    if (day){ pickDay(day.getAttribute('data-date')); return; }
+    const opt = e.target.closest('.wp-opt');
+    if (opt) pickTime(opt.getAttribute('data-time'));
+  });
+  $('whenPopGrid').addEventListener('keydown', (e) => {
+    const next = UI.calendarMove(pop.focus, e.key, e.shiftKey);
+    if (!next) return;
+    e.preventDefault();
+    pop.focus = next;
+    pop.view = monthOf(next);
+    drawMonth();
+    focusDay();
+  });
+  field.addEventListener('focus', () => field.select());
+  field.addEventListener('input', () => showTimeError(false));
+  field.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter'){
+      e.preventDefault();
+      if (typedTime()) closeWhen(true);
+    } else if (e.key === 'ArrowDown'){
+      e.preventDefault();
+      list.focus();
+    }
+  });
+  // Leaving the field (a click elsewhere in the popover, or outside it)
+  // takes what's typed, if it's a time.
+  field.addEventListener('blur', () => { if (!pop.el.hidden) typedTime(); });
+  list.addEventListener('focus', () => { if (pop.active < 0) setActive(selectedIndex()); });
+  list.addEventListener('keydown', (e) => {
+    const opts = options();
+    if (!opts.length) return;
+    let at = pop.active;
+    if (e.key === 'ArrowDown') at = Math.min(at + 1, opts.length - 1);
+    else if (e.key === 'ArrowUp') at = Math.max(at - 1, 0);
+    else if (e.key === 'Home') at = 0;
+    else if (e.key === 'End') at = opts.length - 1;
+    else if (e.key === 'PageDown') at = Math.min(at + 8, opts.length - 1);
+    else if (e.key === 'PageUp') at = Math.max(at - 8, 0);
+    else if (e.key === 'Enter' || e.key === ' '){
+      e.preventDefault();
+      if (opts[at]) pickTime(opts[at].getAttribute('data-time'));
+      return;
+    } else return;
+    e.preventDefault();
+    setActive(at);
+  });
+}
+
+function options(){
+  return Array.from($('whenPopTimes').querySelectorAll('.wp-opt'));
+}
+function selectedIndex(){
+  const opts = options();
+  const on = opts.findIndex((o) => o.getAttribute('aria-selected') === 'true');
+  if (on >= 0) return on;
+  // Nothing picked: the time it would most likely be.
+  const near = nearTime();
+  return Math.max(0, opts.findIndex((o) => o.getAttribute('data-time') >= near));
+}
+function setActive(i){
+  const opts = options();
+  opts.forEach((o, j) => o.classList.toggle('active', j === i));
+  pop.active = i;
+  const list = $('whenPopTimes');
+  if (opts[i]){
+    list.setAttribute('aria-activedescendant', opts[i].id);
+    const top = opts[i].offsetTop;
+    if (top < list.scrollTop) list.scrollTop = top;
+    else if (top + opts[i].offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = top + opts[i].offsetHeight - list.clientHeight;
+  } else list.removeAttribute('aria-activedescendant');
+}
+// The time a bare "7:57" is read near: the one it replaces, or for an
+// end with none, three hours after the start, or 7 PM.
+function nearTime(){
+  if (pop.time) return pop.time;
+  if (pop.mode === 'end' && startTime.value){
+    const [hh, mm] = startTime.value.split(':').map(Number);
+    const m = (hh * 60 + mm + 180) % 1440;
+    return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  }
+  return UI.DEFAULT_START;
+}
+
+function drawMonth(){
+  const [y, m] = pop.view.split('-').map(Number);
+  $('whenPopMonth').textContent = UI.monthWords(y, m);
+  // The day that takes Tab is in the month shown.
+  if (!pop.focus || monthOf(pop.focus) !== pop.view){
+    const today = todayThere();
+    pop.focus = pop.day && monthOf(pop.day) === pop.view ? pop.day : (monthOf(today) === pop.view ? today : pop.view);
+  }
+  $('whenPopGrid').innerHTML = UI.calendarMonth(y, m, { selected: pop.day, today: todayThere(), min: minDay(), focus: pop.focus });
+}
+function focusDay(){
+  const b = $('whenPopGrid').querySelector('[data-date="' + pop.focus + '"]');
+  if (b) b.focus();
+}
+function drawTimes(){
+  $('whenPopTimes').innerHTML = UI.timeOptions(pop.time);
+  pop.active = -1;
+  $('whenPopTimes').removeAttribute('aria-activedescendant');
+  // The time picked (or the likeliest), in the middle of the list.
+  const opts = options();
+  const at = opts[selectedIndex()];
+  const list = $('whenPopTimes');
+  if (at) list.scrollTop = at.offsetTop - (list.clientHeight - at.offsetHeight) / 2;
+}
+function drawTop(){
+  $('whenPopChosen').textContent = UI.pickedWords(pop.day, pop.time);
+  if (document.activeElement !== $('whenPopTime')) $('whenPopTime').value = UI.clockWords(pop.time);
+}
+
+function moveMonth(n){
+  pop.view = UI.addMonths(pop.view, n);
+  pop.focus = UI.addMonths(pop.focus || pop.view, n);
+  drawMonth();
+}
+
+function pickDay(date){
+  const b = $('whenPopGrid').querySelector('[data-date="' + date + '"]');
+  if (!b || b.getAttribute('aria-disabled') === 'true') return;
+  pop.day = date;
+  pop.focus = date;
+  if (monthOf(date) !== pop.view) pop.view = monthOf(date);
+  const hadTime = pop.time;
+  writePicked();
+  drawMonth();
+  focusDay();
+  drawTop();
+  if (pop.time !== hadTime) drawTimes();
+}
+
+function pickTime(time){
+  showTimeError(false);
+  pop.time = time;
+  writePicked();
+  closeWhen(true);
+}
+
+function showTimeError(on){
+  $('whenPopTimeError').textContent = on ? t('editor.pickerBadTime') : '';
+  if (on) $('whenPopTime').setAttribute('aria-invalid', 'true');
+  else $('whenPopTime').removeAttribute('aria-invalid');
+}
+// What's typed in the time field, taken: true when it's a time (or
+// nothing new), false with the error shown when it isn't.
+function typedTime(){
+  const field = $('whenPopTime');
+  const text = field.value.trim();
+  if (!text || text === UI.clockWords(pop.time)){ showTimeError(false); return true; }
+  const time = UI.parseClock(text, nearTime());
+  if (!time){ showTimeError(true); return false; }
+  showTimeError(false);
+  pop.time = time;
+  writePicked();
+  field.value = UI.clockWords(pop.time);
+  drawTop();
+  drawTimes();
+  return true;
+}
+
+function placePop(){
+  // Under the start and end times, from the row's left edge.
+  const row = whenBox.querySelector('.when-time');
+  pop.el.style.top = (row.offsetTop + row.offsetHeight + 10) + 'px';
+}
+
+function openWhen(mode, opener, part){
+  if (!pop.el) buildPop();
+  if (!pop.el.hidden) closeWhen(false);
+  pop.mode = mode;
+  pop.opener = opener;
+  pop.day = mode === 'start' ? startDate.value : (startDate.value || '');
+  pop.time = '';
+  readPicked();
+  pop.focus = '';
+  pop.view = monthOf(pop.day || (mode === 'end' && startDate.value) || todayThere());
+  pop.el.setAttribute('aria-label', t(mode === 'start' ? 'editor.pickerStart' : 'editor.pickerEnd'));
+  $('whenPopKind').textContent = t(mode === 'start' ? 'editor.pickerStarts' : 'editor.pickerEnds');
+  showTimeError(false);
+  $('whenPopTime').value = '';
+  pop.el.hidden = false;
+  placePop();
+  form.classList.add('menu-open');
+  opener.setAttribute('aria-expanded', 'true');
+  drawMonth();
+  drawTop();
+  drawTimes();
+  pop.el.scrollIntoView({ block: 'nearest' });
+  if (part === 'time') $('whenPopTime').focus({ preventScroll: true });
+  else {
+    const b = $('whenPopGrid').querySelector('[data-date="' + pop.focus + '"]');
+    if (b) b.focus({ preventScroll: true });
+  }
+}
+
+function closeWhen(returnFocus){
+  if (!pop.el || pop.el.hidden) return;
+  pop.el.hidden = true;
+  form.classList.remove('menu-open');
+  if (pop.opener){
+    pop.opener.setAttribute('aria-expanded', 'false');
+    if (returnFocus) pop.opener.focus();
+  }
+}
+
+// A click on the date or a time opens the popover (on the same one
+// again, shuts it); Enter, Space or the down arrow on it, too.
+function pickOpened(label){
+  const id = label.id.replace(/Pick$/, '');
+  const mode = id === 'endsAt' ? 'end' : 'start';
+  if (pop.el && !pop.el.hidden && pop.opener === label){ closeWhen(false); return; }
+  openWhen(mode, label, id === 'startDate' ? 'day' : 'time');
+}
+whenBox.addEventListener('click', (e) => {
+  if (!fine) return;
+  const label = e.target.closest('.pick');
+  if (!label || !whenBox.contains(label)) return;
+  e.preventDefault();
+  pickOpened(label);
+});
+whenBox.addEventListener('keydown', (e) => {
+  if (!fine || !e.target.classList.contains('pick')) return;
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown'){
+    e.preventDefault();
+    pickOpened(e.target);
+  }
+});
+// A click anywhere else shuts it.
+document.addEventListener('click', (e) => {
+  if (!pop.el || pop.el.hidden) return;
+  if (e.target.closest('#whenPop') || (e.target.closest('.pick') && whenBox.contains(e.target))) return;
+  closeWhen(false);
+}, true);
+// Escape shuts it and goes back to what opened it; Tab stays inside.
+document.addEventListener('keydown', (e) => {
+  if (!pop.el || pop.el.hidden) return;
+  if (e.key === 'Escape'){ e.preventDefault(); closeWhen(true); return; }
+  if (e.key !== 'Tab') return;
+  const inside = [pop.el.querySelector('[data-wp="prev"]'), pop.el.querySelector('[data-wp="next"]'),
+    $('whenPopGrid').querySelector('[tabindex="0"]'), $('whenPopTime'), $('whenPopTimes')].filter(Boolean);
+  const i = inside.indexOf(document.activeElement);
+  if (e.shiftKey && i <= 0){ e.preventDefault(); inside[inside.length - 1].focus(); }
+  else if (!e.shiftKey && i === inside.length - 1){ e.preventDefault(); inside[0].focus(); }
+});
+
+if (fineQuery){
+  setFine(fineQuery.matches);
+  const onChange = (e) => setFine(e.matches);
+  if (fineQuery.addEventListener) fineQuery.addEventListener('change', onChange);
+  else if (fineQuery.addListener) fineQuery.addListener(onChange);
+}
 
 onActions({
   // A new end: three hours after the start (or none yet, with no start),
-  // then the picker to change it.
+  // then the picker to change it (the popover, with a mouse or trackpad).
   'add-end': () => {
     const s = startWall();
     if (s != null && startTime.value) endsAt.value = wallValue(s + 3 * 3600e3);
     drawWhen();
-    endsAt.focus();
-    openPicker(endsAt);
+    if (fine) openWhen('end', picks.endsAt, 'time');
+    else endsAt.focus();
   },
   'clear-end': () => {
     endsAt.value = '';

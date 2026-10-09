@@ -2282,6 +2282,194 @@
     return fmt(ms, 'UTC', { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + time;
   }
 
+  // ---------------- The date and time picker ----------------
+  //
+  // With a mouse or trackpad, the editor's date and times open one
+  // popover (views/editor.html): a month on the left, a time on the right.
+  // Everything here is plain dates ("2026-10-10") and clock times
+  // ("19:57"), counted in UTC milliseconds, so there's no zone and no
+  // daylight-saving change to trip on: a day is always 86,400,000 ms.
+
+  // A new event's start, once it has a day: 7 PM (as Partiful does).
+  const DEFAULT_START = '19:00';
+  const DAY_MS = 86400e3;
+
+  // The start time a new event gets when its day is picked: 7 PM, unless
+  // it has a time already. An event being edited keeps its own.
+  function startTimeFor(editing, date, time) {
+    return !editing && date && !time ? DEFAULT_START : time;
+  }
+
+  function plainMs(date) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date || ''));
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null;
+  }
+  function plainOf(ms) {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  function addDays(date, n) {
+    const ms = plainMs(date);
+    return ms == null ? '' : plainOf(ms + n * DAY_MS);
+  }
+  // The same day `n` months on, or that month's last day when it's
+  // shorter (January 31 + 1 is February 28 or 29).
+  function addMonths(date, n) {
+    const ms = plainMs(date);
+    if (ms == null) return '';
+    const d = new Date(ms);
+    const first = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1));
+    const y = first.getUTCFullYear();
+    const m = first.getUTCMonth();
+    const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    return plainOf(Date.UTC(y, m, Math.min(d.getUTCDate(), last)));
+  }
+
+  // A month to draw: six weeks, Sunday first (en-US, as the page's
+  // words), each day { date, day, inMonth }. The days before the 1st and
+  // after the last are the months around it. Always six rows, so the
+  // popover doesn't change height from month to month.
+  function monthGrid(year, month) {
+    const first = Date.UTC(year, month - 1, 1);
+    const start = first - new Date(first).getUTCDay() * DAY_MS;
+    const weeks = [];
+    for (let w = 0; w < 6; w++) {
+      const week = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start + (w * 7 + i) * DAY_MS);
+        week.push({ date: plainOf(d.getTime()), day: d.getUTCDate(), inMonth: d.getUTCMonth() === month - 1 });
+      }
+      weeks.push(week);
+    }
+    return weeks;
+  }
+
+  // Where a key moves the calendar's focus from `date`: the arrows by a
+  // day or a week, Page Up and Down by a month (with Shift, a year), Home
+  // and End to the week's first and last day. null for any other key.
+  function calendarMove(date, key, shift) {
+    const ms = plainMs(date);
+    if (ms == null) return null;
+    const weekday = new Date(ms).getUTCDay();
+    switch (key) {
+      case 'ArrowLeft': return addDays(date, -1);
+      case 'ArrowRight': return addDays(date, 1);
+      case 'ArrowUp': return addDays(date, -7);
+      case 'ArrowDown': return addDays(date, 7);
+      case 'PageUp': return addMonths(date, shift ? -12 : -1);
+      case 'PageDown': return addMonths(date, shift ? 12 : 1);
+      case 'Home': return addDays(date, -weekday);
+      case 'End': return addDays(date, 6 - weekday);
+      default: return null;
+    }
+  }
+
+  // A time as typed, as "HH:MM" (24-hour), or null when it isn't one:
+  // "7:57", "7:57 pm", "757p", "1957", "19:57", "7p", "12am", "0:05",
+  // "noon". Any minute goes. With no AM or PM, an hour from 1 to 11 typed
+  // without a leading zero is taken in the same half of the day as
+  // `near` (the time it's replacing, "19:00" if none), so "7:57" after
+  // 7 PM is 7:57 PM; "07:57", "0:05" and "13:00" are read as written, and
+  // 12 is noon.
+  function parseClock(text, near) {
+    const s = String(text || '').trim().toLowerCase();
+    if (s === 'noon') return '12:00';
+    if (s === 'midnight') return '00:00';
+    const m = /^(\d{1,2})(?:[:.h]?(\d{2}))?\s*(?:([ap])\.?(?:m\.?)?)?$/.exec(s);
+    if (!m) return null;
+    let h = +m[1];
+    const min = m[2] ? +m[2] : 0;
+    if (min > 59) return null;
+    if (m[3]) {
+      if (h < 1 || h > 12) return null;
+      h = (h % 12) + (m[3] === 'p' ? 12 : 0);
+    } else {
+      if (h > 23) return null;
+      const bare = h >= 1 && h <= 11 && m[1][0] !== '0';
+      const nearHour = /^(\d{2}):\d{2}/.test(String(near || '')) ? +String(near).slice(0, 2) : null;
+      if (bare && nearHour != null && nearHour >= 12) h += 12;
+    }
+    return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+  }
+
+  // The times to pick from: every quarter hour, and `chosen` in its place
+  // when it's between them (7:57 PM between 7:45 and 8:00).
+  function timeSlots(chosen) {
+    const slots = [];
+    for (let m = 0; m < 24 * 60; m += 15) slots.push(String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'));
+    if (/^\d{2}:\d{2}$/.test(String(chosen || '')) && !slots.includes(chosen)) {
+      slots.push(chosen);
+      slots.sort();
+    }
+    return slots;
+  }
+
+  // The top of the popover: what's picked so far, in the page's words.
+  function pickedWords(date, time) {
+    const day = dayWords(date);
+    const clock = clockWords(time);
+    if (day && clock) return t('editor.pickerAt', { day, time: clock });
+    return day || clock || t('editor.pickerNothing');
+  }
+
+  // The popover's frame; the month and the times are drawn into it.
+  function whenPopover() {
+    return '<div class="when-pop" id="whenPop" role="dialog" aria-label="' + tx('editor.pickerStart') + '" hidden>'
+      + '<div class="wp-top"><span class="wp-kind" id="whenPopKind"></span><span class="wp-chosen" id="whenPopChosen" aria-live="polite"></span></div>'
+      + '<div class="wp-body"><div class="wp-cal">'
+      + '<div class="wp-month"><button type="button" class="wp-nav" data-wp="prev" aria-label="' + tx('editor.pickerPrevMonth') + '">'
+      + '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M14.5 6l-6 6 6 6"/></svg></button>'
+      + '<h2 class="wp-month-name" id="whenPopMonth" aria-live="polite"></h2>'
+      + '<button type="button" class="wp-nav" data-wp="next" aria-label="' + tx('editor.pickerNextMonth') + '">'
+      + '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M9.5 6l6 6-6 6"/></svg></button></div>'
+      + '<table class="wp-grid" id="whenPopGrid" role="grid" aria-labelledby="whenPopMonth"></table></div>'
+      + '<div class="wp-time"><label class="sr-only" for="whenPopTime">' + tx('editor.pickerTime') + '</label>'
+      + '<input type="text" id="whenPopTime" class="wp-time-input" placeholder="' + tx('editor.pickerTimePlaceholder') + '" autocomplete="off" spellcheck="false" aria-describedby="whenPopTimeError">'
+      + '<div class="error wp-error" id="whenPopTimeError" role="alert"></div>'
+      + '<ul class="wp-times" id="whenPopTimes" role="listbox" tabindex="0" aria-label="' + tx('editor.pickerTimes') + '"></ul></div>'
+      + '</div></div>';
+  }
+
+  // One month as the grid's rows: the weekdays, then six weeks of day
+  // buttons. `o` is { selected, today, min, focus }: the picked day
+  // (highlighted), today (marked), the first day that may be picked
+  // (earlier ones dimmed), and the day that takes Tab (the others are
+  // reached with the arrows).
+  function calendarMonth(year, month, o) {
+    o = o || {};
+    let h = '<thead><tr>';
+    // Sunday 2000-01-02 onwards: the weekdays' letters and names.
+    for (let i = 0; i < 7; i++) {
+      const ms = Date.UTC(2000, 0, 2 + i);
+      h += '<th scope="col" abbr="' + esc(fmt(ms, 'UTC', { weekday: 'long' })) + '"><span aria-hidden="true">' + esc(fmt(ms, 'UTC', { weekday: 'narrow' })) + '</span></th>';
+    }
+    h += '</tr></thead><tbody>';
+    monthGrid(year, month).forEach((week) => {
+      h += '<tr>';
+      week.forEach((d) => {
+        const past = !!(o.min && d.date < o.min);
+        const cls = 'wp-day' + (d.inMonth ? '' : ' out') + (d.date === o.today ? ' today' : '');
+        h += '<td role="gridcell"' + (d.date === o.selected ? ' aria-selected="true"' : '') + '>'
+          + '<button type="button" class="' + cls + '" data-date="' + d.date + '" tabindex="' + (d.date === o.focus ? '0' : '-1') + '"'
+          + ' aria-label="' + esc(fmt(plainMs(d.date), 'UTC', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })) + '"'
+          + (d.date === o.today ? ' aria-current="date"' : '') + (past ? ' aria-disabled="true"' : '') + '>' + d.day + '</button></td>';
+      });
+      h += '</tr>';
+    });
+    return h + '</tbody>';
+  }
+
+  // The month's name over the grid: "October 2026".
+  function monthWords(year, month) {
+    return fmt(Date.UTC(year, month - 1, 1), 'UTC', { month: 'long', year: 'numeric' });
+  }
+
+  // The time list's options, `chosen` selected (and in the list wherever
+  // it falls), each said as the page says times.
+  function timeOptions(chosen) {
+    return timeSlots(chosen).map((time) => '<li role="option" class="wp-opt" id="whenPopTime-' + time.replace(':', '') + '" data-time="' + time + '"'
+      + ' aria-selected="' + (time === chosen ? 'true' : 'false') + '">' + esc(clockWords(time)) + '</li>').join('');
+  }
+
   const ICON_CAMERA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.2 3a2 2 0 0 0-1.7.9L6.6 5.3H5a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V8.3a3 3 0 0 0-3-3h-1.6l-.9-1.4A2 2 0 0 0 14.8 3zM12 8.2a4.6 4.6 0 1 1 0 9.2 4.6 4.6 0 0 1 0-9.2zm0 2a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2z"/></svg>';
   // A picture: a frame, a sun and two hills (the classic image-file icon).
   // A calendar: a page with two rings and a grid of days.
@@ -2616,6 +2804,7 @@
   return {
     esc, tx, txStrong, localInput, fromLocalInput, editorForm, safeUrl, fmt, when, whenShort, whenPreview, whenHead, whenRow, relativeWhen, phaseOf, zoneAbbr, zoneCity, sameClock,
     zoneName, zoneOffset, offsetWords, nearbyZones, allZones, MAIN_ZONES, zoneMenuItems, zoneRow, dayWords, clockWords, endWords,
+    startTimeFor, DEFAULT_START, addDays, addMonths, monthGrid, calendarMove, parseClock, timeSlots, pickedWords, whenPopover, calendarMonth, monthWords, timeOptions,
     fullName, initials, avatar, personRow, coverUrl, coverSrcset, coverSizes, coverImg, coverArt, coverArtStyle, plusGuests, themeStyle, themeColors, themeKeyOf, themeWords, accentKeyOf, accentColors, accentSliderOf, accentOfSlider, accentWords, WHITE, turnHex, isHue, hueFromPixels, sliderOf, keyOfSlider, THEME_DEFAULT_HUE, SLIDER_GREY, SLIDER_MAX, spotsLine, countsLine, guestsShown,
     backgroundGroups, backgroundSheet, tmdbCredit,
     eventPage, details, guestMenu, detailsBlock, detailRow, detailEditRow, detailsEditor, linkHost, linkText, linkTextPlaceholder, DETAIL_TYPES, rsvpSection, hostSection, friendsGoingSection, guestsSection, attendSummary, attendPeople, attendRow, ATTEND_SLOTS, signedOutSection, wallSection, wallEntry, wallSentence, ago,
