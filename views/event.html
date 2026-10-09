@@ -440,14 +440,7 @@ onActions({
     }).then(() => { if (words) show('joinListError', words); });
   },
 
-  lists: async () => {
-    data.showLists = true;
-    draw();
-    const box = document.getElementById('eventLists');
-    if (box) box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    try{ await loadMyLists(); }catch(e){ data.myLists = []; }
-    draw();
-  },
+  lists: () => openLists(),
   'attach-list': (btn) => {
     const name = btn.getAttribute('data-name');
     if (Number(btn.getAttribute('data-count')) > 0 && !confirm(t('lists.attachConfirm', { list: name }))) return;
@@ -763,6 +756,24 @@ if (new URLSearchParams(location.search).has('invite')){
   if (btn && viewer().canEdit) openInvite(btn);
 }
 
+// "Lists…": the lists on the event, and the host's own to put on it.
+async function openLists(){
+  data.showLists = true;
+  draw();
+  const box = document.getElementById('eventLists');
+  if (box) box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  try{ await loadMyLists(); }catch(e){ data.myLists = []; }
+  draw();
+}
+
+// ?lists=1: Lists… opens with the page. A duplicate lands here when the
+// event it copied had the host's lists on it (views/editor.html), which
+// aren't copied: attaching one invites everyone on it.
+if (new URLSearchParams(location.search).has('lists')){
+  history.replaceState(null, '', location.pathname + location.hash);
+  if (viewer().canEdit) openLists();
+}
+
 onActions({
   answer: (btn) => {
     const status = btn.getAttribute('data-status');
@@ -789,6 +800,13 @@ onActions({
   },
   'optout-invites': (btn) => optoutChange(btn, 'PUT'),
   'allow-invites': (btn) => optoutChange(btn, 'DELETE'),
+
+  // A new event like this one: the editor, filled in from it, with no
+  // date or times (routes/pages.js /new?from=). Nothing is made until
+  // it's saved there.
+  duplicate: () => {
+    window.location.href = '/new?from=' + encodeURIComponent(data.event.id);
+  },
 
   // The co-hosts, from the menu: shown in the host's area.
   cohosts: () => {

@@ -91,6 +91,13 @@ paths:
         creator and only host. Limited to 20 a day per person (429
         `rate_limited`). Fields left out take their defaults; fields this
         server doesn't know are ignored.
+
+        A duplicate (`GET /api/v1/events/{id}/duplicate-draft`) sends
+        `coverFrom`, the original's id, to start with a copy of its cover.
+        Refused, with nothing made, unless you host that event (403
+        `hosts_only`) and it's an event (400 `bad_cover_from`) that still
+        has a cover (400 `no_cover`: another host took it off meanwhile;
+        send it again without `coverFrom`).
       requestBody:
         required: true
         content:
@@ -220,6 +227,51 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/EventNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/events/{id}/duplicate-draft:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Events]
+      operationId: getDuplicateDraft
+      summary: What a copy of an event starts with
+      description: |
+        Duplicating an event, step one: the fields for your editor to
+        start a **new** event with. Any host (403 `hosts_only` for anyone
+        else) who may make events (verified: 403 `email_unverified`).
+        Nothing is made: show the editor with these filled in, and when
+        the host saves, send them, with the start they pick, to
+        `POST /api/v1/events`. The draft's fields are that request's
+        (`coverFrom` included); the rest of it is only for showing, and
+        the server ignores it if you send it back.
+
+        Copied: the title, description, place and address, time zone,
+        details, guest list visibility, plus-ones, capacity, color
+        (`themeHue`, `themeGrayscale`, `accentHue`) and the cover.
+        **Not copied:** the date and times (there are none: the host
+        picks them), the guests, invitations and answers, co-hosts, the
+        wall, and lists. Attaching a list invites everyone on it, so
+        `lists` names your own lists that were on the original, to offer
+        once the copy is saved (`PUT /api/v1/events/{id}/lists/{listId}`
+        on the new event); none are attached for you.
+
+        The cover: `coverImageUrl` and `coverImages` are the original's,
+        to show in the editor. Send `coverFrom` (the original's id) and
+        the new event gets its own copy of the files, under its own URL,
+        so removing or replacing either event's cover never touches the
+        other's. Leave it out (or null) if the host takes the cover off
+        or picks another (then upload that as usual, after making it).
+      responses:
+        '200':
+          description: The draft.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DuplicateDraftEnvelope' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/SignInRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1990,7 +2042,8 @@ components:
         `bad_detail_phone`, `detail_too_long` (a label over 60
         characters or a value over 500);
         `bad_image`, `bad_background` (not one of the current
-        backgrounds), `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
+        backgrounds), `bad_cover_from`, `no_cover` (a duplicate's
+        `coverFrom` that isn't an event, or has no cover now), `bad_ids`, `bad_platform`, `bad_token`, `one_of`,
         `bad_phone`, `bad_instagram`, `bad_cursor`, `bad_limit`, `bad_settings`,
         `unknown_setting`, `bad_calendar_invites`; and
         `bad_request` on any route for a request that can't be read at
@@ -2775,6 +2828,94 @@ components:
           maxItems: 10
           items: { $ref: '#/components/schemas/EventDetailInput' }
           description: The extra fields under the description, in order (see EventDetail). Several of one type are fine. A refusal about one of them says which in the error's `index`.
+        coverFrom:
+          type: [string, 'null']
+          pattern: '^[0-9A-Za-z]{12}$'
+          description: "Duplicating: the id of an event you host whose cover the new event starts with, as its own copy (see getDuplicateDraft). null or left out: no cover."
+
+    DuplicateDraft:
+      description: |
+        What a copy of an event starts with (getDuplicateDraft): the fields
+        of EventInput except the times, plus the original's cover to show
+        and your own lists that were on it.
+      type: object
+      additionalProperties: false
+      required: [title, description, timeZone, locationName, locationAddress, details, guestListVisibility, guestsAllowed, capacity,
+                 themeHue, themeGrayscale, accentHue, coverFrom, coverImageUrl, coverImages, coverHue, coverGrayscale, lists]
+      properties:
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        timeZone: { type: string }
+        locationName: { type: [string, 'null'] }
+        locationAddress: { type: [string, 'null'] }
+        details:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, label, value]
+            properties:
+              type: { type: string, enum: [link, info, dress_code, food, parking, accommodation, phone] }
+              label: { type: [string, 'null'], maxLength: 60 }
+              value: { type: string, minLength: 1, maxLength: 500 }
+          description: As EventDetailInput, ready to send back.
+        guestListVisibility: { type: string, enum: [everyone, responded] }
+        guestsAllowed: { type: integer, minimum: 0, maximum: 10 }
+        capacity: { type: [integer, 'null'], minimum: 1 }
+        themeHue: { type: [integer, 'null'], minimum: 0, maximum: 359 }
+        themeGrayscale: { type: boolean }
+        accentHue: { type: [integer, 'null'], minimum: 0, maximum: 359 }
+        coverFrom:
+          type: [string, 'null']
+          pattern: '^[0-9A-Za-z]{12}$'
+          description: The original's id when it has a cover (send it to copy the cover); null when it has none.
+        coverImageUrl: { type: [string, 'null'], description: "The original's cover, to show in the editor (see Event)." }
+        coverImages:
+          type: array
+          items: { $ref: '#/components/schemas/CoverImage' }
+        coverHue: { type: [integer, 'null'], minimum: 0, maximum: 359, description: "The hue matching the cover, for a match-photo button (see Event)." }
+        coverGrayscale: { type: boolean }
+        lists:
+          type: array
+          description: Your own lists that were on the original. Not attached to the copy; offer them once it's made.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, name]
+            properties:
+              id: { type: string, pattern: '^[0-9A-Za-z]{12}$' }
+              name: { type: string }
+      example:
+        title: Drag Race night
+        description: Snacks provided.
+        timeZone: America/Los_Angeles
+        locationName: "Ana's place"
+        locationAddress: 1 Market St, San Francisco
+        details:
+          - { type: dress_code, label: null, value: Fierce }
+        guestListVisibility: everyone
+        guestsAllowed: 1
+        capacity: null
+        themeHue: 320
+        themeGrayscale: false
+        accentHue: null
+        coverFrom: 4fQ9xKpL2mZa
+        coverImageUrl: https://events.canopysf.com/covers/Qm7Zc2pR9xTa.jpg?v=1759870000000
+        coverImages:
+          - { width: 400, height: 300, url: 'https://events.canopysf.com/covers/Qm7Zc2pR9xTa-400.jpg?v=1759870000000' }
+          - { width: 800, height: 600, url: 'https://events.canopysf.com/covers/Qm7Zc2pR9xTa.jpg?v=1759870000000' }
+        coverHue: 318
+        coverGrayscale: false
+        lists:
+          - { id: Lw3Kp9QzX2aB, name: Drag Race }
+
+    DuplicateDraftEnvelope:
+      type: object
+      additionalProperties: false
+      required: [draft]
+      properties:
+        draft: { $ref: '#/components/schemas/DuplicateDraft' }
 
     EventPatch:
       description: Any of the fields of EventInput, plus status. Only what's sent changes.

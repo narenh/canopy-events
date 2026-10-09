@@ -30,6 +30,11 @@ applyCopy();
 
 const data = pageData();
 const editing = !!data.event;
+// A duplicate (/new?from=<id>): a new event, started from the API's draft
+// of another (routes/pages.js). What the form starts from: the event, the
+// draft, or nothing.
+const draft = data.draft || null;
+const prefill = data.event || draft;
 const form = document.getElementById('eventForm');
 const $ = (id) => document.getElementById(id);
 
@@ -64,10 +69,10 @@ const FIELD_FOR = {
   ends_before_start: 'endsAt', bad_time_zone: 'timeZone', bad_location_name: 'locationName',
   bad_location_address: 'locationAddress', bad_guest_list_visibility: 'guestListVisibility',
   bad_guests_allowed: 'guestsAllowed', bad_capacity: 'capacity', bad_theme_hue: 'themeHue', bad_theme_grayscale: 'themeHue', bad_accent_hue: 'accentHue', accent_needs_grayscale: 'accentHue',
-  bad_details: 'details', too_many_details: 'details'
+  bad_details: 'details', too_many_details: 'details', bad_cover_from: 'cover', no_cover: 'cover'
 };
 // What to focus for a field whose control has another id.
-const FOCUS_FOR = { startsAt: 'startDate', timeZone: 'zoneBtn', guestListVisibility: null, details: null };
+const FOCUS_FOR = { cover: 'coverFile', startsAt: 'startDate', timeZone: 'zoneBtn', guestListVisibility: null, details: null };
 function showRefusal(d){
   const words = COPY.editor.errors[d.reason] || sentence(d.error);
   // About one of the details: under its row.
@@ -189,7 +194,7 @@ const zonePanel = $('zonePanel');
 const zoneSearch = $('zoneSearch');
 const zoneList = $('zoneList');
 const here = viewerZone();
-if (!editing && here) zoneInput.value = here;
+if (!prefill && here) zoneInput.value = here;
 
 // When the zones are worked out for: the start, read on that clock, or now.
 function zoneMoment(){
@@ -328,6 +333,10 @@ const head = $('details');
 let coverChange = null;
 let previewUrl = null;
 const hadCover = editing && !!UI.coverUrl(data.event);
+// A duplicate shows the original's cover, and Save asks the server for a
+// copy of it (POST /events coverFrom), until the host takes it off or
+// picks another.
+let coverFrom = draft && draft.coverFrom ? draft.coverFrom : null;
 
 // The words for a cover refusal, by its reason. A 413 may come from a
 // proxy in front, with no JSON.
@@ -372,6 +381,7 @@ coverFile.addEventListener('change', () => {
     return;
   }
   coverChange = file;
+  coverFrom = null;
   previewUrl = URL.createObjectURL(file);
   drawCover(previewUrl);
   markBackground(null);
@@ -384,6 +394,7 @@ onActions({
     $('coverError').textContent = '';
     coverFile.value = '';
     coverChange = hadCover ? 'remove' : null;
+    coverFrom = null;
     drawCover(null);
     markBackground(null);
     forgetPhotoMatch();
@@ -433,6 +444,7 @@ function pickBackground(id){
   $('coverError').textContent = '';
   coverFile.value = '';
   coverChange = { background: b };
+  coverFrom = null;
   drawCover(b.previewUrl || b.thumbUrl);
   markBackground(b.id);
   photoKey = b.grayscale ? 'grey' : (UI.isHue(b.hue) ? b.hue : null);
@@ -496,11 +508,11 @@ async function saveCover(id){
 // then anyway). "Match photo" only moves the colour.
 const hueInput = $('themeHue');
 const accentInput = $('accentHue');
-let themeKey = editing ? UI.themeKeyOf(data.event) : null;
-let accentKey = (editing && UI.accentKeyOf(data.event)) || UI.WHITE;
+let themeKey = prefill ? UI.themeKeyOf(prefill) : null;
+let accentKey = (prefill && UI.accentKeyOf(prefill)) || UI.WHITE;
 // The colour that matches the photo now shown: a theme key, or null for
 // none known.
-let photoKey = !editing ? null : (data.event.coverGrayscale ? 'grey' : (UI.isHue(data.event.coverHue) ? data.event.coverHue : null));
+let photoKey = !prefill ? null : (prefill.coverGrayscale ? 'grey' : (UI.isHue(prefill.coverHue) ? prefill.coverHue : null));
 
 function showTheme(){
   const style = UI.themeStyle(themeKey, accentKey);
@@ -691,6 +703,7 @@ form.addEventListener('submit', (e) => {
   // An empty end: none (and, editing, clear the one there was).
   if (ends) body.endsAt = ends;
   else if (editing) body.endsAt = null;
+  if (coverFrom) body.coverFrom = coverFrom;
   busy($('saveBtn'), $('formError'), async () => {
     const { res, data: d } = editing
       ? await api('PATCH', '/events/' + encodeURIComponent(data.event.id), body)
@@ -708,7 +721,11 @@ form.addEventListener('submit', (e) => {
       $('coverError').textContent = t('editor.coverNotSaved') + ' ' + refused.words;
       return;
     }
-    window.location.href = '/e/' + encodeURIComponent(id);
+    // A duplicate of an event that had the host's lists on it opens with
+    // Lists… showing, to put them on again: they're never copied, since
+    // attaching one invites everyone on it.
+    const lists = !editing && draft && draft.lists && draft.lists.length;
+    window.location.href = '/e/' + encodeURIComponent(id) + (lists ? '?lists=1' : '');
   });
 });
 </script>

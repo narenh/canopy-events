@@ -256,6 +256,59 @@ In someone's Canopy calendar, an entry's description lists every detail
 after the host's description ("Dress code: Warm layers"); everyone with
 the entry is on the event.
 
+### Duplicating an event
+
+A host's "Duplicate" (the web has it in the host's ⋯ menu) makes a new
+event like one they host: the weekly watch party, next week. An event
+can't exist without a start, so it's two steps, and nothing is made
+until the host saves:
+
+1. `GET /api/v1/events/{id}/duplicate-draft` (any host who may make
+   events: 403 `hosts_only` for anyone else, 403 `email_unverified` for
+   an unverified account) answers with `draft`: the fields to start your
+   new-event editor with. Show it as a new event, with the date and
+   times empty for the host to pick.
+2. On save, `POST /api/v1/events` with the draft's fields as the host
+   left them, plus `startsAt` (and `endsAt` if they set one). The answer
+   is the new event, as for any other.
+
+**Copied:** title, description, place and address, time zone, details
+(every one, the private ones too: you're a host), who sees the guest
+list, plus-ones, capacity, the color (`themeHue`, `themeGrayscale`,
+`accentHue`) and the cover.
+**Not copied:** the date and times; guests, invitations and answers;
+co-hosts (the one duplicating is the new event's creator and only host);
+the wall; and lists. Attaching a list invites everyone on it, so it's
+the host's to do: `draft.lists` is your own lists that were on the
+original (`[{id, name}]`), to offer once the copy exists (`PUT
+/api/v1/events/{newId}/lists/{listId}`). The web opens the new event
+with its Lists… panel showing.
+
+**The cover.** `draft.coverImageUrl` and `coverImages` are the
+original's, to show in the editor (with `coverHue` and `coverGrayscale`
+for a "match photo" button). Send `draft.coverFrom` (the original's id,
+null when it has no cover) as `coverFrom` in the POST, and the server
+copies the stored files under the new event, with its own URL: removing
+or replacing either event's cover never touches the other. If the host
+takes the cover off, send no `coverFrom`; if they pick another photo or
+background, send no `coverFrom` and upload it after making the event, as
+usual. `coverFrom` is refused, with nothing made, unless you host that
+event (403 `hosts_only`), it's an event (400 `bad_cover_from`), and it
+still has a cover (400 `no_cover`: another host took it off meanwhile;
+say so, and send it again without).
+
+The draft's other fields (`coverImageUrl`, `coverImages`, `coverHue`,
+`coverGrayscale`, `lists`) are only for showing; the server ignores them
+if you send the whole draft back.
+
+```sh
+curl -s https://events.canopysf.com/api/v1/events/4fQ9xKpL2mZa/duplicate-draft -H "Authorization: Bearer $TOKEN"
+# -> {"draft": {"title": "Drag Race night", ..., "coverFrom": "4fQ9xKpL2mZa", "lists": [{"id": "Lw3Kp9QzX2aB", "name": "Drag Race"}]}}
+curl -s -X POST https://events.canopysf.com/api/v1/events -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title": "Drag Race night", ..., "coverFrom": "4fQ9xKpL2mZa", "startsAt": "2026-10-16T19:00:00-07:00"}'
+# -> 201 {"event": {"id": "Zt8mR2kQ4vNc", "coverImageUrl": "https://events.canopysf.com/covers/Hn5Wq7Lp3sYd.jpg?v=…", ...}}
+```
+
 ## Answering: the RSVP state machine
 
 Your place on an event is `viewer.rsvp`: null (nothing), or one of these

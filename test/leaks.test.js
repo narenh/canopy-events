@@ -116,6 +116,7 @@ test('every endpoint, every caller: other people are the five public fields and 
     await call(who, 'get', '/api/v1/backgrounds');
     await call(who, 'get', `/api/v1/events/${e.id}`);
     await call(who, 'get', `/api/v1/events/${e.id}/guests`);
+    await call(who, 'get', `/api/v1/events/${e.id}/duplicate-draft`);
     await call(who, 'get', '/api/v1/me');
     await call(who, 'get', '/api/v1/me/friends');
     await call(who, 'get', `/api/v1/events/${e.id}/wall`);
