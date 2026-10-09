@@ -102,7 +102,10 @@ test('every endpoint, every caller: other people are the five public fields and 
   await call(una, 'post', `/api/v1/list-links/${list.code}/join`);
   const listed = await makeEvent(ana, { title: 'Listed' });
   await call(ana, 'put', `/api/v1/events/${listed.id}/lists/${list.id}`);
+  // Adding people: someone new, someone on it, someone gone, and herself.
+  await call(ana, 'post', `/api/v1/me/lists/${list.id}/members`, { personIds: [P.dee.id, P.ben.id, P.gus.id, P.ana.id] });
   for (const who of [ana, ben, benApp, una, cy, anon]) {
+    await call(who, 'post', `/api/v1/me/lists/${list.id}/members`, { personIds: [P.eve.id, P.cy.id] });
     await call(who, 'get', '/api/v1/me/lists');
     await call(who, 'get', `/api/v1/me/lists/${list.id}/members`);
     await call(who, 'get', '/api/v1/me/list-memberships');

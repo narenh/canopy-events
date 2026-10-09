@@ -3,8 +3,8 @@
 // lib/store/lists.js has the rules; in short:
 //
 //   - **Yours** (/me/lists): make one (verified people only, like
-//     hosting), rename it, delete it, see and take off its members, and
-//     reset its link. Only you ever see who's on a list of yours, and only
+//     hosting), rename it, delete it, see, add and take off its members,
+//     and reset its link. Only you ever see who's on a list of yours, and only
 //     as the public Person shape.
 //   - **Ones you're on** (/me/list-memberships): each one's name and
 //     owner, and leaving. Never who else is on it, nor how many.
@@ -37,6 +37,13 @@ const createLimits = guessLimits({ perWho: [20, DAY], perIp: [60, DAY], overall:
 // Joining, the same as adding friends (routes/friends.js): every try
 // counts, so it can't be used to test codes in bulk either.
 const joinLimits = guessLimits({ perWho: [200, DAY], perIp: [500, DAY], overall: [5000, DAY] });
+// Adding people to your lists: the invitation limit's numbers, counted
+// apart from it (routes/rsvps.js). Each person added counts one. Adding
+// someone can invite them (to the list's events still to come) without
+// their asking, which is what that limit is for; the invitations an add
+// makes aren't counted again. 100 in one request, as for inviting.
+const addLimits = guessLimits({ perWho: [300, DAY], perIp: [600, DAY], overall: [5000, DAY] });
+const MAX_ADDS_PER_REQUEST = 100;
 // List links that find nothing, per address. Codes can't be guessed (71
 // bits); this keeps anyone from trying for long.
 const linkMisses = attemptLimiter(60, HOUR);
@@ -143,7 +150,8 @@ module.exports = function listsRoutes(ctx) {
   });
 
   // Who's on it, newest first: each as the public Person shape, with when
-  // they joined. Only ever to the owner. Deleted accounts are left out.
+  // they joined and how (`source`: 'link', they joined; 'added', you put
+  // them on it). Only ever to the owner. Deleted accounts are left out.
   router.get('/me/lists/:listId/members', auth.requirePerson, handle(async (req, res) => {
     const list = ownList(req, res);
     if (!list) return;
@@ -152,8 +160,62 @@ module.exports = function listsRoutes(ctx) {
     const rows = store.membersOf(list.id, { after: page.after, limit: page.limit + 1 });
     const { items, nextCursor } = paginate(rows, page.limit, (r) => [r.joinedAt, r.personId]);
     const people = await loadPeople(canopy, items.map((r) => r.personId));
-    const members = items.filter((r) => people.has(r.personId)).map((r) => ({ person: publicPerson(people.get(r.personId)), joinedAt: iso(r.joinedAt) }));
+    const members = items.filter((r) => people.has(r.personId)).map((r) => ({ person: publicPerson(people.get(r.personId)), joinedAt: iso(r.joinedAt), source: r.addedBy ? 'added' : 'link' }));
     res.json({ members, nextCursor });
+  }));
+
+  // Put people on it: { personIds: [...] }, 1 to 100 at a time. The same
+  // people its owner could invite to an event (routes/rsvps.js): anyone
+  // with a Canopy Account, friends or not, but not yourself, and not
+  // anyone who opted out of your invitations (skipped as `not_found`,
+  // the same as no account, so the answer doesn't tell). Being added is
+  // the same as joining: they're invited, by you, to every event the list
+  // is on that isn't over or cancelled, in the same step, and those
+  // invitations notify as usual. Nothing else tells them; the list is in
+  // their "Lists you're on", where they can leave. Someone already on it
+  // is in `alreadyOn`, and nothing about them changes. All or nothing
+  // against the 1,000-people limit (409 `list_full`).
+  router.post('/me/lists/:listId/members', auth.requireVerified, handle(async (req, res) => {
+    const list = ownList(req, res);
+    if (!list) return;
+    const raw = (req.body || {}).personIds;
+    if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_ADDS_PER_REQUEST) {
+      return fail(res, 400, 'bad_person_ids', `personIds is a list of 1 to ${MAX_ADDS_PER_REQUEST} person ids`);
+    }
+    if (!raw.every((id) => typeof id === 'string' && PERSON_ID_RE.test(id))) {
+      return fail(res, 400, 'bad_person_ids', "that isn't a list of person ids");
+    }
+    const me = String(req.person.id);
+    const ids = Array.from(new Set(raw));
+    const tooMany = () => fail(res, 429, 'rate_limited', "that's a lot of people to add for one day -- try again tomorrow");
+    if (addLimits.blocked(req, me, 1)) return tooMany();
+    const people = await loadPeople(canopy, ids.filter((id) => id !== me));
+    const optedOut = store.optedOutOf(me, ids);
+    const skipped = [];
+    const alreadyOn = [];
+    const candidates = [];
+    ids.forEach((personId) => {
+      if (personId === me) return skipped.push({ personId, reason: 'is_you' });
+      if (store.joinedAt(list.id, personId) != null) return alreadyOn.push(personId);
+      if (!people.has(personId) || optedOut.has(personId)) return skipped.push({ personId, reason: 'not_found' });
+      candidates.push(personId);
+    });
+    // Only the people this would add count (someone on it already costs
+    // nothing).
+    if (candidates.length && addLimits.blocked(req, me, candidates.length)) return tooMany();
+    const result = store.addMembers(list.id, me, candidates);
+    if (result.outcome === 'full') return fail(res, 409, 'list_full', `a list can have at most ${MAX_MEMBERS} people`);
+    // Someone who joined by the link between the check and the add.
+    result.already.forEach((id) => alreadyOn.push(id));
+    if (result.added.length) addLimits.hit(req, me, result.added.length);
+    result.invited.forEach(({ eventId, personIds }) => notify('invited', { to: personIds, actorId: me, eventId }));
+    res.json({
+      added: result.added.map((id) => publicPerson(people.get(id))),
+      alreadyOn,
+      skipped,
+      invitedTo: result.invited.length,
+      list: ownedView(req, store.getList(list.id))
+    });
   }));
 
   // Take someone off. They aren't told; invitations they had stay. They

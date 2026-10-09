@@ -1438,6 +1438,55 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      tags: [Lists]
+      operationId: addListMembers
+      summary: Add people to a list of yours
+      description: |
+        `{ personIds }`, 1 to 100 a request. Verified people only (403
+        `email_unverified`), like making a list. The same people you could
+        invite to an event (`POST /api/v1/events/{id}/invites`): any
+        Canopy Account, friends or not. Each id ends up in `added` (as a
+        `Person`), `alreadyOn` (on it already: nothing changes), or
+        `skipped` with why: `is_you`, or `not_found` (no such account,
+        **or** someone who opted out of your invitations: deliberately the
+        same, so it never says which).
+
+        Being added is the same as joining by the link: in the same step,
+        each person added is invited, by you, to every event the list is
+        on that isn't over or cancelled (hosts and anyone removed from an
+        event are skipped for that event), and those invitations notify
+        as usual. `invitedTo` is how many events at least one of them was
+        invited to just now. Nothing else tells them: the list shows up in
+        their `GET /api/v1/me/list-memberships`, where they can leave it.
+        Adding makes no friends by itself (an invitation does).
+
+        All or nothing against the 1,000-people limit (409 `list_full`).
+        300 people added per person a day, counted apart from invitations
+        (429 `rate_limited`). Someone else's list, or none, is 404
+        `list_not_found`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteInput' }
+            examples:
+              two:
+                value:
+                  personIds: [6f1c2b9e-4d0a-4a53-9a51-2f7e0c1d8b44, 0b7e5a1f-9c2d-4e8b-8f3a-1d2c3b4a5e6f]
+      responses:
+        '200':
+          description: Who was added, who was on it already, who wasn't and why, and the list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListMembersAdded' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/SignInRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/me/lists/{listId}/members/{personId}:
     parameters:
@@ -3215,11 +3264,39 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [person, joinedAt]
+            required: [person, joinedAt, source]
             properties:
               person: { $ref: '#/components/schemas/Person' }
-              joinedAt: { type: string, format: date-time }
+              joinedAt: { type: string, format: date-time, description: 'When they joined, or were added.' }
+              source:
+                type: string
+                enum: [link, added]
+                description: "How they came to be on it: `link`, they joined by its link or QR code; `added`, you put them on it."
         nextCursor: { $ref: '#/components/schemas/NextCursor' }
+
+    ListMembersAdded:
+      type: object
+      additionalProperties: false
+      required: [added, alreadyOn, skipped, invitedTo, list]
+      properties:
+        added:
+          type: array
+          items: { $ref: '#/components/schemas/Person' }
+        alreadyOn:
+          type: array
+          description: Ids of people who were on the list already.
+          items: { type: string }
+        skipped:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [personId, reason]
+            properties:
+              personId: { type: string }
+              reason: { type: string, enum: [is_you, not_found] }
+        invitedTo: { type: integer, minimum: 0, description: "How many of the list's events still to come at least one of them was invited to just now." }
+        list: { $ref: '#/components/schemas/OwnedList' }
 
     ListMembership:
       description: A list you're on, as a member sees it. Nobody else on it, and no count.

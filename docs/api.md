@@ -1014,8 +1014,9 @@ page, public/ui.js `inviteSheet`), from calls that already exist:
 
 ## Lists
 
-A list is **one person's own list of people who joined it themselves**,
-by its link or QR code, for inviting them all at once. The case it's for:
+A list is **one person's own list of people**, who joined it themselves
+by its link or QR code or whom the owner added, for inviting them all at
+once. The case it's for:
 someone hosts a weekly night, shows the list's QR code at the door,
 newcomers join, and they're invited to the next one without the host
 remembering them.
@@ -1034,13 +1035,31 @@ sees nothing, except through a link: the name and the owner.
 | `PATCH /api/v1/me/lists/{listId}` `{name}` | rename |
 | `DELETE /api/v1/me/lists/{listId}` | gone, with its members and its place on events; invitations it made stay |
 | `POST /api/v1/me/lists/{listId}/reset-link` | a new `code` and `url`; the old link stops working; members stay |
-| `GET /api/v1/me/lists/{listId}/members` | `{members: [{person, joinedAt}], nextCursor}`, newest first, paginated |
+| `GET /api/v1/me/lists/{listId}/members` | `{members: [{person, joinedAt, source}], nextCursor}`, newest first, paginated; `source` is `link` (joined) or `added` (you added them) |
+| `POST /api/v1/me/lists/{listId}/members` `{personIds}` | add people (below): `{added, alreadyOn, skipped, invitedTo, list}` |
 | `DELETE /api/v1/me/lists/{listId}/members/{personId}` | take someone off (404 `not_a_member`); they aren't told |
 
 Someone else's list, or none, is always 404 `list_not_found`: whether it
 exists is its owner's business. `id` is for the API only; `url`
 (`https://events.canopysf.com/l/<code>`) is what's shared, and the text of
 its QR code (drawn exactly like the friend link's, above).
+
+**Adding people** (`POST /api/v1/me/lists/{listId}/members`,
+`{personIds: [...]}`, 1 to 100 a request). The owner may add **the same
+people they could invite** to an event: any Canopy Account, friends or
+not (from the invite picker's sources, below). Each id comes back in
+`added` (a `Person`), `alreadyOn` (nothing changes), or `skipped` with
+`is_you` or `not_found`; `not_found` is also how someone who opted out of
+your invitations is skipped, so the answer never says who did. **Being
+added is the same as joining**: in the same step they're invited, by you,
+to every event the list is on that isn't over or cancelled, with the
+usual `invited` notification; `invitedTo` counts those events, for "Added
+5 people. Invited them to 1 event." There's no other notification: the
+list appears in their `list-memberships`, where they can leave it. All or
+nothing at 1,000 people (409 `list_full`); 300 people added a day (429).
+`list` is the list with its new `memberCount`. A picker for it is the
+invite picker below with the list's members greyed ("On list") instead of
+the event's guests, and "Add 5" for "Invite 5".
 
 **Ones you're on**: `GET /api/v1/me/list-memberships` is `{lists: [{id,
 name, owner, joinedAt}]}`, newest first; `DELETE
@@ -1224,6 +1243,7 @@ expect:
 | Friend links that find nobody | | 60 an hour | |
 | Making lists | 20 a day (50 in all) | 60 a day | 1,000 a day |
 | Joining lists (every try counts) | 200 a day | 500 a day | 5,000 a day |
+| Adding people to your lists (each person added counts one; 100 in one request) | 300 a day | 600 a day | 5,000 a day |
 | List links that find nothing | | 60 an hour | |
 
 Text fields are capped: title 120 characters (longer is cut), description
